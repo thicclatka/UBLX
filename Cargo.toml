@@ -1,0 +1,28 @@
+[package]
+name = "ublx"
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.93"
+authors = ["AHurowitz <thicclatka@users.noreply.github.com>"]
+description = "A TUI"
+license = "MIT or Apache-2.0"
+repository = "https://github.com/thicclatka/ublx"
+homepage = "https://github.com/thicclatka/ublx"
+documentation = "https://docs.rs/ublx"
+readme = "README.md"
+keywords = ["tui", "cli", "file-manager", "file-browser"]
+categories = []
+
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.56", features = ["derive"] }
+crossterm = "0.28"
+env_logger = "0.11.8"
+log = "0.4.29"
+nefaxer = "0.1.1"
+ratatui = "0.29"
+rusqlite = { version = "0.38.0", features = ["backup", "bundled-sqlcipher"] }
+zahirscan = "0.2.10"
+
+[dev-dependencies]
+anyhow = "1.0.100"
