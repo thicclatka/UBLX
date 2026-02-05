@@ -76,7 +76,7 @@ fn main() {
         None,
         cached_settings.as_ref(),
     );
-    debug!("UBLX CONFIG: {:?}", ublx_opts);
+    debug!("UBLX CONFIG: {:#?}", ublx_opts);
     let mode = RunMode::from_opts(&ublx_opts);
 
     match mode {
