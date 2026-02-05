@@ -2,11 +2,19 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use log::{debug, error};
 use ratatui::Terminal;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::CrosstermBackend;
 use std::io;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::mpsc;
 
+use crate::config::UblxOpts;
+use crate::engine::db_ops;
+use crate::handlers::nefax_ops;
+use crate::handlers::zahir_ops;
 use crate::utils::notifications;
 
 pub fn run_ublx(bumper: &notifications::BumperBuffer, dev: bool) -> io::Result<()> {
@@ -55,5 +63,106 @@ pub fn run_ublx(bumper: &notifications::BumperBuffer, dev: bool) -> io::Result<(
     disable_raw_mode()?;
     crossterm::execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
+    Ok(())
+}
+
+pub fn run_sequential(
+    dir_to_ublx: &Path,
+    ublx_opts: &UblxOpts,
+    prior_nefax: &Option<nefax_ops::NefaxResult>,
+) -> io::Result<()> {
+    let entry_callback: Option<fn(&nefax_ops::NefaxEntry)> = None;
+    match nefax_ops::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax.as_ref(), entry_callback) {
+        Ok((nefax, diff)) => {
+            debug!(
+                "indexed {} paths (added: {}, removed: {}, modified: {})",
+                nefax.len(),
+                diff.added.len(),
+                diff.removed.len(),
+                diff.modified.len()
+            );
+            let path_list: Vec<PathBuf> = nefax
+                .iter()
+                .filter(|(_, meta)| meta.size > 0)
+                .map(|(p, _)| p.clone())
+                .collect();
+            let zahir_result = match zahir_ops::run_zahir_batch(&path_list, ublx_opts) {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("zahir (sequential) failed: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            // Capture phase1_failed / phase2_failed for later use
+            let _phase1_errors = &zahir_result.phase1_failed;
+            let _phase2_errors = &zahir_result.phase2_failed;
+            if let Err(e) = db_ops::write_snapshot_to_db(
+                dir_to_ublx,
+                &nefax,
+                &zahir_result,
+                &diff,
+                &ublx_opts.to_ublx_settings(),
+            ) {
+                error!("failed to write snapshot: {}", e);
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            error!("nefax failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+pub fn run_stream(
+    dir_to_ublx: &Path,
+    ublx_opts: &UblxOpts,
+    prior_nefax: &Option<nefax_ops::NefaxResult>,
+) -> io::Result<()> {
+    let ublx_opts_for_zahir = ublx_opts.clone();
+    let (tx, rx) = mpsc::channel();
+    let zahir_handle =
+        std::thread::spawn(move || zahir_ops::run_zahir_from_stream(rx, &ublx_opts_for_zahir));
+    let on_entry = |e: &nefax_ops::NefaxEntry| {
+        if e.size > 0 {
+            let _ = tx.send(e.path.to_string_lossy().into_owned());
+        }
+    };
+    match nefax_ops::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax.as_ref(), Some(on_entry)) {
+        Ok((nefax, diff)) => {
+            drop(tx);
+            debug!("indexed {} paths (streaming)", nefax.len());
+            let zahir_result = match zahir_handle.join() {
+                Ok(Ok(r)) => r,
+                Ok(Err(e)) => {
+                    error!("zahir (stream) failed: {}", e);
+                    std::process::exit(1);
+                }
+                Err(_) => {
+                    error!("zahir thread panicked");
+                    std::process::exit(1);
+                }
+            };
+            let _phase1_errors = &zahir_result.phase1_failed;
+            let _phase2_errors = &zahir_result.phase2_failed;
+            if let Err(e) = db_ops::write_snapshot_to_db(
+                dir_to_ublx,
+                &nefax,
+                &zahir_result,
+                &diff,
+                &ublx_opts.to_ublx_settings(),
+            ) {
+                error!("failed to write snapshot: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            drop(tx);
+            let _ = zahir_handle.join();
+            error!("nefax failed: {}", e);
+            std::process::exit(1);
+        }
+    }
     Ok(())
 }

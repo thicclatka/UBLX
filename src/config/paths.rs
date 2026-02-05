@@ -17,9 +17,9 @@ pub struct UblxPaths {
 }
 
 impl UblxPaths {
-    pub fn new(root: &Path) -> Self {
+    pub fn new(dir_to_ublx: &Path) -> Self {
         Self {
-            root: root.to_path_buf(),
+            root: dir_to_ublx.to_path_buf(),
         }
     }
 
@@ -31,6 +31,15 @@ impl UblxPaths {
     /// Visible config path: `root/ublx.toml`.
     pub fn visible_toml(&self) -> PathBuf {
         self.root.join(format!("{}.toml", PKG_NAME))
+    }
+
+    /// True if `path` (relative to root) is the hidden or visible ublx config file.
+    pub fn is_config_file(&self, path: &Path) -> bool {
+        let name = match path.file_name() {
+            Some(n) => n,
+            None => return false,
+        };
+        self.hidden_toml().file_name() == Some(name) || self.visible_toml().file_name() == Some(name)
     }
 
     /// Path to the config file to use: checks for `root/.ublx.toml` then `root/ublx.toml`; returns the first that exists, or `None`.
@@ -73,11 +82,11 @@ impl UblxPaths {
         self.root.join(format!(".{}-shm", PKG_NAME))
     }
 
-    /// Paths to exclude from indexing (db, tmp, wal, shm) as strings, for use with e.g. `NefaxOpts::exclude`.
+    /// Paths to exclude from indexing (db, tmp, wal, shm). Returns segment-style names so nefaxer’s exclude (matched per path component) works, e.g. `.ublx`, `.ublx_tmp`.
     pub fn exclude(&self) -> Vec<String> {
         [self.db(), self.tmp(), self.wal(), self.shm()]
             .into_iter()
-            .map(|p| p.to_string_lossy().into_owned())
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
             .collect()
     }
 

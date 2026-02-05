@@ -1,31 +1,45 @@
 use nefaxer::*;
 use std::path::Path;
 
-use crate::config::UblxOpts;
+use crate::config::{UblxOpts, UblxSettings, parse_drive_type};
 
 pub type NefaxEntry = nefaxer::Entry;
 pub type NefaxResult = nefaxer::Nefax;
 pub type NefaxDiff = nefaxer::Diff;
 pub type NefaxPathMeta = nefaxer::PathMeta;
+pub type NefaxDriveType = nefaxer::disk_detect::DriveType;
 
-fn get_important_opts_from_nefaxer(dir: &Path) -> NefaxOpts {
-    let (num_threads, drive_type, use_parallel_walk) = tuning_for_path(dir, None);
-    NefaxOpts {
+fn nefax_opts_with_tuning(
+    exclude: &[String],
+    num_threads: usize,
+    drive_type: NefaxDriveType,
+    use_parallel_walk: bool,
+) -> NefaxOpts {
+    let mut opts = NefaxOpts {
         num_threads: Some(num_threads),
         drive_type: Some(drive_type),
         use_parallel_walk: Some(use_parallel_walk),
         ..NefaxOpts::default()
-    }
-}
-
-fn add_exclude_to_nefax_opts(opts: &mut NefaxOpts, exclude: &[String]) {
+    };
     opts.exclude.extend(exclude.iter().map(|s| s.to_string()));
+    opts
 }
 
-pub fn pre_opts_for_nefaxer(dir: &Path, exclude: &[String]) -> NefaxOpts {
-    let mut opts = get_important_opts_from_nefaxer(dir);
-    add_exclude_to_nefax_opts(&mut opts, exclude);
-    opts
+/// Build NefaxOpts for indexing `dir` with `exclude`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [tuning_for_path](nefaxer::tuning_for_path).
+pub fn pre_opts_for_nefaxer(
+    dir_to_ublx: &Path,
+    exclude: &[String],
+    cached_settings: Option<&UblxSettings>,
+) -> NefaxOpts {
+    let (num_threads, drive_type, use_parallel_walk) = match cached_settings {
+        Some(s) => (
+            s.num_threads,
+            parse_drive_type(&s.drive_type),
+            s.parallel_walk,
+        ),
+        None => tuning_for_path(dir_to_ublx, None),
+    };
+    nefax_opts_with_tuning(exclude, num_threads, drive_type, use_parallel_walk)
 }
 
 fn extract_nefax_opts_from_ublx_opts(opts: &UblxOpts) -> NefaxOpts {
@@ -33,7 +47,7 @@ fn extract_nefax_opts_from_ublx_opts(opts: &UblxOpts) -> NefaxOpts {
 }
 
 pub fn run_nefaxer<F>(
-    dir: &Path,
+    dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
     nefax: Option<&Nefax>,
     entry_callback: Option<F>,
@@ -42,5 +56,5 @@ where
     F: FnMut(&NefaxEntry),
 {
     let nefax_opts = extract_nefax_opts_from_ublx_opts(ublx_opts);
-    nefax_dir(dir, &nefax_opts, nefax, entry_callback)
+    nefax_dir(dir_to_ublx, &nefax_opts, nefax, entry_callback)
 }

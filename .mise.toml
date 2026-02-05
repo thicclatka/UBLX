@@ -20,3 +20,7 @@ run = ["cargo fmt --all --check", "cargo clippy -- -D warnings", "cargo test"]
 [tasks.fmt]
 description = "Run rustfmt"
 run = "cargo fmt --all"
+
+[tasks.tublx]
+description = "Run ublx in test mode (no GUI, checking db consistency)"
+run = "cargo run -- --test"

@@ -11,13 +11,39 @@ use std::fs;
 use std::path::Path;
 
 use log::warn;
-use nefaxer::{NefaxOpts, tuning_for_path};
+use nefaxer::NefaxOpts;
 use serde::Deserialize;
 use zahirscan::{OutputMode, RuntimeConfig};
 
-use crate::handlers::nefax_ops;
-
 use super::paths::UblxPaths;
+use crate::handlers::nefax_ops::{NefaxDriveType, pre_opts_for_nefaxer};
+
+/// Cached disk/tuning settings stored in the ublx DB so we can skip disk check when .ublx exists.
+#[derive(Clone, Debug)]
+pub struct UblxSettings {
+    pub num_threads: usize,
+    pub drive_type: String,
+    pub parallel_walk: bool,
+}
+
+/// Parse drive type string from DB/cache ("SSD", "HDD", "Network", "Unknown").
+pub(crate) fn parse_drive_type(s: &str) -> NefaxDriveType {
+    match s {
+        "SSD" => NefaxDriveType::SSD,
+        "HDD" => NefaxDriveType::HDD,
+        "Network" => NefaxDriveType::Network,
+        _ => NefaxDriveType::Unknown,
+    }
+}
+
+fn drive_type_to_string(d: NefaxDriveType) -> &'static str {
+    match d {
+        NefaxDriveType::SSD => "SSD",
+        NefaxDriveType::HDD => "HDD",
+        NefaxDriveType::Network => "Network",
+        NefaxDriveType::Unknown => "Unknown",
+    }
+}
 
 /// At or above this many workers we set [UblxOpts::streaming] to true (callback path for nefax).
 pub const STREAMING_THRESHOLD: usize = 6;
@@ -94,19 +120,20 @@ impl UblxOpts {
         }
     }
 
-    /// Build ublx options for indexing `dir`. [Self::max_workers_available] comes from [tuning_for_path](nefaxer::tuning_for_path).
+    /// Build ublx options for indexing `dir`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [tuning_for_path](nefaxer::tuning_for_path).
     /// Zahir config is loaded with [RuntimeConfig::new]. [Self::streaming] is set true when workers >= [STREAMING_THRESHOLD].
     /// If a config file exists (`paths.toml_path()`: `.ublx.toml` or `ublx.toml`), only keys present in it overlay these opts.
     pub fn for_dir(
-        dir: &Path,
-        paths: &UblxPaths,
+        dir_to_ublx: &Path,
+        ublx_paths: &UblxPaths,
         nefax_workers_override: Option<usize>,
         zahir_workers_override: Option<usize>,
         ublx_workers_override: Option<usize>,
+        cached_settings: Option<&UblxSettings>,
     ) -> Self {
-        let exclude = paths.exclude();
-        let (num_threads, _drive_type, _use_parallel_walk) = tuning_for_path(dir, None);
-        let nefax = nefax_ops::pre_opts_for_nefaxer(dir, &exclude);
+        let exclude = ublx_paths.exclude();
+        let nefax = pre_opts_for_nefaxer(dir_to_ublx, &exclude, cached_settings);
+        let num_threads = nefax.num_threads.unwrap_or(1);
         let zahir = RuntimeConfig::new();
         let streaming = num_threads >= STREAMING_THRESHOLD;
         let mut opts = Self {
@@ -118,10 +145,24 @@ impl UblxOpts {
             ublx_workers_override,
             streaming,
         };
-        if let Some(overlay) = Self::load_ublx_toml(paths.toml_path()) {
+        if let Some(overlay) = Self::load_ublx_toml(ublx_paths.toml_path()) {
             opts.apply_overlay(overlay);
         }
         opts
+    }
+
+    /// Build [UblxSettings] from this opts for writing to the ublx DB (so next run can skip disk check).
+    pub fn to_ublx_settings(&self) -> UblxSettings {
+        UblxSettings {
+            num_threads: self.max_workers_available,
+            drive_type: self
+                .nefax
+                .drive_type
+                .map(drive_type_to_string)
+                .unwrap_or("Unknown")
+                .to_string(),
+            parallel_walk: self.nefax.use_parallel_walk.unwrap_or(false),
+        }
     }
 
     /// Build opts when running zahir only (e.g. single file, no nefax). You supply [Self::max_workers_available] (e.g. from tuning on a path); all are used for zahir.

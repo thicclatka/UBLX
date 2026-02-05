@@ -1,5 +1,6 @@
 //! ZahirScan integration: batch (sequential) and stream entry points.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
@@ -37,4 +38,20 @@ pub fn run_zahir_from_stream(
 ) -> Result<ZahirScanResult, anyhow::Error> {
     let config = extract_zahir_opts_from_ublx_opts(ublx_opts);
     extract_zahir_from_stream(paths_rx, OutputMode::Full, Some(&config), None, None)
+}
+
+/// get zahir output by path from a zahir result
+pub fn get_zahir_output_by_path(zahir_result: &ZahirResult) -> HashMap<String, &ZahirOutput> {
+    zahir_result
+        .outputs
+        .iter()
+        .filter_map(|o| o.source.as_ref().map(|s| (s.clone(), o)))
+        .collect()
+}
+
+/// Convert a zahir output to a JSON string.
+pub fn zahir_output_to_json(output: Option<&ZahirOutput>) -> String {
+    output
+        .and_then(|o| serde_json::to_string(o).ok())
+        .unwrap_or_default()
 }

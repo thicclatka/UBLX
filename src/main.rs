@@ -2,22 +2,21 @@ mod macros;
 mod_priv!(config, engine, handlers, utils);
 
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::time::Instant;
 
 use clap::Parser;
-use log::{debug, error, info};
+use log::{debug, error};
 
-use config::{UblxOpts, UblxPaths};
+use config::{RunMode, UblxOpts, UblxPaths};
 use engine::*;
-use handlers::{nefax_ops, stream_seq, zahir_ops};
 use utils::*;
 
 #[derive(Parser)]
 #[command(name = "ublx")]
 struct Args {
     /// Directory to index (default: current directory)
-    #[arg(default_value = ".")]
-    dir: PathBuf,
+    #[arg(value_name = "DIR", default_value = ".")]
+    dir_to_ublx: PathBuf,
     /// Do a test run, no TUI, write snapshot to .ublx
     #[arg(short = 't', long = "test")]
     test: bool,
@@ -25,7 +24,9 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    let dir = validate_dir(&args.dir);
+    let start_time = args.test.then(Instant::now);
+
+    let dir_to_ublx = validate_dir(&args.dir_to_ublx);
 
     let test_mode = args.test;
     let (bumper, dev) = if test_mode {
@@ -38,9 +39,9 @@ fn main() {
         (Some(bumper), dev)
     };
 
-    debug!("indexing directory: {}", dir.display());
+    debug!("indexing directory: {}", dir_to_ublx.display());
 
-    let db_path = match db_ops::ensure_ublx_and_db(&dir) {
+    let db_path = match db_ops::ensure_ublx_and_db(&dir_to_ublx) {
         Ok(p) => p,
         Err(e) => {
             error!("failed to set up .ublx db: {}", e);
@@ -49,7 +50,7 @@ fn main() {
     };
     debug!("db: {}", db_path.display());
 
-    let prior_nefax = match db_ops::load_nefax_from_db(&dir, &db_path) {
+    let prior_nefax = match db_ops::load_nefax_from_db(&dir_to_ublx, &db_path) {
         Ok(Some(nefax)) => {
             debug!("loaded {} paths from snapshot", nefax.len());
             Some(nefax)
@@ -61,108 +62,49 @@ fn main() {
         }
     };
 
-    let paths = UblxPaths::new(&dir);
-    let ublx_opts = UblxOpts::for_dir(&dir, &paths, None, None, None);
+    let cached_settings = db_ops::load_settings_from_db(&db_path).ok().flatten();
+    if cached_settings.is_some() {
+        debug!("using cached settings from .ublx (skipping disk check)");
+    }
+
+    let paths = UblxPaths::new(&dir_to_ublx);
+    let ublx_opts = UblxOpts::for_dir(
+        &dir_to_ublx,
+        &paths,
+        None,
+        None,
+        None,
+        cached_settings.as_ref(),
+    );
     debug!("UBLX CONFIG: {:?}", ublx_opts);
-    let mode = stream_seq::RunMode::from_opts(&ublx_opts);
+    let mode = RunMode::from_opts(&ublx_opts);
 
     match mode {
-        stream_seq::RunMode::Sequential => {
-            let entry_callback: Option<fn(&nefax_ops::NefaxEntry)> = None;
-            match handlers::nefax_ops::run_nefaxer(
-                &dir,
-                &ublx_opts,
-                prior_nefax.as_ref(),
-                entry_callback,
-            ) {
-                Ok((nefax, diff)) => {
-                    debug!(
-                        "indexed {} paths (added: {}, removed: {}, modified: {})",
-                        nefax.len(),
-                        diff.added.len(),
-                        diff.removed.len(),
-                        diff.modified.len()
-                    );
-                    let path_list: Vec<PathBuf> = nefax
-                        .iter()
-                        .filter(|(_, meta)| meta.size > 0)
-                        .map(|(p, _)| p.clone())
-                        .collect();
-                    let zahir_result = match zahir_ops::run_zahir_batch(&path_list, &ublx_opts) {
-                        Ok(r) => r,
-                        Err(e) => {
-                            error!("zahir (sequential) failed: {}", e);
-                            std::process::exit(1);
-                        }
-                    };
-                    // Capture phase1_failed / phase2_failed for later use
-                    let _phase1_errors = &zahir_result.phase1_failed;
-                    let _phase2_errors = &zahir_result.phase2_failed;
-                    if let Err(e) = db_ops::write_snapshot_to_db(&dir, &nefax, &zahir_result) {
-                        error!("failed to write snapshot: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-                Err(e) => {
-                    error!("nefax failed: {}", e);
-                    std::process::exit(1);
-                }
+        RunMode::Sequential => {
+            if let Err(e) = orchestrator::run_sequential(&dir_to_ublx, &ublx_opts, &prior_nefax) {
+                error!("sequential mode failed: {}", e);
+                std::process::exit(1);
             }
         }
-        stream_seq::RunMode::Stream => {
-            let ublx_opts_for_zahir = ublx_opts.clone();
-            let (tx, rx) = mpsc::channel();
-            let zahir_handle = std::thread::spawn(move || {
-                zahir_ops::run_zahir_from_stream(rx, &ublx_opts_for_zahir)
-            });
-            let on_entry = |e: &nefax_ops::NefaxEntry| {
-                if e.size > 0 {
-                    let _ = tx.send(e.path.to_string_lossy().into_owned());
-                }
-            };
-            match handlers::nefax_ops::run_nefaxer(
-                &dir,
-                &ublx_opts,
-                prior_nefax.as_ref(),
-                Some(on_entry),
-            ) {
-                Ok((nefax, _diff)) => {
-                    drop(tx);
-                    info!("indexed {} paths (streaming)", nefax.len());
-                    let zahir_result = match zahir_handle.join() {
-                        Ok(Ok(r)) => r,
-                        Ok(Err(e)) => {
-                            error!("zahir (stream) failed: {}", e);
-                            std::process::exit(1);
-                        }
-                        Err(_) => {
-                            error!("zahir thread panicked");
-                            std::process::exit(1);
-                        }
-                    };
-                    let _phase1_errors = &zahir_result.phase1_failed;
-                    let _phase2_errors = &zahir_result.phase2_failed;
-                    if let Err(e) = db_ops::write_snapshot_to_db(&dir, &nefax, &zahir_result) {
-                        error!("failed to write snapshot: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-                Err(e) => {
-                    drop(tx);
-                    let _ = zahir_handle.join();
-                    error!("nefax failed: {}", e);
-                    std::process::exit(1);
-                }
+        RunMode::Stream => {
+            if let Err(e) = orchestrator::run_stream(&dir_to_ublx, &ublx_opts, &prior_nefax) {
+                error!("stream mode failed: {}", e);
+                std::process::exit(1);
             }
         }
     }
 
-    if let Err(e) = db_ops::post_ublx_run_cleanup(&dir) {
+    if let Err(e) = db_ops::UblxCleanup::new(&dir_to_ublx).post_run_cleanup() {
         error!("failed to cleanup: {}", e);
         std::process::exit(1);
     }
 
     if test_mode {
+        let duration = start_time.unwrap().elapsed();
+        debug!(
+            "UBLX test completed in {:.4?} seconds",
+            duration.as_secs_f64()
+        );
         return;
     }
     if let Some(b) = bumper
