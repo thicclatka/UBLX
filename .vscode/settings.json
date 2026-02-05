@@ -1,5 +1,5 @@
 {
-  "workbench.colorTheme": "Catppuccin Macchiato",
+  "workbench.colorTheme": "paddy-ornithopter",
   "files.exclude": {
     "**/target": true,
     "**/.DS_Store": true
