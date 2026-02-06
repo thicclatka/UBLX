@@ -190,13 +190,13 @@ impl NefaxFromGivenDB {
 }
 
 pub struct UblxCleanup {
-    root: PathBuf,
+    dir_to_ublx_abs: PathBuf,
 }
 
 impl UblxCleanup {
     pub fn new(dir_to_ublx: &Path) -> Self {
         Self {
-            root: dir_to_ublx.to_path_buf(),
+            dir_to_ublx_abs: dir_to_ublx.to_path_buf(),
         }
     }
 
@@ -215,10 +215,10 @@ impl UblxCleanup {
         Ok(())
     }
 
-    /// Remove the nefaxer index file and ublx tmp files under this cleanup's root. Call after the operation is complete (e.g. after writing ublx snapshot).
+    /// Remove the nefaxer index file and ublx tmp files under this cleanup's dir_to_ublx_abs. Call after the operation is complete (e.g. after writing ublx snapshot).
     pub fn post_run_cleanup(&self) -> Result<(), anyhow::Error> {
-        Self::delete_nefaxer_files(&self.root)?;
-        Self::delete_ublx_tmp_files(&self.root)?;
+        Self::delete_nefaxer_files(&self.dir_to_ublx_abs)?;
+        Self::delete_ublx_tmp_files(&self.dir_to_ublx_abs)?;
         Ok(())
     }
 }

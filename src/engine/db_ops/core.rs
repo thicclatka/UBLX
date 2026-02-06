@@ -1,4 +1,4 @@
-//! Index DB and related files under the root, all keyed by package name (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
+//! Index DB and related files under the dir_to_ublx_abs, all keyed by package name (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
 
 use std::fs;
 use std::path::Path;
@@ -6,12 +6,13 @@ use std::path::Path;
 use rusqlite::{Connection, OptionalExtension};
 
 use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
-use super::utils;
+use super::utils as db_ops_utils;
 use crate::config::{UblxPaths, UblxSettings};
 use crate::handlers::nefax_ops::{NefaxDiff, NefaxResult};
 use crate::handlers::zahir_ops::{ZahirResult, get_zahir_output_by_path};
+use crate::utils::canonicalize_dir_to_ublx;
 
-/// Write nefax + zahir outputs to the snapshot: build DB at `root/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `root/.ublx`. Nefaxer already excluded paths per opts; we write everything nefax gives us. Errors from zahir (phase1_failed, phase2_failed) are not written; caller may use them later.
+/// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Nefaxer already excluded paths per opts; we write everything nefax gives us. Errors from zahir (phase1_failed, phase2_failed) are not written; caller may use them later.
 pub fn write_snapshot_to_db(
     dir_to_ublx: &Path,
     nefax: &NefaxResult,
@@ -23,13 +24,14 @@ pub fn write_snapshot_to_db(
     let tmp_path = ublx_paths.tmp();
     let db_path = ublx_paths.db();
 
-    let zahir_output_by_path = get_zahir_output_by_path(zahir_result);
+    let root = canonicalize_dir_to_ublx(dir_to_ublx);
+    let zahir_output_by_path = get_zahir_output_by_path(zahir_result, Some(&root));
 
     let conn = Connection::open(&tmp_path)?;
     conn.execute_batch(&UblxDbSchema::create_ublx_db_sql())?;
     let mut stmt = conn.prepare(UblxDbStatements::INSERT_SNAPSHOT)?;
 
-    utils::insert_results_into_snapshot(
+    db_ops_utils::insert_results_into_snapshot(
         &mut stmt,
         nefax,
         dir_to_ublx,
@@ -67,10 +69,10 @@ fn write_delta_log(
     diff: &NefaxDiff,
 ) -> Result<(), anyhow::Error> {
     let mut stmt = conn.prepare(UblxDbStatements::INSERT_DELTA_LOG)?;
-    let created_ns = utils::get_created_ns();
+    let created_ns = db_ops_utils::get_created_ns();
 
     for delta_type in DeltaType::iter() {
-        utils::insert_results_into_delta_log_by_type(
+        db_ops_utils::insert_results_into_delta_log_by_type(
             &mut stmt, nefax, diff, delta_type, created_ns,
         )?;
     }
@@ -98,5 +100,59 @@ pub fn load_nefax_from_db(
     dir_to_ublx: &Path,
     db_path: &Path,
 ) -> Result<Option<NefaxResult>, anyhow::Error> {
-    utils::NefaxFromGivenDB::new(dir_to_ublx, db_path).load_nefax_from_given_db()
+    db_ops_utils::NefaxFromGivenDB::new(dir_to_ublx, db_path).load_nefax_from_given_db()
+}
+
+/// Load distinct categories from the snapshot table for the TUI. Returns empty vec if table missing or empty.
+pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare("SELECT DISTINCT category FROM snapshot WHERE category IS NOT NULL AND category != '' ORDER BY category")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// One row from snapshot for TUI contents/preview: (path, category, zahir_json).
+pub type SnapshotTuiRow = (String, String, String);
+
+/// Load snapshot rows (path, category, zahir_json) for the TUI. Optional category filter.
+pub fn load_snapshot_rows_for_tui(
+    db_path: &Path,
+    category_filter: Option<&str>,
+) -> Result<Vec<SnapshotTuiRow>, anyhow::Error> {
+    let conn = Connection::open(db_path)?;
+    let mut out = Vec::new();
+    if let Some(cat) = category_filter {
+        let mut stmt = conn.prepare(
+            "SELECT path, category, COALESCE(zahir_json, '') FROM snapshot WHERE category = ?1 ORDER BY path",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![cat], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        for r in rows {
+            out.push(r?);
+        }
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT path, category, COALESCE(zahir_json, '') FROM snapshot ORDER BY category, path",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        for r in rows {
+            out.push(r?);
+        }
+    }
+    Ok(out)
 }

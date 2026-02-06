@@ -196,6 +196,23 @@ impl UblxOpts {
         (nefax, zahir, ublx)
     }
 
+    /// Streaming: nefax keeps walk fed (at least 2); most to zahir; 1 reserved for ublx (e.g. future live TUI during index).
+    fn default_share_streaming(&self) -> (usize, usize, usize) {
+        let n = self.max_workers_available;
+        let nefax = 2.min(n);
+        let ublx = 1.min(n.saturating_sub(nefax));
+        let zahir = n.saturating_sub(nefax).saturating_sub(ublx);
+        (nefax, zahir, ublx)
+    }
+
+    fn default_share(&self) -> (usize, usize, usize) {
+        if self.streaming {
+            self.default_share_streaming()
+        } else {
+            self.default_share_1_1_1()
+        }
+    }
+
     fn effective_workers_for(&self, override_val: Option<usize>, default_share: usize) -> usize {
         if self.is_sequential_mode() {
             return self.max_workers_available;
@@ -207,21 +224,21 @@ impl UblxOpts {
 
     /// Workers to use for nefaxer. Sequential mode: all [Self::max_workers_available]; else override or ratio share.
     pub fn effective_nefax_workers(&self) -> usize {
-        let (n, _, _) = self.default_share_1_1_1();
+        let (n, _, _) = self.default_share();
         self.effective_workers_for(self.nefax_workers_override, n)
     }
 
     /// Workers to use for zahirscan. Sequential mode: all available; else override or ratio share.
     #[allow(dead_code)]
     pub fn effective_zahir_workers(&self) -> usize {
-        let (_, z, _) = self.default_share_1_1_1();
+        let (_, z, _) = self.default_share();
         self.effective_workers_for(self.zahir_workers_override, z)
     }
 
     /// Workers reserved for ublx (main process / other work). Sequential mode: all available; else override or remainder.
     #[allow(dead_code)]
     pub fn effective_ublx_workers(&self) -> usize {
-        let (_, _, u) = self.default_share_1_1_1();
+        let (_, _, u) = self.default_share();
         self.effective_workers_for(self.ublx_workers_override, u)
     }
 
@@ -239,11 +256,12 @@ impl UblxOpts {
         opts
     }
 
-    /// ZahirScan runtime config with ublx overrides: [OutputMode::Full], [Self::effective_zahir_workers] for `max_workers`.
+    /// ZahirScan runtime config with ublx overrides: [OutputMode::Templates], [Self::effective_zahir_workers] for `max_workers`.
     #[allow(dead_code)]
     pub fn zahir_runtime_config(&self) -> RuntimeConfig {
         let mut config = self.zahir.clone();
-        config.output_mode = OutputMode::Full;
+        // config.output_mode = OutputMode::Full;
+        config.output_mode = OutputMode::Templates;
         config.max_workers = self.effective_zahir_workers();
         config
     }

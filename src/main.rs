@@ -29,15 +29,7 @@ fn main() {
     let dir_to_ublx = validate_dir(&args.dir_to_ublx);
 
     let test_mode = args.test;
-    let (bumper, dev) = if test_mode {
-        build_logger_test_mode_no_tui();
-        (None, false)
-    } else {
-        let dev = notifications::is_dev_mode();
-        let bumper = notifications::BumperBuffer::new(notifications::DEFAULT_BUMPER_CAP);
-        notifications::init_logging(bumper.clone(), dev);
-        (Some(bumper), dev)
-    };
+    build_logger_test_mode_no_tui();
 
     debug!("indexing directory: {}", dir_to_ublx.display());
 
@@ -83,20 +75,26 @@ fn main() {
         RunMode::Sequential => {
             if let Err(e) = orchestrator::run_sequential(&dir_to_ublx, &ublx_opts, &prior_nefax) {
                 error!("sequential mode failed: {}", e);
-                std::process::exit(1);
+                if test_mode {
+                    std::process::exit(1);
+                }
             }
         }
         RunMode::Stream => {
             if let Err(e) = orchestrator::run_stream(&dir_to_ublx, &ublx_opts, &prior_nefax) {
                 error!("stream mode failed: {}", e);
-                std::process::exit(1);
+                if test_mode {
+                    std::process::exit(1);
+                }
             }
         }
     }
 
     if let Err(e) = db_ops::UblxCleanup::new(&dir_to_ublx).post_run_cleanup() {
         error!("failed to cleanup: {}", e);
-        std::process::exit(1);
+        if test_mode {
+            std::process::exit(1);
+        }
     }
 
     if test_mode {
@@ -107,10 +105,10 @@ fn main() {
         );
         return;
     }
-    if let Some(b) = bumper
-        && let Err(e) = orchestrator::run_ublx(&b, dev)
-    {
+
+    if let Err(e) = orchestrator::run_ublx_vanilla(&db_path, &dir_to_ublx) {
         error!("TUI error: {}", e);
+        eprintln!("ublx: TUI error: {}", e);
         std::process::exit(1);
     }
 }

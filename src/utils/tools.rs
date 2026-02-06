@@ -1,11 +1,12 @@
 use colored::Colorize;
 use log::{Level, debug, error};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::PKG_NAME;
 
 /// Validate that a path is a directory and return the canonicalized path.
+/// Symlinks are resolved (e.g. `~/Dropbox` → `~/Library/CloudStorage/...` on macOS).
 pub fn validate_dir(path: &std::path::Path) -> PathBuf {
     if path.exists() && !path.is_dir() {
         error!("'{}' is not a directory", path.display());
@@ -19,6 +20,12 @@ pub fn validate_dir(path: &std::path::Path) -> PathBuf {
         error!("cannot canonicalize '{}': {}", path.display(), e);
         std::process::exit(1);
     })
+}
+
+pub fn canonicalize_dir_to_ublx(dir_to_ublx: &Path) -> PathBuf {
+    dir_to_ublx
+        .canonicalize()
+        .unwrap_or_else(|_| dir_to_ublx.to_path_buf())
 }
 
 /// Color the level of the log message.
@@ -49,10 +56,7 @@ pub fn build_logger_test_mode_no_tui() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .format(|buf, record| {
-            let ublx = PKG_NAME.to_uppercase()
-                .magenta()
-                .bold()
-                .to_string();
+            let ublx = PKG_NAME.to_uppercase().magenta().bold().to_string();
             let level = level_colored(record.level());
             let path = path_colored(record.target());
             writeln!(buf, "[{} {} {}] {}", ublx, level, path, record.args())

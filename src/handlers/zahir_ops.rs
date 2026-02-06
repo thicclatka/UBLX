@@ -5,8 +5,7 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use zahirscan::{
-    FileType, Output, OutputMode, RuntimeConfig, ZahirScanResult, extract_zahir,
-    extract_zahir_from_stream,
+    FileType, Output, RuntimeConfig, ZahirScanResult, extract_zahir, extract_zahir_from_stream,
 };
 
 use crate::config::UblxOpts;
@@ -29,7 +28,7 @@ pub fn run_zahir_batch(
         .iter()
         .map(|p| p.as_ref().to_string_lossy().into_owned())
         .collect();
-    extract_zahir(path_strings, OutputMode::Full, Some(&config), None, None)
+    extract_zahir(path_strings, config.output_mode, Some(&config), None, None)
 }
 
 /// Run zahir on paths received from a channel (streaming mode). Drains `paths_rx` until the sender is dropped.
@@ -39,15 +38,30 @@ pub fn run_zahir_from_stream(
     ublx_opts: &UblxOpts,
 ) -> Result<ZahirScanResult, anyhow::Error> {
     let config = extract_zahir_opts_from_ublx_opts(ublx_opts);
-    extract_zahir_from_stream(paths_rx, OutputMode::Full, Some(&config), None, None)
+    extract_zahir_from_stream(paths_rx, config.output_mode, Some(&config), None, None)
 }
 
-/// get zahir output by path from a zahir result
-pub fn get_zahir_output_by_path(zahir_result: &ZahirResult) -> HashMap<String, &ZahirOutput> {
+/// Zahir output by path from a zahir result. Keys are path strings.
+/// If `root` is `Some`, keys are relative to `root` (so they line up with nefaxer); otherwise keys are absolute (source as-is).
+pub fn get_zahir_output_by_path<'a>(
+    zahir_result: &'a ZahirResult,
+    dir_to_ublx_abs: Option<&Path>,
+) -> HashMap<String, &'a ZahirOutput> {
     zahir_result
         .outputs
         .iter()
-        .filter_map(|o| o.source.as_ref().map(|s| (s.clone(), o)))
+        .filter_map(|o| {
+            let s = o.source.as_ref()?;
+            let key = match dir_to_ublx_abs {
+                Some(r) => Path::new(s)
+                    .strip_prefix(r)
+                    .ok()?
+                    .to_string_lossy()
+                    .into_owned(),
+                None => s.clone(),
+            };
+            Some((key, o))
+        })
         .collect()
 }
 
