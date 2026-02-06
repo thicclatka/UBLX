@@ -1,5 +1,5 @@
 mod macros;
-mod_priv!(config, engine, handlers, utils);
+mod_priv!(config, engine, handlers, layout, ui, utils);
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -9,6 +9,7 @@ use log::{debug, error};
 
 use config::{RunMode, UblxOpts, UblxPaths};
 use engine::*;
+use layout::event_loop::run_ublx;
 use utils::*;
 
 #[derive(Parser)]
@@ -106,7 +107,7 @@ fn main() {
         return;
     }
 
-    if let Err(e) = orchestrator::run_ublx_vanilla(&db_path, &dir_to_ublx) {
+    if let Err(e) = run_ublx(&db_path, &dir_to_ublx) {
         error!("TUI error: {}", e);
         eprintln!("ublx: TUI error: {}", e);
         std::process::exit(1);

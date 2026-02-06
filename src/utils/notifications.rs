@@ -3,6 +3,8 @@
 //! - **User mode**: bumper only (last N messages, level-colored); info/warn/error.
 //! - **Dev mode** (`UBLX_DEV=1`): full tui-logger panel (scrollable) + bumper; debug/trace included.
 
+#![allow(dead_code)]
+
 use log::Level;
 use ratatui::Frame;
 use ratatui::layout::Rect;

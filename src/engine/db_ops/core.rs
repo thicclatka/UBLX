@@ -2,15 +2,19 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::mpsc::Receiver;
 
 use rusqlite::{Connection, OptionalExtension};
 
-use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
+use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
 use super::utils as db_ops_utils;
 use crate::config::{UblxPaths, UblxSettings};
 use crate::handlers::nefax_ops::{NefaxDiff, NefaxResult};
-use crate::handlers::zahir_ops::{ZahirResult, get_zahir_output_by_path};
+use crate::handlers::zahir_ops::{ZahirOutput, ZahirResult, get_zahir_output_by_path};
 use crate::utils::canonicalize_dir_to_ublx;
+
+/// One row from snapshot for TUI contents/preview: (path, category, zahir_json).
+pub type SnapshotTuiRow = (String, String, String);
 
 /// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Nefaxer already excluded paths per opts; we write everything nefax gives us. Errors from zahir (phase1_failed, phase2_failed) are not written; caller may use them later.
 pub fn write_snapshot_to_db(
@@ -24,8 +28,8 @@ pub fn write_snapshot_to_db(
     let tmp_path = ublx_paths.tmp();
     let db_path = ublx_paths.db();
 
-    let root = canonicalize_dir_to_ublx(dir_to_ublx);
-    let zahir_output_by_path = get_zahir_output_by_path(zahir_result, Some(&root));
+    let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
+    let zahir_output_by_path = get_zahir_output_by_path(zahir_result, Some(&dir_to_ublx_abs));
 
     let conn = Connection::open(&tmp_path)?;
     conn.execute_batch(&UblxDbSchema::create_ublx_db_sql())?;
@@ -41,6 +45,64 @@ pub fn write_snapshot_to_db(
     drop(stmt);
 
     write_settings(&conn, settings)?;
+    copy_previous_delta_log(&conn, &db_path)?;
+    write_delta_log(&conn, nefax, diff)?;
+    drop(conn);
+
+    if db_path.exists() {
+        fs::remove_file(&db_path)?;
+    }
+    fs::rename(&tmp_path, &db_path)?;
+    Ok(())
+}
+
+/// Write snapshot by inserting all nefax rows first (empty zahir), then consuming `output_rx`
+/// and updating category + zahir_json per row. Call when zahir streams output via `OutputSink::Channel`.
+pub fn write_snapshot_to_db_streaming(
+    dir_to_ublx: &Path,
+    nefax: &NefaxResult,
+    diff: &NefaxDiff,
+    settings: &UblxSettings,
+    output_rx: Receiver<(String, ZahirOutput)>,
+) -> Result<(), anyhow::Error> {
+    let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
+    let ublx_paths = UblxPaths::new(dir_to_ublx);
+    let tmp_path = ublx_paths.tmp();
+    let db_path = ublx_paths.db();
+
+    let conn = Connection::open(&tmp_path)?;
+    conn.execute_batch(&UblxDbSchema::create_ublx_db_sql())?;
+
+    // Insert all nefax rows with no zahir (category from path only, zahir_json ""); zahir updates stream in next.
+    let mut insert_stmt = conn.prepare(UblxDbStatements::INSERT_SNAPSHOT)?;
+    db_ops_utils::insert_nefax_only_into_snapshot(
+        &mut insert_stmt,
+        nefax,
+        dir_to_ublx,
+        Some(&ublx_paths),
+    )?;
+    drop(insert_stmt);
+
+    // Apply streamed zahir results: UPDATE category and zahir_json per path
+    let mut update_stmt = conn.prepare(UblxDbStatements::UPDATE_SNAPSHOT_ZAHIR)?;
+    while let Ok((path_abs, output)) = output_rx.recv() {
+        let path_str = match Path::new(&path_abs).strip_prefix(&dir_to_ublx_abs) {
+            Ok(rel) => rel.to_string_lossy().into_owned(),
+            Err(_) => continue,
+        };
+        let full_path = dir_to_ublx_abs.join(&path_str);
+        let category = UblxDbCategory::get_category_for_path(
+            &full_path,
+            Some(&ublx_paths),
+            output.file_type.as_deref(),
+        );
+        let zahir_json = serde_json::to_string(&output).unwrap_or_default();
+        let _ = update_stmt.execute(rusqlite::params![category, zahir_json, path_str]);
+    }
+    drop(update_stmt);
+
+    write_settings(&conn, settings)?;
+    copy_previous_delta_log(&conn, &db_path)?;
     write_delta_log(&conn, nefax, diff)?;
     drop(conn);
 
@@ -60,6 +122,34 @@ fn write_settings(conn: &Connection, s: &UblxSettings) -> Result<(), anyhow::Err
             if s.parallel_walk { 1i64 } else { 0i64 },
         ],
     )?;
+    Ok(())
+}
+
+/// Copy all rows from the existing .ublx delta_log into the open tmp DB, so history persists
+/// across the replace. No-op if db_path does not exist or has no delta_log table.
+fn copy_previous_delta_log(conn: &Connection, db_path: &Path) -> Result<(), anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(());
+    }
+    let path_abs = fs::canonicalize(db_path)?;
+    let path_str = path_abs
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("db path not UTF-8"))?
+        .replace('\'', "''");
+    conn.execute(UblxDbStatements::ATTACH_OLD_DB, rusqlite::params![path_str])?;
+    let copied = match conn.query_row(UblxDbStatements::SELECT_COUNT_DELTA_LOG_ROWS, [], |row| {
+        row.get::<_, i32>(0)
+    }) {
+        Ok(1) => {
+            let n = conn.execute(UblxDbStatements::COPY_PREVIOUS_DELTA_LOG, [])?;
+            n as i32
+        }
+        _ => 0,
+    };
+    conn.execute(UblxDbStatements::DETACH_OLD_DB, [])?;
+    if copied > 0 {
+        log::debug!("copied {} previous delta_log rows into tmp", copied);
+    }
     Ok(())
 }
 
@@ -115,8 +205,37 @@ pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::E
     Ok(out)
 }
 
-/// One row from snapshot for TUI contents/preview: (path, category, zahir_json).
-pub type SnapshotTuiRow = (String, String, String);
+/// Distinct snapshot timestamps from delta_log (created_ns), newest first. Empty if table missing or empty.
+pub fn load_delta_log_snapshot_timestamps(db_path: &Path) -> Result<Vec<i64>, anyhow::Error> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt =
+        conn.prepare("SELECT DISTINCT created_ns FROM delta_log ORDER BY created_ns DESC")?;
+    let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// Rows in delta_log for a given delta_type: (created_ns, path), newest snapshot first, then path order.
+pub fn load_delta_log_rows_by_type(
+    db_path: &Path,
+    delta_type: &str,
+) -> Result<Vec<(i64, String)>, anyhow::Error> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT created_ns, path FROM delta_log WHERE delta_type = ?1 ORDER BY created_ns DESC, path",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![delta_type], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
 
 /// Load snapshot rows (path, category, zahir_json) for the TUI. Optional category filter.
 pub fn load_snapshot_rows_for_tui(

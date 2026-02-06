@@ -5,13 +5,15 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use zahirscan::{
-    FileType, Output, RuntimeConfig, ZahirScanResult, extract_zahir, extract_zahir_from_stream,
+    FileType, Output, OutputSink, RuntimeConfig, ZahirScanResult, extract_zahir,
+    extract_zahir_from_stream,
 };
 
 use crate::config::UblxOpts;
 
 pub type ZahirResult = ZahirScanResult;
 pub type ZahirOutput = Output;
+pub type ZahirOutputSink = OutputSink;
 pub type ZahirFileType = FileType;
 
 fn extract_zahir_opts_from_ublx_opts(opts: &UblxOpts) -> RuntimeConfig {
@@ -28,17 +30,30 @@ pub fn run_zahir_batch(
         .iter()
         .map(|p| p.as_ref().to_string_lossy().into_owned())
         .collect();
-    extract_zahir(path_strings, config.output_mode, Some(&config), None, None)
+    extract_zahir(
+        path_strings,
+        config.output_mode,
+        Some(&config),
+        None,
+        ZahirOutputSink::Collect,
+    )
 }
 
-/// Run zahir on paths received from a channel (streaming mode). Drains `paths_rx` until the sender is dropped.
-/// Uses [OutputMode::Full] and the given config.
+/// Run zahir on paths from a channel. Use `ZahirOutputSink::Collect` to get all outputs in the result (default).
+/// Use `ZahirOutputSink::Channel(tx)` to stream each `(path, Output)` to a receiver so ublx can write to the DB incrementally.
 pub fn run_zahir_from_stream(
     paths_rx: Receiver<String>,
     ublx_opts: &UblxOpts,
+    output_sink: ZahirOutputSink,
 ) -> Result<ZahirScanResult, anyhow::Error> {
     let config = extract_zahir_opts_from_ublx_opts(ublx_opts);
-    extract_zahir_from_stream(paths_rx, config.output_mode, Some(&config), None, None)
+    extract_zahir_from_stream(
+        paths_rx,
+        config.output_mode,
+        Some(&config),
+        None,
+        output_sink,
+    )
 }
 
 /// Zahir output by path from a zahir result. Keys are path strings.

@@ -60,9 +60,22 @@ pub struct UblxDbStatements;
 impl UblxDbStatements {
     pub const INSERT_SNAPSHOT: &'static str = "INSERT OR REPLACE INTO snapshot (path, mtime_ns, size, hash, category, zahir_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
 
+    /// Update category and zahir_json for an existing snapshot row (streaming write).
+    pub const UPDATE_SNAPSHOT_ZAHIR: &'static str =
+        "UPDATE snapshot SET category = ?1, zahir_json = ?2 WHERE path = ?3";
+
     pub const INSERT_SETTINGS: &'static str = "INSERT OR REPLACE INTO settings (id, num_threads, drive_type, parallel_walk) VALUES (1, ?1, ?2, ?3)";
 
     pub const INSERT_DELTA_LOG: &'static str = "INSERT INTO delta_log (created_ns, path, mtime_ns, size, hash, delta_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+
+    pub const COPY_PREVIOUS_DELTA_LOG: &'static str = "INSERT INTO main.delta_log (created_ns, path, mtime_ns, size, hash, delta_type) SELECT created_ns, path, mtime_ns, size, hash, delta_type FROM old.delta_log";
+
+    pub const ATTACH_OLD_DB: &'static str = "ATTACH DATABASE ?1 AS old";
+
+    pub const DETACH_OLD_DB: &'static str = "DETACH DATABASE old";
+
+    pub const SELECT_COUNT_DELTA_LOG_ROWS: &'static str =
+        "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='delta_log'";
 
     pub fn create_query_for_nefax_from_db(table_name: &str) -> String {
         format!("SELECT path, mtime_ns, size, hash FROM {}", table_name)

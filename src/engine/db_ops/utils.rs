@@ -69,6 +69,29 @@ pub fn insert_results_into_snapshot(
     Ok(())
 }
 
+/// Insert all nefax rows with no zahir data (category from path only, zahir_json empty). For streaming: zahir updates applied later.
+pub fn insert_nefax_only_into_snapshot(
+    stmt: &mut Statement,
+    nefax: &NefaxResult,
+    dir_to_ublx: &Path,
+    ublx_paths: Option<&UblxPaths>,
+) -> Result<(), anyhow::Error> {
+    for (path, meta) in nefax {
+        let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path);
+        let category =
+            UblxDbCategory::get_category_for_path(&full_path, ublx_paths, None);
+        stmt.execute(rusqlite::params![
+            path_str,
+            meta.mtime_ns,
+            meta.size as i64,
+            meta.hash.as_ref().map(|h| h.as_slice()),
+            category,
+            "",
+        ])?;
+    }
+    Ok(())
+}
+
 pub fn get_created_ns() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
