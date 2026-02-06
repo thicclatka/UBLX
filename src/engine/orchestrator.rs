@@ -15,7 +15,7 @@ use crate::config::UblxOpts;
 use crate::engine::db_ops;
 use crate::handlers::nefax_ops;
 use crate::handlers::zahir_ops;
-use crate::utils::notifications;
+use crate::utils::{error_writer, notifications};
 
 pub fn run_ublx(bumper: &notifications::BumperBuffer, dev: bool) -> io::Result<()> {
     enable_raw_mode()?;
@@ -93,9 +93,9 @@ pub fn run_sequential(
                     std::process::exit(1);
                 }
             };
-            // Capture phase1_failed / phase2_failed for later use
-            let _phase1_errors = &zahir_result.phase1_failed;
-            let _phase2_errors = &zahir_result.phase2_failed;
+            if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &zahir_result) {
+                error!("failed to write zahir failures to ublx.log: {}", e);
+            }
             if let Err(e) = db_ops::write_snapshot_to_db(
                 dir_to_ublx,
                 &nefax,
@@ -109,6 +109,7 @@ pub fn run_sequential(
             Ok(())
         }
         Err(e) => {
+            let _ = error_writer::write_nefax_error_to_log(dir_to_ublx, &e);
             error!("nefax failed: {}", e);
             std::process::exit(1);
         }
@@ -144,8 +145,9 @@ pub fn run_stream(
                     std::process::exit(1);
                 }
             };
-            let _phase1_errors = &zahir_result.phase1_failed;
-            let _phase2_errors = &zahir_result.phase2_failed;
+            if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &zahir_result) {
+                error!("failed to write zahir failures to log: {}", e);
+            }
             if let Err(e) = db_ops::write_snapshot_to_db(
                 dir_to_ublx,
                 &nefax,
@@ -160,6 +162,7 @@ pub fn run_stream(
         Err(e) => {
             drop(tx);
             let _ = zahir_handle.join();
+            let _ = error_writer::write_nefax_error_to_log(dir_to_ublx, &e);
             error!("nefax failed: {}", e);
             std::process::exit(1);
         }

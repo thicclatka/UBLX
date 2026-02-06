@@ -1,5 +1,8 @@
 {
   "workbench.colorTheme": "paddy-ornithopter",
+  "workbench.editorAssociations": {
+    "*.ublx": "sqlite-viewer.view"
+  },
   "files.exclude": {
     "**/target": true,
     "**/.DS_Store": true

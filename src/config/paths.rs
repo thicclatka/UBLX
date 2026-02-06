@@ -23,6 +23,10 @@ impl UblxPaths {
         }
     }
 
+    pub fn log_path(&self) -> PathBuf {
+        self.root.join(format!("{}.log", PKG_NAME))
+    }
+
     /// Hidden config path: `root/.ublx.toml`.
     pub fn hidden_toml(&self) -> PathBuf {
         self.root.join(format!(".{}.toml", PKG_NAME))
@@ -39,7 +43,8 @@ impl UblxPaths {
             Some(n) => n,
             None => return false,
         };
-        self.hidden_toml().file_name() == Some(name) || self.visible_toml().file_name() == Some(name)
+        self.hidden_toml().file_name() == Some(name)
+            || self.visible_toml().file_name() == Some(name)
     }
 
     /// Path to the config file to use: checks for `root/.ublx.toml` then `root/ublx.toml`; returns the first that exists, or `None`.
@@ -101,4 +106,8 @@ impl UblxPaths {
         }
         Ok(())
     }
+}
+
+pub fn get_log_path(dir_to_ublx: &Path) -> PathBuf {
+    UblxPaths::new(dir_to_ublx).log_path()
 }

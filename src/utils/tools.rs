@@ -49,7 +49,7 @@ pub fn build_logger_test_mode_no_tui() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .format(|buf, record| {
-            let ublx = format!("{}", PKG_NAME.to_uppercase())
+            let ublx = PKG_NAME.to_uppercase()
                 .magenta()
                 .bold()
                 .to_string();

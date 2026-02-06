@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::config::UblxPaths;
+use crate::handlers::zahir_ops::ZahirFileType;
 
 /// Schema for the ublx DB
 pub struct UblxDbSchema;
@@ -94,52 +95,91 @@ impl DeltaType {
     }
 }
 
-/// Category for ublx db
-pub struct UblxDbCategory;
+/// Category for ublx db: ublx-defined variants plus all [ZahirFileType] via [UblxDbCategory::Zahir].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UblxDbCategory {
+    UblxSettings,
+    UblxLog,
+    Git,
+    Hidden,
+    Directory,
+    File,
+    /// All zahirscan file types; use [ZahirFileType::as_metadata_name] for the display string.
+    Zahir(ZahirFileType),
+}
 
 impl UblxDbCategory {
-    pub const UBLX_SETTINGS: &'static str = "UBLX Settings";
-    pub const GIT: &'static str = "Git";
-    pub const HIDDEN: &'static str = "Hidden";
-    pub const DIRECTORY: &'static str = "Directory";
-    pub const FILE: &'static str = "File";
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UblxDbCategory::UblxSettings => "UBLX Settings",
+            UblxDbCategory::UblxLog => "UBLX Log",
+            UblxDbCategory::Git => "Git",
+            UblxDbCategory::Hidden => "Hidden",
+            UblxDbCategory::Directory => "Directory",
+            UblxDbCategory::File => "File",
+            UblxDbCategory::Zahir(ft) => ft.as_metadata_name(),
+        }
+    }
 
+    /// Get the category for a given path.
     pub fn get_category_for_path(
         path_ref: &Path,
         ublx_paths: Option<&UblxPaths>,
         zahir_file_type: Option<&str>,
     ) -> String {
+        // Check for ublx.toml
         if ublx_paths.is_some_and(|p| p.is_config_file(path_ref)) {
-            return UblxDbCategory::UBLX_SETTINGS.to_string();
+            return UblxDbCategory::UblxSettings.as_str().to_string();
         }
-        let path_str = path_ref.to_string_lossy();
-        if path_str.contains(".git") {
-            return UblxDbCategory::GIT.to_string();
+        // Check for ublx.log
+        if ublx_paths.is_some_and(|p| p.log_path() == path_ref) {
+            return UblxDbCategory::UblxLog.as_str().to_string();
         }
-        if path_ref
+        // Check for .git
+        if Self::is_git_path(path_ref) {
+            return UblxDbCategory::Git.as_str().to_string();
+        }
+        // Check for hidden files
+        if Self::is_hidden_path(path_ref) {
+            return UblxDbCategory::Hidden.as_str().to_string();
+        }
+        // Get zahir file type or fallback
+        Self::get_zahir_file_type_or_fallback(zahir_file_type, path_ref)
+    }
+
+    fn get_zahir_file_type_or_fallback(zahir_file_type: Option<&str>, path_ref: &Path) -> String {
+        let fallback = Self::determine_fallback_category(path_ref);
+        let unknown = UblxDbCategory::Zahir(ZahirFileType::Unknown).as_str();
+        zahir_file_type
+            .and_then(|s| (!s.eq_ignore_ascii_case(unknown)).then(|| s.to_string()))
+            .unwrap_or(fallback)
+    }
+
+    #[inline]
+    fn is_hidden_path(path_ref: &Path) -> bool {
+        path_ref
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with('.'))
-        {
-            return UblxDbCategory::HIDDEN.to_string();
-        }
-        let fallback = Self::determine_fallback_category(path_ref);
-        zahir_file_type
-            .filter(|s| !s.eq_ignore_ascii_case("unknown"))
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| fallback.to_string())
+            .is_some_and(|n| n.starts_with("."))
     }
 
-    fn determine_fallback_category(path_ref: &Path) -> String {
-        let is_dir = Self::is_directory(path_ref);
-        if is_dir {
-            UblxDbCategory::DIRECTORY.to_string()
-        } else {
-            UblxDbCategory::FILE.to_string()
-        }
+    #[inline]
+    fn is_git_path(path_ref: &Path) -> bool {
+        path_ref.to_string_lossy().contains(".git")
     }
 
-    fn is_directory(path_ref: &Path) -> bool {
+    #[inline]
+    fn is_directory_path(path_ref: &Path) -> bool {
         fs::metadata(path_ref).map(|m| m.is_dir()).unwrap_or(false)
+    }
+
+    #[inline]
+    fn determine_fallback_category(path_ref: &Path) -> String {
+        let is_dir = Self::is_directory_path(path_ref);
+        if is_dir {
+            UblxDbCategory::Directory.as_str().to_string()
+        } else {
+            UblxDbCategory::File.as_str().to_string()
+        }
     }
 }

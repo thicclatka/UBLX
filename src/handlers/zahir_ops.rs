@@ -5,13 +5,15 @@ use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use zahirscan::{
-    Output, OutputMode, RuntimeConfig, ZahirScanResult, extract_zahir, extract_zahir_from_stream,
+    FileType, Output, OutputMode, RuntimeConfig, ZahirScanResult, extract_zahir,
+    extract_zahir_from_stream,
 };
 
 use crate::config::UblxOpts;
 
 pub type ZahirResult = ZahirScanResult;
 pub type ZahirOutput = Output;
+pub type ZahirFileType = FileType;
 
 fn extract_zahir_opts_from_ublx_opts(opts: &UblxOpts) -> RuntimeConfig {
     opts.zahir_runtime_config()
