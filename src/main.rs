@@ -1,5 +1,5 @@
 mod macros;
-mod_priv!(config, engine, handlers, layout, ui, utils);
+mod_priv!(config, engine, handlers, layout, render, ui, utils);
 
 use std::path::PathBuf;
 use std::time::Instant;

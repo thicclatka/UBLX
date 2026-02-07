@@ -10,11 +10,11 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::engine::db_ops;
-use crate::layout::render::draw_ublx_frame;
 use crate::layout::setup::{
     DeltaViewData, MainMode, RightPaneContent, TuiRow, UblxState, ViewData,
 };
 use crate::layout::viewing_pane::resolve_right_pane_content;
+use crate::render::draw_ublx_frame;
 use crate::ui::input::handle_ublx_input;
 
 /// Compute filtered categories and contents from search + category selection; clamp list
