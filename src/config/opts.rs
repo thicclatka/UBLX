@@ -196,11 +196,11 @@ impl UblxOpts {
         (nefax, zahir, ublx)
     }
 
-    /// Streaming: nefax keeps walk fed (at least 2); most to zahir; 1 reserved for ublx (e.g. future live TUI during index).
+    /// Streaming: 2 workers nefaxer, 2 ublx (e.g. future live TUI), rest for zahirscan.
     fn default_share_streaming(&self) -> (usize, usize, usize) {
         let n = self.max_workers_available;
         let nefax = 2.min(n);
-        let ublx = 1.min(n.saturating_sub(nefax));
+        let ublx = 2.min(n.saturating_sub(nefax));
         let zahir = n.saturating_sub(nefax).saturating_sub(ublx);
         (nefax, zahir, ublx)
     }

@@ -1,7 +1,7 @@
 //! ZahirScan integration: batch (sequential) and stream entry points.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
 use zahirscan::{
@@ -10,11 +10,24 @@ use zahirscan::{
 };
 
 use crate::config::UblxOpts;
+use crate::handlers::nefax_ops;
 
 pub type ZahirResult = ZahirScanResult;
 pub type ZahirOutput = Output;
 pub type ZahirOutputSink = OutputSink;
 pub type ZahirFileType = FileType;
+
+/// True if we should run zahir on this path (new or mtime changed). Skip when prior exists and mtime is unchanged.
+pub fn needs_zahir(
+    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    path: &PathBuf,
+    current_mtime_ns: i64,
+) -> bool {
+    match prior_nefax.and_then(|p| p.get(path)) {
+        Some(prior_meta) => prior_meta.mtime_ns != current_mtime_ns,
+        None => true,
+    }
+}
 
 fn extract_zahir_opts_from_ublx_opts(opts: &UblxOpts) -> RuntimeConfig {
     opts.zahir_runtime_config()

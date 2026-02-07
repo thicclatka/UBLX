@@ -16,13 +16,14 @@ use crate::utils::canonicalize_dir_to_ublx;
 /// One row from snapshot for TUI contents/preview: (path, category, zahir_json).
 pub type SnapshotTuiRow = (String, String, String);
 
-/// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Nefaxer already excluded paths per opts; we write everything nefax gives us. Errors from zahir (phase1_failed, phase2_failed) are not written; caller may use them later.
+/// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime).
 pub fn write_snapshot_to_db(
     dir_to_ublx: &Path,
     nefax: &NefaxResult,
     zahir_result: &ZahirResult,
     diff: &NefaxDiff,
     settings: &UblxSettings,
+    prior_zahir_json: &std::collections::HashMap<String, String>,
 ) -> Result<(), anyhow::Error> {
     let ublx_paths = UblxPaths::new(dir_to_ublx);
     let tmp_path = ublx_paths.tmp();
@@ -41,6 +42,7 @@ pub fn write_snapshot_to_db(
         dir_to_ublx,
         Some(&ublx_paths),
         &zahir_output_by_path,
+        prior_zahir_json,
     )?;
     drop(stmt);
 
@@ -56,7 +58,7 @@ pub fn write_snapshot_to_db(
     Ok(())
 }
 
-/// Write snapshot by inserting all nefax rows first (empty zahir), then consuming `output_rx`
+/// Write snapshot by inserting all nefax rows first (zahir from prior or empty), then consuming `output_rx`
 /// and updating category + zahir_json per row. Call when zahir streams output via `OutputSink::Channel`.
 pub fn write_snapshot_to_db_streaming(
     dir_to_ublx: &Path,
@@ -64,6 +66,7 @@ pub fn write_snapshot_to_db_streaming(
     diff: &NefaxDiff,
     settings: &UblxSettings,
     output_rx: Receiver<(String, ZahirOutput)>,
+    prior_zahir_json: &std::collections::HashMap<String, String>,
 ) -> Result<(), anyhow::Error> {
     let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
     let ublx_paths = UblxPaths::new(dir_to_ublx);
@@ -73,13 +76,14 @@ pub fn write_snapshot_to_db_streaming(
     let conn = Connection::open(&tmp_path)?;
     conn.execute_batch(&UblxDbSchema::create_ublx_db_sql())?;
 
-    // Insert all nefax rows with no zahir (category from path only, zahir_json ""); zahir updates stream in next.
+    // Insert all nefax rows (zahir from prior when mtime unchanged, else "" until streamed).
     let mut insert_stmt = conn.prepare(UblxDbStatements::INSERT_SNAPSHOT)?;
     db_ops_utils::insert_nefax_only_into_snapshot(
         &mut insert_stmt,
         nefax,
         dir_to_ublx,
         Some(&ublx_paths),
+        prior_zahir_json,
     )?;
     drop(insert_stmt);
 
@@ -183,6 +187,26 @@ pub fn load_settings_from_db(db_path: &Path) -> Result<Option<UblxSettings>, any
     })
     .optional()
     .map_err(Into::into)
+}
+
+/// Load (path, zahir_json) from the snapshot table for paths that have non-empty zahir_json. Use when reusing prior zahir for unchanged mtime. Empty if DB missing or table empty.
+pub fn load_snapshot_zahir_json_map(
+    db_path: &Path,
+) -> Result<std::collections::HashMap<String, String>, anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT path, zahir_json FROM snapshot WHERE zahir_json IS NOT NULL AND zahir_json != ''",
+    )?;
+    let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let mut out = std::collections::HashMap::new();
+    for r in rows {
+        let (path, json) = r?;
+        out.insert(path, json);
+    }
+    Ok(out)
 }
 
 /// Load prior Nefax: if `dir_to_ublx/NEFAX_DB` (`.nefaxer`) exists, load from that; otherwise load from the ublx snapshot at `db_path`. Returns `None` when the chosen source is empty.

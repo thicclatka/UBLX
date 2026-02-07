@@ -331,16 +331,22 @@ fn draw_right_pane(f: &mut Frame, state: &UblxState, right: &RightPaneContent, a
             vec![Span::styled(*label, s), Span::raw(sep)]
         })
         .collect();
-
-    f.render_widget(&right_block, area);
     let right_inner = right_block.inner(area);
     let right_split = style::split_vertical(
         right_inner,
-        &[Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)],
+        &[
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ],
     );
     let tab_row_chunks = style::tab_row_padded(right_split[0]);
-    f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
     let content_chunks = style::tab_row_padded(right_split[2]);
+
+    f.render_widget(&right_block, area);
+
+    f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
+
     f.render_widget(
         Paragraph::new(Text::from(right_pane_content_str(state, right)))
             .scroll((state.preview_scroll, 0)),

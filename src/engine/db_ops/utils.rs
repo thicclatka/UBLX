@@ -31,6 +31,7 @@ pub fn prepare_results_for_snapshot_insertion(
     path_ref: &Path,
     ublx_paths: Option<&UblxPaths>,
     zahir_output_by_path: &HashMap<String, &ZahirOutput>,
+    prior_zahir_json: &std::collections::HashMap<String, String>,
 ) -> (String, String, String) {
     let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path_ref);
     let zahir_output = zahir_output_by_path.get(&path_str);
@@ -39,7 +40,9 @@ pub fn prepare_results_for_snapshot_insertion(
         ublx_paths,
         zahir_output.and_then(|o| o.file_type.as_deref()),
     );
-    let zahir_json = zahir_output_to_json(zahir_output.copied());
+    let zahir_json = zahir_output
+        .map(|o| zahir_output_to_json(Some(o)))
+        .unwrap_or_else(|| prior_zahir_json.get(&path_str).cloned().unwrap_or_default());
     (path_str, category, zahir_json)
 }
 
@@ -49,6 +52,7 @@ pub fn insert_results_into_snapshot(
     dir_to_ublx: &Path,
     ublx_paths: Option<&UblxPaths>,
     zahir_output_by_path: &HashMap<String, &ZahirOutput>,
+    prior_zahir_json: &std::collections::HashMap<String, String>,
 ) -> Result<(), anyhow::Error> {
     for (path, meta) in nefax {
         let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
@@ -56,6 +60,7 @@ pub fn insert_results_into_snapshot(
             path,
             ublx_paths,
             zahir_output_by_path,
+            prior_zahir_json,
         );
         stmt.execute(rusqlite::params![
             path_str,
@@ -69,24 +74,26 @@ pub fn insert_results_into_snapshot(
     Ok(())
 }
 
-/// Insert all nefax rows with no zahir data (category from path only, zahir_json empty). For streaming: zahir updates applied later.
+/// Insert all nefax rows (category from path only; zahir_json from prior when available, else ""). For streaming: zahir updates applied later for paths that were sent.
 pub fn insert_nefax_only_into_snapshot(
     stmt: &mut Statement,
     nefax: &NefaxResult,
     dir_to_ublx: &Path,
     ublx_paths: Option<&UblxPaths>,
+    prior_zahir_json: &std::collections::HashMap<String, String>,
 ) -> Result<(), anyhow::Error> {
     for (path, meta) in nefax {
         let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path);
         let category =
             UblxDbCategory::get_category_for_path(&full_path, ublx_paths, None);
+        let zahir_json = prior_zahir_json.get(&path_str).cloned().unwrap_or_default();
         stmt.execute(rusqlite::params![
             path_str,
             meta.mtime_ns,
             meta.size as i64,
             meta.hash.as_ref().map(|h| h.as_slice()),
             category,
-            "",
+            zahir_json,
         ])?;
     }
     Ok(())
