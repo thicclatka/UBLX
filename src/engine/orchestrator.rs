@@ -82,20 +82,26 @@ pub fn run_sequential(
         "zahir running on {} paths (mtime changed or new)",
         path_list.len()
     );
-    let zahir_result = match zahir_ops::run_zahir_batch(&path_list, ublx_opts) {
-        Ok(r) => r,
-        Err(e) => {
-            error!("zahir (sequential) failed: {}", e);
-            std::process::exit(1);
+    let zahir_result = if path_list.is_empty() {
+        debug!("zahir skipped: no new paths provided from nefaxer");
+        None
+    } else {
+        let r = match zahir_ops::run_zahir_batch(&path_list, ublx_opts) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("zahir (sequential) failed: {}", e);
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &r) {
+            error!("failed to write zahir failures to ublx.log: {}", e);
         }
+        Some(r)
     };
-    if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &zahir_result) {
-        error!("failed to write zahir failures to ublx.log: {}", e);
-    }
     if let Err(e) = db_ops::write_snapshot_to_db(
         dir_to_ublx,
         &nefax,
-        &zahir_result,
+        zahir_result.as_ref(),
         &diff,
         &ublx_opts.to_ublx_settings(),
         &prior_zahir_json,
@@ -157,19 +163,23 @@ pub fn run_stream(
         std::process::exit(1);
     }
 
-    let zahir_result = match zahir_handle.join() {
-        Ok(Ok(r)) => r,
+    match zahir_handle.join() {
+        Ok(Ok(r)) => {
+            if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &r) {
+                error!("failed to write zahir failures to log: {}", e);
+            }
+        }
         Ok(Err(e)) => {
-            error!("zahir (stream) failed: {}", e);
-            std::process::exit(1);
+            if !e.to_string().contains("No file paths provided") {
+                error!("zahir (stream) failed: {}", e);
+                std::process::exit(1);
+            }
+            debug!("zahir (stream) skipped: {}", e);
         }
         Err(_) => {
             error!("zahir thread panicked");
             std::process::exit(1);
         }
-    };
-    if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &zahir_result) {
-        error!("failed to write zahir failures to log: {}", e);
     }
     Ok(())
 }

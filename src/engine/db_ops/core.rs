@@ -16,11 +16,11 @@ use crate::utils::canonicalize_dir_to_ublx;
 /// One row from snapshot for TUI contents/preview: (path, category, zahir_json).
 pub type SnapshotTuiRow = (String, String, String);
 
-/// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime).
+/// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime). When `zahir_result` is None (no paths to zahir), all paths use prior.
 pub fn write_snapshot_to_db(
     dir_to_ublx: &Path,
     nefax: &NefaxResult,
-    zahir_result: &ZahirResult,
+    zahir_result: Option<&ZahirResult>,
     diff: &NefaxDiff,
     settings: &UblxSettings,
     prior_zahir_json: &std::collections::HashMap<String, String>,
@@ -30,7 +30,9 @@ pub fn write_snapshot_to_db(
     let db_path = ublx_paths.db();
 
     let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
-    let zahir_output_by_path = get_zahir_output_by_path(zahir_result, Some(&dir_to_ublx_abs));
+    let zahir_output_by_path = zahir_result
+        .map(|z| get_zahir_output_by_path(z, Some(&dir_to_ublx_abs)))
+        .unwrap_or_default();
 
     let conn = Connection::open(&tmp_path)?;
     conn.execute_batch(&UblxDbSchema::create_ublx_db_sql())?;
