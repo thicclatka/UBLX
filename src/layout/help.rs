@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 pub const HELP_STR: &str = r#"1 / 2      main tabs: Snapshot / Delta
 /          search (strict substring)
 Enter      hide search bar (filter stays); Esc to clear search
+Shift+S    take snapshot (runs in background; bumper when done)
 q / Esc    quit
 h / l      focus Categories / Contents
 j / k      move down / up in list

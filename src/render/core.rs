@@ -1,16 +1,18 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
-use ratatui::text::Text;
-use ratatui::text::{Line, Span};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, HighlightSpacing, List, ListItem, Paragraph};
 
 use super::consts::{UiStrings, panel_title};
+use super::right_pane;
+use crate::config::TOAST_CONFIG;
 use crate::layout::help::render_help_box;
 use crate::layout::setup::{
-    DeltaViewData, MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
+    DeltaViewData, MainMode, PanelFocus, RightPaneContent, UblxState, ViewData,
 };
 use crate::layout::style;
+use crate::utils::notifications;
 
 const UI: UiStrings = UiStrings::new();
 
@@ -21,6 +23,8 @@ pub fn draw_ublx_frame(
     view: &ViewData,
     right: &RightPaneContent,
     delta_data: Option<&DeltaViewData>,
+    bumper: Option<&notifications::BumperBuffer>,
+    dev: bool,
 ) {
     let area = f.area();
     let (tabs_area, body_area) = if area.height >= 2 {
@@ -47,7 +51,7 @@ pub fn draw_ublx_frame(
         MainMode::Snapshot => {
             draw_categories_panel(f, state, view, chunks[0]);
             draw_contents_panel(f, state, view, chunks[1]);
-            draw_right_pane(f, state, right, chunks[2]);
+            right_pane::draw_right_pane(f, state, right, chunks[2]);
             if let Some(area) = search_area {
                 draw_search_bar(f, state, area);
             }
@@ -62,6 +66,17 @@ pub fn draw_ublx_frame(
     }
     if let Some(rect) = hint_area {
         draw_search_clear_hint(f, state, rect);
+    }
+    if state.toast_visible_until.is_some()
+        && let Some(b) = bumper
+    {
+        let area = f.area();
+        let w = TOAST_CONFIG.width_for(dev).min(area.width);
+        let h = TOAST_CONFIG.height_for(dev).min(area.height);
+        let x = area.x + area.width.saturating_sub(w);
+        let y = area.y + area.height.saturating_sub(h);
+        let toast_rect = Rect::new(x, y, w, h);
+        notifications::render_toast(f, toast_rect, b, dev);
     }
     if state.help_visible {
         render_help_box(f);
@@ -132,16 +147,11 @@ fn draw_delta_panes(
         .collect();
     let title = panel_title("Delta type", focused);
     let left_block = panel_block(title, focused);
-    let list = List::new(items)
-        .block(left_block)
-        .highlight_style(state.highlight_style)
-        .highlight_symbol(if focused {
-            UI.list_highlight
-        } else {
-            UI.list_unfocused
-        })
-        .highlight_spacing(HighlightSpacing::Always);
-    f.render_stateful_widget(list, left, &mut state.category_state);
+    f.render_stateful_widget(
+        styled_list(items, left_block, focused, state.highlight_style),
+        left,
+        &mut state.category_state,
+    );
 
     let paths = match cat_idx {
         0 => &delta.added_paths,
@@ -211,6 +221,25 @@ fn panel_block<'a, T: Into<Line<'a>>>(title: T, focused: bool) -> Block<'a> {
         .title(title)
 }
 
+/// Build a list with standard panel styling (block, highlight, symbol, spacing).
+fn styled_list<'a>(
+    items: Vec<ListItem<'a>>,
+    block: Block<'a>,
+    focused: bool,
+    highlight_style: ratatui::style::Style,
+) -> List<'a> {
+    let symbol = if focused {
+        UI.list_highlight
+    } else {
+        UI.list_unfocused
+    };
+    List::new(items)
+        .block(block)
+        .highlight_style(highlight_style)
+        .highlight_symbol(symbol)
+        .highlight_spacing(HighlightSpacing::Always)
+}
+
 fn draw_list_panel(
     f: &mut Frame,
     items: Vec<ListItem>,
@@ -220,17 +249,11 @@ fn draw_list_panel(
     list_state: &mut ratatui::widgets::ListState,
     area: Rect,
 ) {
-    let symbol = if focused {
-        UI.list_highlight
-    } else {
-        UI.list_unfocused
-    };
-    let list = List::new(items)
-        .block(block)
-        .highlight_style(highlight_style)
-        .highlight_symbol(symbol)
-        .highlight_spacing(HighlightSpacing::Always);
-    f.render_stateful_widget(list, area, list_state);
+    f.render_stateful_widget(
+        styled_list(items, block, focused, highlight_style),
+        area,
+        list_state,
+    );
 }
 
 fn draw_categories_panel(f: &mut Frame, state: &mut UblxState, view: &ViewData, area: Rect) {
@@ -276,81 +299,6 @@ fn draw_contents_panel(f: &mut Frame, state: &mut UblxState, view: &ViewData, ar
         state.highlight_style,
         &mut state.content_state,
         area,
-    );
-}
-
-fn right_pane_content_str<'a>(state: &'a UblxState, right: &'a RightPaneContent) -> &'a str {
-    match state.right_pane_mode {
-        RightPaneMode::Templates => right.templates.as_str(),
-        RightPaneMode::Metadata => right.metadata.as_deref().unwrap_or(UI.not_available),
-        RightPaneMode::Writing => right.writing.as_deref().unwrap_or(UI.not_available),
-        RightPaneMode::Viewer => right.viewer.as_deref().unwrap_or(UI.viewer_placeholder),
-    }
-}
-
-fn right_pane_title(state: &UblxState) -> &'static str {
-    match state.right_pane_mode {
-        RightPaneMode::Viewer => UI.viewer,
-        RightPaneMode::Templates => UI.templates,
-        RightPaneMode::Metadata => UI.metadata,
-        RightPaneMode::Writing => UI.writing,
-    }
-}
-
-fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> {
-    [
-        (RightPaneMode::Templates, UI.tab_templates),
-        (RightPaneMode::Viewer, UI.tab_viewer),
-        (RightPaneMode::Metadata, UI.tab_metadata),
-        (RightPaneMode::Writing, UI.tab_writing),
-    ]
-    .into_iter()
-    .filter(|(mode, _)| match mode {
-        RightPaneMode::Templates | RightPaneMode::Viewer => true,
-        RightPaneMode::Metadata => right.metadata.is_some(),
-        RightPaneMode::Writing => right.writing.is_some(),
-    })
-    .collect()
-}
-
-fn draw_right_pane(f: &mut Frame, state: &UblxState, right: &RightPaneContent, area: Rect) {
-    let right_block = Block::default()
-        .borders(Borders::ALL)
-        .title(right_pane_title(state));
-    let tabs = visible_tabs(right);
-    let tab_spans: Vec<Span> = tabs
-        .iter()
-        .enumerate()
-        .flat_map(|(i, (mode, label))| {
-            let s = if *mode == state.right_pane_mode {
-                style::tab_active()
-            } else {
-                style::tab_inactive()
-            };
-            let sep = if i < tabs.len() - 1 { UI.tab_sep } else { "" };
-            vec![Span::styled(*label, s), Span::raw(sep)]
-        })
-        .collect();
-    let right_inner = right_block.inner(area);
-    let right_split = style::split_vertical(
-        right_inner,
-        &[
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(0),
-        ],
-    );
-    let tab_row_chunks = style::tab_row_padded(right_split[0]);
-    let content_chunks = style::tab_row_padded(right_split[2]);
-
-    f.render_widget(&right_block, area);
-
-    f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
-
-    f.render_widget(
-        Paragraph::new(Text::from(right_pane_content_str(state, right)))
-            .scroll((state.preview_scroll, 0)),
-        content_chunks[1],
     );
 }
 

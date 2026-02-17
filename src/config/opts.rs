@@ -71,14 +71,12 @@ pub struct UblxOpts {
     /// Options passed to the nefaxer indexer (base; use [Self::nefax_opts_with_workers] for run).
     pub nefax: NefaxOpts,
     /// ZahirScan runtime config. Use [Self::zahir_runtime_config] to get config with ublx overrides applied.
-    #[allow(dead_code)]
     pub zahir: RuntimeConfig,
     /// Max workers suggested by tuning (drive-type aware). From nefax [tuning_for_path] in [Self::for_dir].
     pub max_workers_available: usize,
     /// Override workers for nefaxer. When unset and >= [SEQUENTIAL_THRESHOLD], uses share from 1:1:1 ratio.
     pub nefax_workers_override: Option<usize>,
     /// Override workers for zahirscan. When unset and >= threshold, uses share from ratio.
-    #[allow(dead_code)]
     pub zahir_workers_override: Option<usize>,
     /// Override workers for ublx (main process / other work). When unset and >= threshold, remainder from ratio.
     #[allow(dead_code)]

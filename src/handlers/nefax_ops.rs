@@ -1,7 +1,10 @@
 use nefaxer::*;
 use std::path::Path;
 
+use log::{debug, error};
+
 use crate::config::{UblxOpts, UblxSettings, parse_drive_type};
+use crate::engine::db_ops;
 
 pub type NefaxEntry = nefaxer::Entry;
 pub type NefaxResult = nefaxer::Nefax;
@@ -46,6 +49,7 @@ fn extract_nefax_opts_from_ublx_opts(opts: &UblxOpts) -> NefaxOpts {
     opts.nefax_opts_with_workers()
 }
 
+/// Run nefaxer; on success return `(nefax, diff)`, on error log and exit. Use when no cleanup is needed (e.g. sequential).
 pub fn run_nefaxer<F>(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
@@ -57,4 +61,19 @@ where
 {
     let nefax_opts = extract_nefax_opts_from_ublx_opts(ublx_opts);
     nefax_dir(dir_to_ublx, &nefax_opts, nefax, entry_callback)
+}
+
+/// Load prior Nefax at startup. Exits the process on DB error; returns `None` when no prior snapshot exists.
+pub fn load_prior_nefax_or_exit(dir_to_ublx: &Path, db_path: &Path) -> Option<NefaxResult> {
+    match db_ops::load_nefax_from_db(dir_to_ublx, db_path) {
+        Ok(Some(nefax)) => {
+            debug!("loaded {} paths from snapshot", nefax.len());
+            Some(nefax)
+        }
+        Ok(None) => None,
+        Err(e) => {
+            error!("failed to load snapshot: {}", e);
+            std::process::exit(1);
+        }
+    }
 }

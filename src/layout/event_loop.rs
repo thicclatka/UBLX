@@ -1,5 +1,7 @@
 use std::io;
 use std::path::Path;
+use std::sync::mpsc;
+use std::time::Instant;
 
 use chrono::{DateTime, Local};
 
@@ -9,21 +11,21 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
+use crate::config::TOAST_CONFIG;
 use crate::engine::db_ops;
-use crate::layout::setup::{
-    DeltaViewData, MainMode, RightPaneContent, TuiRow, UblxState, ViewData,
-};
-use crate::layout::viewing_pane::resolve_right_pane_content;
+use crate::handlers::snapshot;
+use crate::layout::{setup, viewing_pane};
 use crate::render::draw_ublx_frame;
 use crate::ui::input::handle_ublx_input;
+use crate::utils::notifications;
 
 /// Compute filtered categories and contents from search + category selection; clamp list
 /// selection and reset preview scroll when selection changes.
 pub fn build_view_data(
-    state: &mut UblxState,
+    state: &mut setup::UblxState,
     categories: &[String],
-    all_rows: &[TuiRow],
-) -> ViewData {
+    all_rows: &[setup::TuiRow],
+) -> setup::ViewData {
     let filtered_categories: Vec<String> = if state.search_query.trim().is_empty() {
         categories.to_vec()
     } else {
@@ -46,7 +48,7 @@ pub fn build_view_data(
             .get(category_idx - 1)
             .map(String::as_str)
     };
-    let contents_rows: Vec<TuiRow> = match selected_category {
+    let contents_rows: Vec<setup::TuiRow> = match selected_category {
         None => all_rows.to_vec(),
         Some(cat) => all_rows
             .iter()
@@ -54,7 +56,7 @@ pub fn build_view_data(
             .cloned()
             .collect(),
     };
-    let filtered_contents_rows: Vec<TuiRow> = if state.search_query.trim().is_empty() {
+    let filtered_contents_rows: Vec<setup::TuiRow> = if state.search_query.trim().is_empty() {
         contents_rows
     } else {
         let q = state.search_query.trim();
@@ -86,7 +88,7 @@ pub fn build_view_data(
         state.preview_scroll = 0;
         state.prev_preview_key = Some(preview_key);
     }
-    ViewData {
+    setup::ViewData {
         filtered_categories,
         filtered_contents_rows,
         category_list_len,
@@ -109,7 +111,7 @@ fn format_timestamp_ns(ns: i64) -> String {
 }
 
 /// Load delta_log data for Delta mode: overview text (snapshot count + timestamps) and paths per type.
-pub fn build_delta_view_data(db_path: &Path) -> DeltaViewData {
+pub fn build_delta_view_data(db_path: &Path) -> setup::DeltaViewData {
     let timestamps = db_ops::load_delta_log_snapshot_timestamps(db_path).unwrap_or_default();
     let snapshot_count = timestamps.len();
     let overview_lines: Vec<String> = std::iter::once(String::new())
@@ -136,7 +138,7 @@ pub fn build_delta_view_data(db_path: &Path) -> DeltaViewData {
         db_ops::load_delta_log_rows_by_type(db_path, "removed").unwrap_or_default(),
     );
 
-    DeltaViewData {
+    setup::DeltaViewData {
         overview_text,
         added_paths,
         mod_paths,
@@ -159,7 +161,7 @@ fn build_delta_display_lines(rows: Vec<(i64, String)>) -> Vec<String> {
 }
 
 /// Clamp list selection for Delta mode (3 categories, current type's path count).
-pub fn clamp_delta_selection(state: &mut UblxState, delta: &DeltaViewData) {
+pub fn clamp_delta_selection(state: &mut setup::UblxState, delta: &setup::DeltaViewData) {
     let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
     state.category_state.select(Some(cat_idx));
     let paths = delta_paths_for_index(delta, cat_idx);
@@ -176,7 +178,7 @@ pub fn clamp_delta_selection(state: &mut UblxState, delta: &DeltaViewData) {
     }
 }
 
-fn delta_paths_for_index(delta: &DeltaViewData, cat_idx: usize) -> &Vec<String> {
+fn delta_paths_for_index(delta: &setup::DeltaViewData, cat_idx: usize) -> &Vec<String> {
     match cat_idx {
         0 => &delta.added_paths,
         1 => &delta.mod_paths,
@@ -185,10 +187,13 @@ fn delta_paths_for_index(delta: &DeltaViewData, cat_idx: usize) -> &Vec<String> 
 }
 
 /// ViewData for input/navigation when in Delta mode (3 categories, content_len = current type's path count).
-pub fn view_data_for_delta_mode(state: &UblxState, delta: &DeltaViewData) -> ViewData {
+pub fn view_data_for_delta_mode(
+    state: &setup::UblxState,
+    delta: &setup::DeltaViewData,
+) -> setup::ViewData {
     let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
     let paths = delta_paths_for_index(delta, cat_idx);
-    ViewData {
+    setup::ViewData {
         filtered_categories: vec!["Added".into(), "Mod".into(), "Removed".into()],
         filtered_contents_rows: paths
             .iter()
@@ -204,11 +209,18 @@ pub fn view_data_for_delta_mode(state: &UblxState, delta: &DeltaViewData) -> Vie
 /// 2. **Right-pane content** — `resolve_right_pane_content`: templates/metadata/writing/viewer for current selection.
 /// 3. **Draw** — `draw_ublx_frame`: layout and render categories, contents, right pane, search, help.
 /// 4. **Input** — `handle_ublx_input`: poll key, map to action, apply to state; returns true if quit.
-pub fn run_ublx(db_path: &Path, dir_to_ublx: &Path) -> io::Result<()> {
-    let categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
-    let all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
+pub fn run_ublx(
+    db_path: &Path,
+    dir_to_ublx: &Path,
+    snapshot_done_rx: Option<mpsc::Receiver<()>>,
+    snapshot_done_tx: Option<mpsc::Sender<()>>,
+    bumper: Option<&notifications::BumperBuffer>,
+    dev: bool,
+) -> io::Result<()> {
+    let mut categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
+    let mut all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
 
-    let mut state = UblxState::new();
+    let mut state = setup::UblxState::new();
 
     enable_raw_mode()?;
     let mut out = io::stdout();
@@ -217,11 +229,49 @@ pub fn run_ublx(db_path: &Path, dir_to_ublx: &Path) -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     loop {
-        let (view, right_content, delta_data) = if state.main_mode == MainMode::Delta {
+        if state
+            .toast_visible_until
+            .is_some_and(|until| Instant::now() >= until)
+        {
+            state.toast_visible_until = None;
+        }
+        if state.snapshot_requested {
+            if let Some(tx) = snapshot_done_tx.as_ref() {
+                let dir = dir_to_ublx.to_path_buf();
+                let db = db_path.to_path_buf();
+                let tx_clone = tx.clone();
+                let bumper_clone = bumper.cloned();
+                std::thread::spawn(move || {
+                    snapshot::run_snapshot_pipeline_from_dir_db(
+                        &dir,
+                        &db,
+                        Some(tx_clone),
+                        bumper_clone,
+                    );
+                });
+            }
+            // when snapshot is done, reset the snapshot_requested flag
+            state.snapshot_requested = false;
+        }
+        if let Some(ref rx) = snapshot_done_rx
+            && rx.try_recv().is_ok()
+        {
+            categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
+            all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
+            if let Some(b) = bumper {
+                snapshot::push_snapshot_done_to_bumper(b, db_path);
+            }
+            state.toast_visible_until = Some(Instant::now() + TOAST_CONFIG.duration);
+        }
+        if dev {
+            notifications::move_log_events();
+        }
+
+        let (view, right_content, delta_data) = if state.main_mode == setup::MainMode::Delta {
             let d = build_delta_view_data(db_path);
             clamp_delta_selection(&mut state, &d);
             let view = view_data_for_delta_mode(&state, &d);
-            let right_content = RightPaneContent {
+            let right_content = setup::RightPaneContent {
                 templates: String::new(),
                 metadata: None,
                 writing: None,
@@ -230,12 +280,25 @@ pub fn run_ublx(db_path: &Path, dir_to_ublx: &Path) -> io::Result<()> {
             (view, right_content, Some(d))
         } else {
             let view = build_view_data(&mut state, &categories, &all_rows);
-            let right_content =
-                resolve_right_pane_content(&mut state, dir_to_ublx, &view.filtered_contents_rows);
+            let right_content = viewing_pane::resolve_right_pane_content(
+                &mut state,
+                dir_to_ublx,
+                &view.filtered_contents_rows,
+            );
             (view, right_content, None)
         };
-        terminal
-            .draw(|f| draw_ublx_frame(f, &mut state, &view, &right_content, delta_data.as_ref()))?;
+        let bumper_ref = bumper;
+        terminal.draw(|f| {
+            draw_ublx_frame(
+                f,
+                &mut state,
+                &view,
+                &right_content,
+                delta_data.as_ref(),
+                bumper_ref,
+                dev,
+            )
+        })?;
         if handle_ublx_input(&mut state, &view, &right_content)? {
             break;
         }

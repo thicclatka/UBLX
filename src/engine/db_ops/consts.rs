@@ -74,6 +74,13 @@ impl UblxDbStatements {
 
     pub const DETACH_OLD_DB: &'static str = "DETACH DATABASE old";
 
+    pub const SELECT_CREATED_NS_FROM_DELTA_LOG: &'static str =
+        "SELECT created_ns FROM delta_log ORDER BY created_ns DESC LIMIT 1";
+
+    /// Count rows in delta_log for a given created_ns and delta_type. Params: ?1 = created_ns, ?2 = delta_type.
+    pub const SELECT_COUNT_DELTA_LOG_BY_NS_AND_TYPE: &'static str =
+        "SELECT COUNT(*) FROM delta_log WHERE created_ns = ?1 AND delta_type = ?2";
+
     pub const SELECT_COUNT_DELTA_LOG_ROWS: &'static str =
         "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='delta_log'";
 

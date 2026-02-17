@@ -29,6 +29,8 @@ pub enum UblxAction {
     FocusCategories,
     FocusContents,
     Tab,
+    /// Run take-snapshot pipeline in background; completion shows in log bumper.
+    TakeSnapshot,
     Noop,
 }
 
@@ -50,6 +52,7 @@ pub fn key_action_setup(
         KeyCode::Char('?') => UblxAction::Help,
         KeyCode::Char('/') if !search_active => UblxAction::SearchStart,
         KeyCode::Char(c) if search_active => UblxAction::SearchChar(c),
+        KeyCode::Char('s' | 'S') if shift => UblxAction::TakeSnapshot,
         KeyCode::Char(c) if shift => UblxAction::SearchChar(c),
         KeyCode::Char(c) => match c {
             '1' => UblxAction::MainModeSnapshot,

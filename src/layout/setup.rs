@@ -28,6 +28,10 @@ pub struct UblxState {
     pub help_visible: bool,
     pub right_pane_mode: RightPaneMode,
     pub highlight_style: Style,
+    /// Set by TakeSnapshot key; event loop spawns pipeline and clears.
+    pub snapshot_requested: bool,
+    /// When set, show toast until this instant (transient notification).
+    pub toast_visible_until: Option<std::time::Instant>,
 }
 
 impl UblxState {
@@ -45,6 +49,8 @@ impl UblxState {
             help_visible: false,
             right_pane_mode: RightPaneMode::default(),
             highlight_style: style::list_highlight(),
+            snapshot_requested: false,
+            toast_visible_until: None,
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));
@@ -210,6 +216,7 @@ impl<'a> UblxActionContext<'a> {
                     PanelFocus::Contents => PanelFocus::Categories,
                 };
             }
+            UblxAction::TakeSnapshot => state.snapshot_requested = true,
             _ => {}
         }
         false

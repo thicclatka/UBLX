@@ -202,7 +202,9 @@ pub fn load_snapshot_zahir_json_map(
     let mut stmt = conn.prepare(
         "SELECT path, zahir_json FROM snapshot WHERE zahir_json IS NOT NULL AND zahir_json != ''",
     )?;
-    let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
     let mut out = std::collections::HashMap::new();
     for r in rows {
         let (path, json) = r?;
@@ -242,6 +244,34 @@ pub fn load_delta_log_snapshot_timestamps(db_path: &Path) -> Result<Vec<i64>, an
         out.push(r?);
     }
     Ok(out)
+}
+
+/// Counts (added, mod, removed) for the most recent snapshot in delta_log. Returns None if no snapshots.
+pub fn load_delta_log_latest_counts(
+    db_path: &Path,
+) -> Result<Option<(usize, usize, usize)>, anyhow::Error> {
+    let conn = Connection::open(db_path)?;
+    let latest_ns: Option<i64> = conn
+        .query_row(
+            UblxDbStatements::SELECT_CREATED_NS_FROM_DELTA_LOG,
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(ns) = latest_ns else {
+        return Ok(None);
+    };
+    let counts: Vec<usize> = DeltaType::iter()
+        .map(|dt| {
+            let n: i64 = conn.query_row(
+                UblxDbStatements::SELECT_COUNT_DELTA_LOG_BY_NS_AND_TYPE,
+                rusqlite::params![ns, dt.as_str()],
+                |row| row.get(0),
+            )?;
+            Ok(n.max(0) as usize)
+        })
+        .collect::<Result<Vec<usize>, rusqlite::Error>>()?;
+    Ok(Some((counts[0], counts[1], counts[2])))
 }
 
 /// Rows in delta_log for a given delta_type: (created_ns, path), newest snapshot first, then path order.

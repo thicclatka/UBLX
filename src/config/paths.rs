@@ -76,13 +76,11 @@ impl UblxPaths {
     }
 
     /// SQLite WAL file (created by SQLite when WAL mode is on). e.g. `dir_to_ublx_abs/.ublx-wal`.
-    #[allow(dead_code)]
     pub fn wal(&self) -> PathBuf {
         self.dir_to_ublx_abs.join(format!(".{}-wal", PKG_NAME))
     }
 
     /// SQLite shared-memory file (WAL mode). e.g. `dir_to_ublx_abs/.ublx-shm`.
-    #[allow(dead_code)]
     pub fn shm(&self) -> PathBuf {
         self.dir_to_ublx_abs.join(format!(".{}-shm", PKG_NAME))
     }
@@ -97,7 +95,6 @@ impl UblxPaths {
 
     /// Remove tmp, WAL, and SHM files if they exist. No error if any are missing.
     /// Close the DB connection before calling if you use WAL mode.
-    #[allow(dead_code)]
     pub fn remove_aux_files(&self) -> Result<(), anyhow::Error> {
         for p in [self.tmp(), self.wal(), self.shm()] {
             if p.exists() {

@@ -1,27 +1,30 @@
-//! Log capture and TUI display: bumper (toast) and optional dev log panel.
+//! Log capture and TUI display: toast notifications from log messages.
 //!
-//! - **User mode**: bumper only (last N messages, level-colored); info/warn/error.
-//! - **Dev mode** (`UBLX_DEV=1`): full tui-logger panel (scrollable) + bumper; debug/trace included.
-
-#![allow(dead_code)]
+//! - **User mode**: toast (last N messages, level-colored); info/warn/error.
+//! - **Dev mode** (`--dev`): tui-logger drain + move_log_events(); trace-level default filter.
 
 use log::Level;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use std::collections::VecDeque;
+use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 
-pub const DEFAULT_BUMPER_CAP: usize = 100;
-const BUMPER_DISPLAY_LINES: usize = 3;
+use crate::config::TOAST_CONFIG;
+
+static BUMPER_FOR_LOG: OnceLock<BumperBuffer> = OnceLock::new();
+static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();
 
 /// One log line for the bumper / history.
 #[derive(Clone, Debug)]
 pub struct BumperMessage {
     pub level: Level,
     pub text: String,
+    /// Optional operation name used as the toast title (e.g. "ublx-snapshot").
+    pub operation: Option<String>,
 }
 
 /// Thread-safe ring buffer of recent log messages for the bumper.
@@ -40,11 +43,25 @@ impl BumperBuffer {
     }
 
     pub fn push(&self, level: Level, text: String) {
+        self.push_with_operation(level, text, None::<String>);
+    }
+
+    /// Push a message with an operation name; the toast title uses the most recent message's operation.
+    pub fn push_with_operation(
+        &self,
+        level: Level,
+        text: String,
+        operation: Option<impl Into<String>>,
+    ) {
         let mut g = self.inner.lock().expect("bumper lock");
         if g.len() >= self.cap {
             g.pop_front();
         }
-        g.push_back(BumperMessage { level, text });
+        g.push_back(BumperMessage {
+            level,
+            text,
+            operation: operation.map(Into::into),
+        });
     }
 
     /// Last N messages (newest last). Returns up to `n` messages.
@@ -54,22 +71,22 @@ impl BumperBuffer {
         let start = len.saturating_sub(n);
         g.range(start..).cloned().collect()
     }
+}
 
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.inner.lock().expect("bumper lock").is_empty()
+/// Write bumper contents to stderr. Call after the TUI exits so terminal is restored; safe to read in scrollback.
+pub fn flush_bumper_to_stderr(bumper: &BumperBuffer) {
+    let msgs = bumper.last_n(500);
+    if msgs.is_empty() {
+        return;
     }
+    let mut out = std::io::stderr().lock();
+    let _ = writeln!(out, "--- ublx log (last {} messages) ---", msgs.len());
+    for m in &msgs {
+        let prefix = level_short(m.level);
+        let _ = writeln!(out, "{} {}", prefix, m.text);
+    }
+    let _ = out.flush();
 }
-
-/// Dev mode: full log panel (tui-logger) + bumper. User mode: bumper only.
-pub fn is_dev_mode() -> bool {
-    std::env::var("UBLX_DEV")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-}
-
-static BUMPER_FOR_LOG: OnceLock<BumperBuffer> = OnceLock::new();
-static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();
 
 /// Initialize logging: bumper buffer + env_logger. In dev, also feed tui_logger via its Drain.
 /// Call once at startup. Pass a clone of your BumperBuffer; keep the original for rendering.
@@ -123,64 +140,38 @@ fn level_short(level: Level) -> &'static str {
     }
 }
 
-/// Draw the bumper (one or a few lines at the bottom). Uses last N messages.
-#[allow(dead_code)]
-pub fn render_bumper(f: &mut Frame, area: Rect, bumper: &BumperBuffer) {
-    let messages = bumper.last_n(BUMPER_DISPLAY_LINES);
+const NOT_TITLE_FALLBACK: &str = " Notification ";
+
+/// Draw a small toast overlay (last N messages) in the given rect. Use for transient notifications.
+/// Title is the most recently pushed message's operation (e.g. " ublx-snapshot ") if set, else " Notification ".
+pub fn render_toast(f: &mut Frame, area: Rect, bumper: &BumperBuffer, dev: bool) {
+    let lines = TOAST_CONFIG.display_lines_for(dev);
+    let messages = bumper.last_n(lines);
     if messages.is_empty() {
         return;
     }
 
-    let line = Line::from(
-        messages
-            .iter()
-            .map(|m| {
-                Span::styled(
-                    format!(" [{}] {} ", level_short(m.level), m.text),
-                    level_style(m.level).add_modifier(Modifier::BOLD),
-                )
-            })
-            .collect::<Vec<_>>(),
-    );
-    let para = Paragraph::new(line).wrap(Wrap { trim: true });
-    f.render_widget(para, area);
-}
+    let title = messages
+        .last()
+        .and_then(|m| m.operation.as_deref())
+        .map(|s| format!(" {} ", s))
+        .unwrap_or_else(|| NOT_TITLE_FALLBACK.to_string());
 
-/// Draw a bordered bumper block (e.g. one line at bottom). Caller can reserve bottom rect.
-pub fn render_bumper_block(f: &mut Frame, area: Rect, bumper: &BumperBuffer) {
-    let messages = bumper.last_n(BUMPER_DISPLAY_LINES);
-    if messages.is_empty() {
-        return;
-    }
-
-    let line = Line::from(
-        messages
-            .iter()
-            .map(|m| {
-                Span::styled(
-                    format!(" [{}] {} ", level_short(m.level), m.text),
-                    level_style(m.level).add_modifier(Modifier::BOLD),
-                )
-            })
-            .collect::<Vec<_>>(),
-    );
-    let para = Paragraph::new(line)
-        .block(Block::default().borders(Borders::TOP).title(" Log "))
+    let lines: Vec<Line<'_>> = messages
+        .iter()
+        .map(|m| {
+            Line::from(Span::styled(
+                format!(" [{}] {}", level_short(m.level), m.text),
+                level_style(m.level).add_modifier(Modifier::BOLD),
+            ))
+        })
+        .collect();
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(title);
+    let para = Paragraph::new(Text::from(lines))
+        .block(block)
         .wrap(Wrap { trim: true });
     f.render_widget(para, area);
-}
-
-/// State for the dev log panel (tui-logger smart widget).
-#[derive(Default)]
-pub struct DevLogState {
-    pub widget_state: tui_logger::TuiWidgetState,
-}
-
-/// Render the full log panel (dev only). Call after move_log_events().
-pub fn render_dev_log_panel(f: &mut Frame, area: Rect, state: &DevLogState) {
-    let widget = tui_logger::TuiLoggerSmartWidget::default()
-        .title_target(" Log (dev) ")
-        .style(Style::default())
-        .state(&state.widget_state);
-    f.render_widget(widget, area);
 }
