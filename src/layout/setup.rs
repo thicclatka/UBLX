@@ -10,7 +10,8 @@ use crate::ui::keymap::UblxAction;
 use super::style;
 
 /// Snapshot row for TUI: (path_str, category, zahir_json).
-pub type TuiRow = (String, String, String);
+/// (path, category, zahir_json, size_bytes)
+pub type TuiRow = (String, String, String, u64);
 
 /// Category string for directories in the snapshot (matches [crate::engine::db_ops::UblxDbCategory]).
 pub const CATEGORY_DIRECTORY: &str = "Directory";
@@ -32,6 +33,8 @@ pub struct UblxState {
     pub snapshot_requested: bool,
     /// When set, show toast until this instant (transient notification).
     pub toast_visible_until: Option<std::time::Instant>,
+    /// Viewer takes full screen (hide categories and contents).
+    pub viewer_fullscreen: bool,
 }
 
 impl UblxState {
@@ -51,6 +54,7 @@ impl UblxState {
             highlight_style: style::list_highlight(),
             snapshot_requested: false,
             toast_visible_until: None,
+            viewer_fullscreen: false,
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));
@@ -101,6 +105,17 @@ pub struct DeltaViewData {
     pub removed_paths: Vec<String>,
 }
 
+impl DeltaViewData {
+    /// Paths for the given category index: 0 = added, 1 = mod, 2+ = removed.
+    pub fn paths_by_index(&self, idx: usize) -> &Vec<String> {
+        match idx {
+            0 => &self.added_paths,
+            1 => &self.mod_paths,
+            _ => &self.removed_paths,
+        }
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Class 3: Draw — layout and render all panels
 // -----------------------------------------------------------------------------
@@ -124,15 +139,21 @@ impl<'a> UblxActionContext<'a> {
     /// Returns true if the user requested quit (caller should exit the run loop).
     pub fn apply_action_to_state(&self, state: &mut UblxState, action: UblxAction) -> bool {
         match action {
-            UblxAction::Quit => return true,
+            UblxAction::Quit => {
+                if state.viewer_fullscreen {
+                    state.viewer_fullscreen = false;
+                } else {
+                    return true;
+                }
+            }
             UblxAction::Help => state.help_visible = true,
             UblxAction::MainModeSnapshot => state.main_mode = MainMode::Snapshot,
             UblxAction::MainModeDelta => state.main_mode = MainMode::Delta,
             UblxAction::SearchStart => state.search_active = true,
             UblxAction::CycleRightPane => {
                 let available: Vec<RightPaneMode> = [
-                    RightPaneMode::Templates,
                     RightPaneMode::Viewer,
+                    RightPaneMode::Templates,
                     RightPaneMode::Metadata,
                     RightPaneMode::Writing,
                 ]
@@ -153,6 +174,11 @@ impl<'a> UblxActionContext<'a> {
                 }
             }
             UblxAction::RightPaneViewer => state.right_pane_mode = RightPaneMode::Viewer,
+            UblxAction::ViewerFullscreenToggle => {
+                if state.right_pane_mode == RightPaneMode::Viewer {
+                    state.viewer_fullscreen = !state.viewer_fullscreen;
+                }
+            }
             UblxAction::RightPaneTemplates => state.right_pane_mode = RightPaneMode::Templates,
             UblxAction::RightPaneMetadata => {
                 if self.right.metadata.is_some() {
@@ -229,12 +255,16 @@ pub struct RightPaneContent {
     pub metadata: Option<String>,
     pub writing: Option<String>,
     pub viewer: Option<String>,
+    /// Path of the file being viewed (when viewer shows file content), for markdown detection.
+    pub viewer_path: Option<String>,
+    /// When viewer shows file content, size in bytes from snapshot (for footer display).
+    pub viewer_byte_size: Option<u64>,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum RightPaneMode {
-    Viewer,
     #[default]
+    Viewer,
     Templates,
     Metadata,
     Writing,

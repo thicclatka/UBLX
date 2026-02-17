@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use clap::Parser;
-use log::{debug, error};
+use log::debug;
 
 use config::{TOAST_CONFIG, UblxOpts, UblxPaths};
 use engine::db_ops;
@@ -44,13 +44,10 @@ fn main() {
     let dir_to_ublx = validate_dir(&args.dir_to_ublx);
     debug!("indexing directory: {}", dir_to_ublx.display());
 
-    let db_path = match db_ops::ensure_ublx_and_db(&dir_to_ublx) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("failed to set up .ublx db: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let db_path = fatal!(
+        db_ops::ensure_ublx_and_db(&dir_to_ublx),
+        "failed to set up .ublx db: {}"
+    );
     debug!("db: {}", db_path.display());
 
     // Load prior Nefax from DB or exit if error
@@ -72,17 +69,17 @@ fn main() {
     );
     debug!("UBLX CONFIG: {:#?}", ublx_opts);
 
-    if let Err(e) = core::run_app(core::RunAppParams {
-        test_mode,
-        dir_to_ublx: &dir_to_ublx,
-        db_path: &db_path,
-        ublx_opts: &ublx_opts,
-        prior_nefax: &prior_nefax,
-        bumper: bumper.as_ref(),
-        dev: args.dev,
-        start_time,
-    }) {
-        error!("{}", e);
-        std::process::exit(1);
-    }
+    fatal!(
+        core::run_app(core::RunAppParams {
+            test_mode,
+            dir_to_ublx: &dir_to_ublx,
+            db_path: &db_path,
+            ublx_opts: &ublx_opts,
+            prior_nefax: &prior_nefax,
+            bumper: bumper.as_ref(),
+            dev: args.dev,
+            start_time,
+        }),
+        "{}"
+    );
 }

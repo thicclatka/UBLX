@@ -74,13 +74,6 @@ impl UblxDbStatements {
 
     pub const DETACH_OLD_DB: &'static str = "DETACH DATABASE old";
 
-    pub const SELECT_CREATED_NS_FROM_DELTA_LOG: &'static str =
-        "SELECT created_ns FROM delta_log ORDER BY created_ns DESC LIMIT 1";
-
-    /// Count rows in delta_log for a given created_ns and delta_type. Params: ?1 = created_ns, ?2 = delta_type.
-    pub const SELECT_COUNT_DELTA_LOG_BY_NS_AND_TYPE: &'static str =
-        "SELECT COUNT(*) FROM delta_log WHERE created_ns = ?1 AND delta_type = ?2";
-
     pub const SELECT_COUNT_DELTA_LOG_ROWS: &'static str =
         "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='delta_log'";
 
@@ -125,6 +118,7 @@ pub enum UblxDbCategory {
     Directory,
     File,
     /// All zahirscan file types; use [ZahirFileType::as_metadata_name] for the display string.
+    #[allow(dead_code)]
     Zahir(ZahirFileType),
 }
 
@@ -169,10 +163,14 @@ impl UblxDbCategory {
 
     fn get_zahir_file_type_or_fallback(zahir_file_type: Option<&str>, path_ref: &Path) -> String {
         let fallback = Self::determine_fallback_category(path_ref);
-        let unknown = UblxDbCategory::Zahir(ZahirFileType::Unknown).as_str();
-        zahir_file_type
-            .and_then(|s| (!s.eq_ignore_ascii_case(unknown)).then(|| s.to_string()))
-            .unwrap_or(fallback)
+        let s = match zahir_file_type {
+            None => return fallback,
+            Some(s) => s.trim(),
+        };
+        if s.is_empty() || s.eq_ignore_ascii_case("Unknown") {
+            return fallback;
+        }
+        s.to_string()
     }
 
     #[inline]

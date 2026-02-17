@@ -17,12 +17,11 @@ pub struct UiStrings {
     pub metadata: &'static str,
     pub writing: &'static str,
     pub search_title: &'static str,
-    // Tab bar labels and separator
+    // Tab bar labels
     pub tab_templates: &'static str,
     pub tab_viewer: &'static str,
     pub tab_metadata: &'static str,
     pub tab_writing: &'static str,
-    pub tab_sep: &'static str,
     // List panel
     pub all_categories: &'static str,
     pub no_contents: &'static str,
@@ -59,7 +58,6 @@ impl UiStrings {
             tab_viewer: "Viewer",
             tab_metadata: "Metadata",
             tab_writing: "Writing",
-            tab_sep: " | ",
             all_categories: "All",
             no_contents: "(no contents)",
             no_matches: "(no matches)",

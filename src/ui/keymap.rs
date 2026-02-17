@@ -19,6 +19,8 @@ pub enum UblxAction {
     SearchClear,
     CycleRightPane,
     RightPaneViewer,
+    /// Toggle viewer fullscreen (only when on Viewer tab).
+    ViewerFullscreenToggle,
     RightPaneTemplates,
     RightPaneMetadata,
     RightPaneWriting,
@@ -53,11 +55,12 @@ pub fn key_action_setup(
         KeyCode::Char('/') if !search_active => UblxAction::SearchStart,
         KeyCode::Char(c) if search_active => UblxAction::SearchChar(c),
         KeyCode::Char('s' | 'S') if shift => UblxAction::TakeSnapshot,
+        KeyCode::Char('f' | 'F') if shift => UblxAction::ViewerFullscreenToggle,
+        KeyCode::Char('v' | 'V') if shift => UblxAction::CycleRightPane,
         KeyCode::Char(c) if shift => UblxAction::SearchChar(c),
         KeyCode::Char(c) => match c {
             '1' => UblxAction::MainModeSnapshot,
             '2' => UblxAction::MainModeDelta,
-            'V' => UblxAction::CycleRightPane,
             'v' => UblxAction::RightPaneViewer,
             't' => UblxAction::RightPaneTemplates,
             'm' => UblxAction::RightPaneMetadata,

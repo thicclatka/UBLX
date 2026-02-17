@@ -227,7 +227,6 @@ impl UblxOpts {
     }
 
     /// Workers to use for zahirscan. Sequential mode: all available; else override or ratio share.
-    #[allow(dead_code)]
     pub fn effective_zahir_workers(&self) -> usize {
         let (_, z, _) = self.default_share();
         self.effective_workers_for(self.zahir_workers_override, z)

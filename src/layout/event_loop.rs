@@ -19,6 +19,12 @@ use crate::render::draw_ublx_frame;
 use crate::ui::input::handle_ublx_input;
 use crate::utils::notifications;
 
+/// Sort categories and contents alphanumeric. Rows are ordered by path only.
+fn sort_categories_and_rows(categories: &mut [String], all_rows: &mut [setup::TuiRow]) {
+    categories.sort();
+    all_rows.sort_by(|a, b| a.0.cmp(&b.0));
+}
+
 /// Compute filtered categories and contents from search + category selection; clamp list
 /// selection and reset preview scroll when selection changes.
 pub fn build_view_data(
@@ -35,7 +41,7 @@ pub fn build_view_data(
             .filter(|cat| {
                 all_rows
                     .iter()
-                    .any(|(path, c, _)| c == *cat && (path.contains(q) || c.contains(q)))
+                    .any(|(path, c, _, _)| c == *cat && (path.contains(q) || c.contains(q)))
             })
             .cloned()
             .collect()
@@ -52,7 +58,7 @@ pub fn build_view_data(
         None => all_rows.to_vec(),
         Some(cat) => all_rows
             .iter()
-            .filter(|(_, c, _)| c == cat)
+            .filter(|(_, c, _, _)| c == cat)
             .cloned()
             .collect(),
     };
@@ -62,7 +68,7 @@ pub fn build_view_data(
         let q = state.search_query.trim();
         contents_rows
             .iter()
-            .filter(|(path, category, _)| path.contains(q) || category.contains(q))
+            .filter(|(path, category, _, _)| path.contains(q) || category.contains(q))
             .cloned()
             .collect()
     };
@@ -164,7 +170,7 @@ fn build_delta_display_lines(rows: Vec<(i64, String)>) -> Vec<String> {
 pub fn clamp_delta_selection(state: &mut setup::UblxState, delta: &setup::DeltaViewData) {
     let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
     state.category_state.select(Some(cat_idx));
-    let paths = delta_paths_for_index(delta, cat_idx);
+    let paths = delta.paths_by_index(cat_idx);
     let len = paths.len();
     if len > 0 {
         let sel = state
@@ -178,26 +184,18 @@ pub fn clamp_delta_selection(state: &mut setup::UblxState, delta: &setup::DeltaV
     }
 }
 
-fn delta_paths_for_index(delta: &setup::DeltaViewData, cat_idx: usize) -> &Vec<String> {
-    match cat_idx {
-        0 => &delta.added_paths,
-        1 => &delta.mod_paths,
-        _ => &delta.removed_paths,
-    }
-}
-
 /// ViewData for input/navigation when in Delta mode (3 categories, content_len = current type's path count).
 pub fn view_data_for_delta_mode(
     state: &setup::UblxState,
     delta: &setup::DeltaViewData,
 ) -> setup::ViewData {
     let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
-    let paths = delta_paths_for_index(delta, cat_idx);
+    let paths = delta.paths_by_index(cat_idx);
     setup::ViewData {
         filtered_categories: vec!["Added".into(), "Mod".into(), "Removed".into()],
         filtered_contents_rows: paths
             .iter()
-            .map(|p| (p.clone(), String::new(), String::new()))
+            .map(|p| (p.clone(), String::new(), String::new(), 0))
             .collect(),
         category_list_len: 3,
         content_len: paths.len(),
@@ -212,13 +210,14 @@ pub fn view_data_for_delta_mode(
 pub fn run_ublx(
     db_path: &Path,
     dir_to_ublx: &Path,
-    snapshot_done_rx: Option<mpsc::Receiver<()>>,
-    snapshot_done_tx: Option<mpsc::Sender<()>>,
+    snapshot_done_rx: Option<mpsc::Receiver<(usize, usize, usize)>>,
+    snapshot_done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
     bumper: Option<&notifications::BumperBuffer>,
     dev: bool,
 ) -> io::Result<()> {
     let mut categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
     let mut all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
+    sort_categories_and_rows(&mut categories, &mut all_rows);
 
     let mut state = setup::UblxState::new();
 
@@ -254,12 +253,13 @@ pub fn run_ublx(
             state.snapshot_requested = false;
         }
         if let Some(ref rx) = snapshot_done_rx
-            && rx.try_recv().is_ok()
+            && let Ok((added, mod_count, removed)) = rx.try_recv()
         {
             categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
             all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
+            sort_categories_and_rows(&mut categories, &mut all_rows);
             if let Some(b) = bumper {
-                snapshot::push_snapshot_done_to_bumper(b, db_path);
+                snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
             }
             state.toast_visible_until = Some(Instant::now() + TOAST_CONFIG.duration);
         }
@@ -276,6 +276,8 @@ pub fn run_ublx(
                 metadata: None,
                 writing: None,
                 viewer: None,
+                viewer_path: None,
+                viewer_byte_size: None,
             };
             (view, right_content, Some(d))
         } else {

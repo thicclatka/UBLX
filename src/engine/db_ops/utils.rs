@@ -26,6 +26,13 @@ pub fn ensure_ublx_and_db(dir_to_ublx: &Path) -> Result<PathBuf, anyhow::Error> 
     Ok(path)
 }
 
+/// Get file_type string from prior zahir JSON so we can preserve category when current run didn't re-run zahir.
+fn file_type_from_zahir_json(json: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.get("file_type").and_then(|v| v.as_str()).map(String::from))
+}
+
 pub fn prepare_results_for_snapshot_insertion(
     dir_to_ublx: &Path,
     path_ref: &Path,
@@ -35,11 +42,14 @@ pub fn prepare_results_for_snapshot_insertion(
 ) -> (String, String, String) {
     let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path_ref);
     let zahir_output = zahir_output_by_path.get(&path_str);
-    let category = UblxDbCategory::get_category_for_path(
-        &full_path,
-        ublx_paths,
-        zahir_output.and_then(|o| o.file_type.as_deref()),
-    );
+    let prior_ft = prior_zahir_json
+        .get(&path_str)
+        .and_then(|j| file_type_from_zahir_json(j));
+    let zahir_file_type = zahir_output
+        .and_then(|o| o.file_type.as_deref())
+        .or(prior_ft.as_deref());
+    let category =
+        UblxDbCategory::get_category_for_path(&full_path, ublx_paths, zahir_file_type);
     let zahir_json = zahir_output
         .map(|o| zahir_output_to_json(Some(o)))
         .unwrap_or_else(|| prior_zahir_json.get(&path_str).cloned().unwrap_or_default());
@@ -74,7 +84,7 @@ pub fn insert_results_into_snapshot(
     Ok(())
 }
 
-/// Insert all nefax rows (category from path only; zahir_json from prior when available, else ""). For streaming: zahir updates applied later for paths that were sent.
+/// Insert all nefax rows (category from prior zahir when available, else path fallback; zahir_json from prior). For streaming: zahir updates applied later for paths that were sent.
 pub fn insert_nefax_only_into_snapshot(
     stmt: &mut Statement,
     nefax: &NefaxResult,
@@ -84,8 +94,14 @@ pub fn insert_nefax_only_into_snapshot(
 ) -> Result<(), anyhow::Error> {
     for (path, meta) in nefax {
         let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path);
-        let category =
-            UblxDbCategory::get_category_for_path(&full_path, ublx_paths, None);
+        let prior_ft = prior_zahir_json
+            .get(&path_str)
+            .and_then(|j| file_type_from_zahir_json(j));
+        let category = UblxDbCategory::get_category_for_path(
+            &full_path,
+            ublx_paths,
+            prior_ft.as_deref(),
+        );
         let zahir_json = prior_zahir_json.get(&path_str).cloned().unwrap_or_default();
         stmt.execute(rusqlite::params![
             path_str,

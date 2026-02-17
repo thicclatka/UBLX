@@ -3,7 +3,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
-use crate::config::{UblxOpts, UblxPaths};
+use crate::config::{RunMode, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
 use crate::handlers::nefax_ops;
 use crate::handlers::zahir_ops;
@@ -56,11 +56,25 @@ fn paths_needing_zahir(
         .collect()
 }
 
+/// Run the index → zahir pipeline. Mode (sequential vs stream) is derived from [UblxOpts].
+/// Returns (added, modified, removed) counts for this run.
+pub fn run(
+    dir_to_ublx: &Path,
+    ublx_opts: &UblxOpts,
+    prior_nefax: &Option<nefax_ops::NefaxResult>,
+) -> io::Result<(usize, usize, usize)> {
+    let mode = RunMode::from_opts(ublx_opts);
+    match mode {
+        RunMode::Sequential => run_sequential(dir_to_ublx, ublx_opts, prior_nefax),
+        RunMode::Stream => run_stream(dir_to_ublx, ublx_opts, prior_nefax),
+    }
+}
+
 pub fn run_sequential(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
     prior_nefax: &Option<nefax_ops::NefaxResult>,
-) -> io::Result<()> {
+) -> io::Result<(usize, usize, usize)> {
     let (dir_to_ublx_abs, prior_zahir_json) = pre_run_setup(dir_to_ublx);
     let (nefax, diff) = run_nefax_exiting::<fn(&nefax_ops::NefaxEntry)>(
         dir_to_ublx,
@@ -109,14 +123,14 @@ pub fn run_sequential(
         error!("failed to write snapshot: {}", e);
         std::process::exit(1);
     }
-    Ok(())
+    Ok((diff.added.len(), diff.modified.len(), diff.removed.len()))
 }
 
 pub fn run_stream(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
     prior_nefax: &Option<nefax_ops::NefaxResult>,
-) -> io::Result<()> {
+) -> io::Result<(usize, usize, usize)> {
     let (dir_to_ublx_abs, prior_zahir_json) = pre_run_setup(dir_to_ublx);
 
     let ublx_opts_for_zahir = ublx_opts.clone();
@@ -181,5 +195,5 @@ pub fn run_stream(
             std::process::exit(1);
         }
     }
-    Ok(())
+    Ok((diff.added.len(), diff.modified.len(), diff.removed.len()))
 }

@@ -13,8 +13,8 @@ use crate::handlers::nefax_ops::{NefaxDiff, NefaxResult};
 use crate::handlers::zahir_ops::{ZahirOutput, ZahirResult, get_zahir_output_by_path};
 use crate::utils::canonicalize_dir_to_ublx;
 
-/// One row from snapshot for TUI contents/preview: (path, category, zahir_json).
-pub type SnapshotTuiRow = (String, String, String);
+/// One row from snapshot for TUI contents/preview: (path, category, zahir_json, size_bytes).
+pub type SnapshotTuiRow = (String, String, String, u64);
 
 /// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime). When `zahir_result` is None (no paths to zahir), all paths use prior.
 pub fn write_snapshot_to_db(
@@ -246,34 +246,6 @@ pub fn load_delta_log_snapshot_timestamps(db_path: &Path) -> Result<Vec<i64>, an
     Ok(out)
 }
 
-/// Counts (added, mod, removed) for the most recent snapshot in delta_log. Returns None if no snapshots.
-pub fn load_delta_log_latest_counts(
-    db_path: &Path,
-) -> Result<Option<(usize, usize, usize)>, anyhow::Error> {
-    let conn = Connection::open(db_path)?;
-    let latest_ns: Option<i64> = conn
-        .query_row(
-            UblxDbStatements::SELECT_CREATED_NS_FROM_DELTA_LOG,
-            [],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let Some(ns) = latest_ns else {
-        return Ok(None);
-    };
-    let counts: Vec<usize> = DeltaType::iter()
-        .map(|dt| {
-            let n: i64 = conn.query_row(
-                UblxDbStatements::SELECT_COUNT_DELTA_LOG_BY_NS_AND_TYPE,
-                rusqlite::params![ns, dt.as_str()],
-                |row| row.get(0),
-            )?;
-            Ok(n.max(0) as usize)
-        })
-        .collect::<Result<Vec<usize>, rusqlite::Error>>()?;
-    Ok(Some((counts[0], counts[1], counts[2])))
-}
-
 /// Rows in delta_log for a given delta_type: (created_ns, path), newest snapshot first, then path order.
 pub fn load_delta_log_rows_by_type(
     db_path: &Path,
@@ -293,7 +265,7 @@ pub fn load_delta_log_rows_by_type(
     Ok(out)
 }
 
-/// Load snapshot rows (path, category, zahir_json) for the TUI. Optional category filter.
+/// Load snapshot rows (path, category, zahir_json, size) for the TUI. Optional category filter.
 pub fn load_snapshot_rows_for_tui(
     db_path: &Path,
     category_filter: Option<&str>,
@@ -302,13 +274,15 @@ pub fn load_snapshot_rows_for_tui(
     let mut out = Vec::new();
     if let Some(cat) = category_filter {
         let mut stmt = conn.prepare(
-            "SELECT path, category, COALESCE(zahir_json, '') FROM snapshot WHERE category = ?1 ORDER BY path",
+            "SELECT path, category, COALESCE(zahir_json, ''), size FROM snapshot WHERE category = ?1 ORDER BY path",
         )?;
         let rows = stmt.query_map(rusqlite::params![cat], |row| {
+            let size: i64 = row.get(3)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
+                size.max(0) as u64,
             ))
         })?;
         for r in rows {
@@ -316,13 +290,15 @@ pub fn load_snapshot_rows_for_tui(
         }
     } else {
         let mut stmt = conn.prepare(
-            "SELECT path, category, COALESCE(zahir_json, '') FROM snapshot ORDER BY category, path",
+            "SELECT path, category, COALESCE(zahir_json, ''), size FROM snapshot ORDER BY category, path",
         )?;
         let rows = stmt.query_map([], |row| {
+            let size: i64 = row.get(3)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
+                size.max(0) as u64,
             ))
         })?;
         for r in rows {

@@ -62,7 +62,7 @@ fn run_tui_mode(
     bumper: Option<&notifications::BumperBuffer>,
     dev: bool,
 ) -> std::io::Result<()> {
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::channel::<(usize, usize, usize)>();
     let tx_for_tui = tx.clone();
     let dir_clone = dir_to_ublx.to_path_buf();
     let opts_clone = ublx_opts.clone();

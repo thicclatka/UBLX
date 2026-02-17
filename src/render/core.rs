@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, HighlightSpacing, List, ListItem, Paragraph};
 
 use super::consts::{UiStrings, panel_title};
-use super::right_pane;
+use super::right_pane::{self, tab_node_segment};
 use crate::config::TOAST_CONFIG;
 use crate::layout::help::render_help_box;
 use crate::layout::setup::{
@@ -42,16 +42,20 @@ pub fn draw_ublx_frame(
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage(20),
-            Constraint::Percentage(50),
             Constraint::Percentage(30),
+            Constraint::Percentage(50),
         ])
         .split(main_area);
 
     match state.main_mode {
         MainMode::Snapshot => {
-            draw_categories_panel(f, state, view, chunks[0]);
-            draw_contents_panel(f, state, view, chunks[1]);
-            right_pane::draw_right_pane(f, state, right, chunks[2]);
+            if state.viewer_fullscreen {
+                right_pane::draw_viewer_fullscreen(f, state, right, main_area);
+            } else {
+                draw_categories_panel(f, state, view, chunks[0]);
+                draw_contents_panel(f, state, view, chunks[1]);
+                right_pane::draw_right_pane(f, state, right, chunks[2]);
+            }
             if let Some(area) = search_area {
                 draw_search_bar(f, state, area);
             }
@@ -90,15 +94,12 @@ fn draw_main_tabs(f: &mut Frame, state: &UblxState, area: Rect) {
         .constraints([Constraint::Min(0), Constraint::Length(4)])
         .split(outer[1]);
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
-    let (snap_style, delta_style) = match state.main_mode {
-        MainMode::Snapshot => (style::tab_active(), style::tab_inactive()),
-        MainMode::Delta => (style::tab_inactive(), style::tab_active()),
-    };
-    let line = Line::from(vec![
-        Span::styled(UI.main_tab_snapshot, snap_style),
-        Span::raw(UI.tab_sep),
-        Span::styled(UI.main_tab_delta, delta_style),
-    ]);
+    let line = Line::from(
+        tab_node_segment(UI.main_tab_snapshot, state.main_mode == MainMode::Snapshot)
+            .into_iter()
+            .chain(tab_node_segment(UI.main_tab_delta, state.main_mode == MainMode::Delta))
+            .collect::<Vec<_>>(),
+    );
     f.render_widget(Paragraph::new(line), tabs_rect);
     f.render_widget(
         Paragraph::new(Line::from(Span::styled("UBLX", style::title_brand()))),
@@ -153,11 +154,7 @@ fn draw_delta_panes(
         &mut state.category_state,
     );
 
-    let paths = match cat_idx {
-        0 => &delta.added_paths,
-        1 => &delta.mod_paths,
-        _ => &delta.removed_paths,
-    };
+    let paths = delta.paths_by_index(cat_idx);
     let content_focused = matches!(state.focus, PanelFocus::Contents);
     let mid_title = panel_title("Paths", content_focused);
     let mid_items: Vec<ListItem> = if paths.is_empty() {
@@ -278,7 +275,24 @@ fn draw_categories_panel(f: &mut Frame, state: &mut UblxState, view: &ViewData, 
 
 fn draw_contents_panel(f: &mut Frame, state: &mut UblxState, view: &ViewData, area: Rect) {
     let focused = matches!(state.focus, PanelFocus::Contents);
-    let title = panel_title(UI.contents, focused);
+    let left_title = panel_title(UI.contents, focused);
+    let current = state
+        .content_state
+        .selected()
+        .map(|i| i + 1)
+        .unwrap_or(0)
+        .min(99_999);
+    let total = view.content_len.min(99_999);
+    let counter_str = format!("{:>5}/{:>5}", current, total);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(if focused {
+            style::panel_focused()
+        } else {
+            style::panel_unfocused()
+        })
+        .title(Line::from(left_title).left_aligned())
+        .title(Line::from(counter_str).right_aligned());
     let items: Vec<ListItem> = if view.filtered_contents_rows.is_empty() {
         vec![ListItem::new(if state.search_query.is_empty() {
             UI.no_contents
@@ -288,13 +302,13 @@ fn draw_contents_panel(f: &mut Frame, state: &mut UblxState, view: &ViewData, ar
     } else {
         view.filtered_contents_rows
             .iter()
-            .map(|(path, _, _)| ListItem::new(path.as_str()))
+            .map(|(path, _, _, _)| ListItem::new(path.as_str()))
             .collect()
     };
     draw_list_panel(
         f,
         items,
-        panel_block(title, focused),
+        block,
         focused,
         state.highlight_style,
         &mut state.content_state,

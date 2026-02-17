@@ -11,6 +11,15 @@ pub struct ToastConfig {
     pub dev_bumper_cap: usize,
 }
 
+/// Pick `dev_val` when `dev` is true, else `normal`. Used by ToastConfig `*_for(dev)` methods.
+fn pick<T>(dev: bool, normal: T, dev_val: T) -> T {
+    if dev {
+        dev_val
+    } else {
+        normal
+    }
+}
+
 impl ToastConfig {
     pub const fn new() -> Self {
         Self {
@@ -27,27 +36,19 @@ impl ToastConfig {
     }
 
     pub fn bumper_cap_for(&self, dev: bool) -> usize {
-        if dev {
-            self.dev_bumper_cap
-        } else {
-            self.bumper_cap
-        }
+        pick(dev, self.bumper_cap, self.dev_bumper_cap)
     }
 
     pub fn width_for(&self, dev: bool) -> u16 {
-        if dev { self.dev_width } else { self.width }
+        pick(dev, self.width, self.dev_width)
     }
 
     pub fn height_for(&self, dev: bool) -> u16 {
-        if dev { self.dev_height } else { self.height }
+        pick(dev, self.height, self.dev_height)
     }
 
     pub fn display_lines_for(&self, dev: bool) -> usize {
-        if dev {
-            self.dev_display_lines
-        } else {
-            self.display_lines
-        }
+        pick(dev, self.display_lines, self.dev_display_lines)
     }
 }
 
