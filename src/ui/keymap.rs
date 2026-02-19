@@ -43,6 +43,8 @@ pub enum UblxAction {
     Tab,
     /// Run take-snapshot pipeline in background; completion shows in log bumper.
     TakeSnapshot,
+    /// Open theme selector popup (j/k to preview, Enter to pick and save to local .ublx.toml, Esc to revert).
+    ThemeSelector,
     Noop,
 }
 
@@ -80,6 +82,7 @@ pub fn key_action_setup(
         KeyCode::Char('s' | 'S') if shift => (UblxAction::TakeSnapshot, None),
         KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
         KeyCode::Char('v' | 'V') if shift => (UblxAction::CycleRightPane, None),
+        KeyCode::Char('t' | 'T') if shift => (UblxAction::ThemeSelector, None),
         KeyCode::Char('J') if shift => (UblxAction::ScrollPreviewDown, None),
         KeyCode::Char('K') if shift => (UblxAction::ScrollPreviewUp, None),
         KeyCode::Char('b' | 'B') if ctrl => (UblxAction::PreviewTop, None),

@@ -8,15 +8,7 @@ use ratatui::widgets::{Scrollbar, ScrollbarOrientation};
 use std::rc::Rc;
 
 use crate::layout::themes;
-
-/// Current theme for this frame. Style functions use this instead of calling [themes::current] in each.
-fn theme() -> &'static themes::Theme {
-    themes::current()
-}
-
-/// Powerline-style round segment characters.
-const ROUND_LEFT: char = '\u{e0b6}';
-const ROUND_RIGHT: char = '\u{e0b4}';
+use crate::utils::UI_GLYPHS;
 
 /// Viewer scrollbar: vertical right, no begin/end symbols (track + thumb only).
 pub fn viewer_scrollbar() -> Scrollbar<'static> {
@@ -58,100 +50,184 @@ pub fn split_vertical(area: Rect, constraints: &[Constraint]) -> Rc<[Rect]> {
         .split(area)
 }
 
+/// Centered popup rect: inner content size plus padding (e.g. for borders/title), clamped to area.
+pub fn centered_popup_rect(
+    area: Rect,
+    content_w: usize,
+    content_h: usize,
+    padding_w: u16,
+    padding_h: u16,
+) -> Rect {
+    let w = (content_w + usize::from(padding_w)).min(area.width as usize) as u16;
+    let h = (content_h + usize::from(padding_h)).min(area.height as usize) as u16;
+    let x = area.x + area.width.saturating_sub(w) / 2;
+    let y = area.y + area.height.saturating_sub(h) / 2;
+    Rect::new(x, y, w, h)
+}
+
+/// Trait that provides a theme and default implementations for all theme-derived styles.
+/// One implementor ([Current]) uses the frame's current theme; others could use a fixed theme or snapshot.
+pub trait ThemeStyles {
+    fn theme() -> &'static themes::Theme
+    where
+        Self: Sized;
+
+    fn panel_focused() -> Style
+    where
+        Self: Sized,
+    {
+        let t = Self::theme();
+        Style::default()
+            .fg(t.focused_border)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    fn panel_unfocused() -> Style
+    where
+        Self: Sized,
+    {
+        Style::default()
+    }
+
+    fn text_style() -> Style
+    where
+        Self: Sized,
+    {
+        Style::default().fg(Self::theme().text)
+    }
+
+    fn tab_active() -> Style
+    where
+        Self: Sized,
+    {
+        let t = Self::theme();
+        Style::default()
+            .fg(t.tab_active_fg)
+            .bg(t.tab_active_bg)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    fn tab_inactive() -> Style
+    where
+        Self: Sized,
+    {
+        Style::default().bg(Self::theme().tab_inactive_bg)
+    }
+
+    fn search_text() -> Style
+    where
+        Self: Sized,
+    {
+        let t = Self::theme();
+        Style::default().fg(t.search_text)
+    }
+
+    fn hint_text() -> Style
+    where
+        Self: Sized,
+    {
+        let t = Self::theme();
+        Style::default().fg(t.hint).bg(t.popup_bg)
+    }
+
+    fn delta_added() -> Style
+    where
+        Self: Sized,
+    {
+        Style::default().fg(Self::theme().delta_added)
+    }
+
+    fn delta_mod() -> Style
+    where
+        Self: Sized,
+    {
+        Style::default().fg(Self::theme().delta_mod)
+    }
+
+    fn delta_removed() -> Style
+    where
+        Self: Sized,
+    {
+        Style::default().fg(Self::theme().delta_removed)
+    }
+
+    fn title_brand() -> Style
+    where
+        Self: Sized,
+    {
+        Style::default().fg(Self::theme().title_brand)
+    }
+}
+
+/// Uses the current frame theme (set at draw start). Implements [ThemeStyles].
+pub struct Current;
+
+impl ThemeStyles for Current {
+    fn theme() -> &'static themes::Theme {
+        themes::current()
+    }
+}
+
 /// List item highlight (selected row).
 pub fn list_highlight() -> Style {
     Style::default().add_modifier(Modifier::REVERSED)
 }
 
-/// Focused panel border (categories or contents).
-pub fn panel_focused() -> Style {
-    Style::default()
-        .fg(theme().focused_border)
-        .add_modifier(Modifier::BOLD)
+/// Theme-derived style wrappers: each calls [Current] with the same name. Call these from widgets; they use the theme set at frame start.
+macro_rules! theme_style_fn {
+    ($name:ident) => {
+        pub fn $name() -> Style {
+            Current::$name()
+        }
+    };
 }
 
-/// Unfocused panel border.
-pub fn panel_unfocused() -> Style {
-    Style::default()
-}
-
-/// Default foreground for body text (lists, paragraphs, search). Use when no other style is set.
-pub fn text_style() -> Style {
-    Style::default().fg(theme().text)
-}
-
-/// Active tab (main Snapshot/Delta or right-pane Templates/Viewer etc.): foreground + background.
-pub fn tab_active() -> Style {
-    Style::default()
-        .fg(theme().tab_active_fg)
-        .bg(theme().tab_active_bg)
-        .add_modifier(Modifier::BOLD)
-}
-
-/// Inactive tab: same text as default, only background differs.
-pub fn tab_inactive() -> Style {
-    Style::default().bg(theme().tab_inactive_bg)
-}
-
-/// "Search:" label (and query) in status line.
-pub fn search_text() -> Style {
-    Style::default().fg(theme().search_text)
-}
-
-/// "Esc to clear" hint text at bottom.
-pub fn hint_text() -> Style {
-    Style::default().fg(theme().hint)
-}
-
-/// Delta left-pane: added (green).
-pub fn delta_added() -> Style {
-    Style::default().fg(theme().delta_added)
-}
-
-/// Delta left-pane: mod (yellow).
-pub fn delta_mod() -> Style {
-    Style::default().fg(theme().delta_mod)
-}
-
-/// Delta left-pane: removed (red).
-pub fn delta_removed() -> Style {
-    Style::default().fg(theme().delta_removed)
-}
-
-/// Top-right brand title (e.g. UBLX).
-pub fn title_brand() -> Style {
-    Style::default().fg(theme().title_brand)
-}
-
-// ---- Tab and footer nodes (powerline-style) ----
+theme_style_fn!(panel_focused);
+theme_style_fn!(panel_unfocused);
+theme_style_fn!(text_style);
+theme_style_fn!(tab_active);
+theme_style_fn!(tab_inactive);
+theme_style_fn!(search_text);
+theme_style_fn!(hint_text);
+theme_style_fn!(delta_added);
+theme_style_fn!(delta_mod);
+theme_style_fn!(delta_removed);
+theme_style_fn!(title_brand);
 
 /// One tab as a powerline-style node: round + " label " + round. No separator.
 /// Used for right-pane tabs and main (Snapshot/Delta) tabs.
 pub fn tab_node_segment(label: &str, active: bool) -> Vec<Span<'static>> {
     let (circle_style, node_style) = if active {
-        (Style::default().fg(theme().tab_active_bg), tab_active())
+        (
+            Style::default().fg(Current::theme().tab_active_bg),
+            tab_active(),
+        )
     } else {
-        (Style::default().fg(theme().tab_inactive_bg), tab_inactive())
+        (
+            Style::default().fg(Current::theme().tab_inactive_bg),
+            tab_inactive(),
+        )
     };
     vec![
-        Span::styled(ROUND_LEFT.to_string(), circle_style),
+        Span::styled(UI_GLYPHS.round_left.to_string(), circle_style),
         Span::styled(format!(" {} ", label), node_style),
-        Span::styled(ROUND_RIGHT.to_string(), circle_style),
+        Span::styled(UI_GLYPHS.round_right.to_string(), circle_style),
     ]
 }
 
 fn node_color() -> (ratatui::style::Color, Style, Style) {
-    let t = theme();
-    let circle_style = Style::default().fg(t.node_bg).bg(t.node_circle_bg);
+    let t = Current::theme();
+    // Circle: node_bg for the curve, background for the rest so the half-circle shape is visible.
+    let circle_style = Style::default().fg(t.node_bg).bg(t.background);
     let node_style = Style::default().bg(t.node_bg);
     (t.node_bg, circle_style, node_style)
 }
 
 fn node_spans(content: &str, circle_style: Style, node_style: Style) -> Vec<Span<'static>> {
     vec![
-        Span::styled(ROUND_LEFT.to_string(), circle_style),
+        Span::styled(UI_GLYPHS.round_left.to_string(), circle_style),
         Span::styled(format!(" {} ", content), node_style),
-        Span::styled(ROUND_RIGHT.to_string(), circle_style),
+        Span::styled(UI_GLYPHS.round_right.to_string(), circle_style),
     ]
 }
 

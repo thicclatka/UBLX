@@ -13,9 +13,11 @@ use crate::config::TOAST_CONFIG;
 use crate::engine::db_ops;
 use crate::handlers::snapshot;
 use crate::layout::{filter, setup, viewing_pane};
-use crate::render::{draw_ublx_frame, DrawFrameArgs};
+use crate::render::{DrawFrameArgs, consts::UiStrings, draw_ublx_frame};
 use crate::ui::input::handle_ublx_input;
 use crate::utils::{format::format_timestamp_ns, notifications};
+
+const UI: UiStrings = UiStrings::new();
 
 /// Parameters for the TUI event loop.
 pub struct RunUblxParams<'a> {
@@ -51,8 +53,7 @@ pub fn build_view_data(
     all_rows: &[setup::TuiRow],
 ) -> setup::ViewData {
     let search_query = state.search_query.trim();
-    let filtered_categories =
-        filter::categories_for_search(categories, all_rows, search_query);
+    let filtered_categories = filter::categories_for_search(categories, all_rows, search_query);
     let category_idx = state.category_state.selected().unwrap_or(0);
     let selected_category = if category_idx == 0 {
         None
@@ -61,11 +62,8 @@ pub fn build_view_data(
             .get(category_idx - 1)
             .map(String::as_str)
     };
-    let contents_indices = filter::content_indices_for_view(
-        all_rows,
-        selected_category,
-        search_query,
-    );
+    let contents_indices =
+        filter::content_indices_for_view(all_rows, selected_category, search_query);
     let category_list_len = 1 + filtered_categories.len();
     if category_list_len > 0 {
         let idx = category_idx.min(category_list_len.saturating_sub(1));
@@ -114,21 +112,16 @@ pub fn build_delta_view_data(db_path: &Path) -> setup::DeltaViewData {
         .collect();
     let overview_text = overview_lines.join("\n");
 
-    let added_paths = build_delta_display_lines(
-        db_ops::load_delta_log_rows_by_type(db_path, "added").unwrap_or_default(),
-    );
-    let mod_paths = build_delta_display_lines(
-        db_ops::load_delta_log_rows_by_type(db_path, "mod").unwrap_or_default(),
-    );
-    let removed_paths = build_delta_display_lines(
-        db_ops::load_delta_log_rows_by_type(db_path, "removed").unwrap_or_default(),
-    );
+    let added_rows = db_ops::load_delta_log_rows_by_type(db_path, "added").unwrap_or_default();
+    let mod_rows = db_ops::load_delta_log_rows_by_type(db_path, "mod").unwrap_or_default();
+    let removed_rows =
+        db_ops::load_delta_log_rows_by_type(db_path, "removed").unwrap_or_default();
 
     setup::DeltaViewData {
         overview_text,
-        added_paths,
-        mod_paths,
-        removed_paths,
+        added_rows,
+        mod_rows,
+        removed_rows,
     }
 }
 
@@ -146,12 +139,12 @@ fn build_delta_display_lines(rows: Vec<(i64, String)>) -> Vec<String> {
     lines
 }
 
-/// Clamp list selection for Delta mode (3 categories, current type's path count).
-pub fn clamp_delta_selection(state: &mut setup::UblxState, delta: &setup::DeltaViewData) {
-    let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
+/// Clamp list selection for Delta mode (category and content from view).
+pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
+    let cat_max = view.category_list_len.saturating_sub(1);
+    let cat_idx = state.category_state.selected().unwrap_or(0).min(cat_max);
     state.category_state.select(Some(cat_idx));
-    let paths = delta.paths_by_index(cat_idx);
-    let len = paths.len();
+    let len = view.content_len;
     if len > 0 {
         let sel = state
             .content_state
@@ -164,30 +157,40 @@ pub fn clamp_delta_selection(state: &mut setup::UblxState, delta: &setup::DeltaV
     }
 }
 
-/// ViewData for input/navigation when in Delta mode (3 categories, content_len = current type's path count).
-/// Uses owned rows (delta list is typically small).
+/// Delta mode category names (order matches [setup::DeltaViewData::paths_by_index] 0, 1, 2).
+const DELTA_CATEGORIES: &[&str] = &[UI.delta_added, UI.delta_mod, UI.delta_removed];
+
+/// ViewData for Delta mode. Search filters by path; display lines keep timestamp groupings (dates preserved).
 pub fn view_data_for_delta_mode(
     state: &setup::UblxState,
     delta: &setup::DeltaViewData,
 ) -> setup::ViewData {
-    let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
-    let paths = delta.paths_by_index(cat_idx);
-    let rows: Vec<setup::TuiRow> = paths
-        .iter()
-        .map(|p| (p.clone(), String::new(), 0u64))
+    let search_query = state.search_query.trim();
+    let cat_idx = state
+        .category_state
+        .selected()
+        .unwrap_or(0)
+        .min(DELTA_CATEGORIES.len().saturating_sub(1));
+    let raw_rows = delta.rows_by_index(cat_idx);
+    let filtered_rows = filter::filter_delta_rows(raw_rows, search_query);
+    let display_lines = build_delta_display_lines(filtered_rows);
+    let content_len = display_lines.len();
+    let rows: Vec<setup::TuiRow> = display_lines
+        .into_iter()
+        .map(|line| (line, String::new(), 0u64))
         .collect();
     setup::ViewData {
-        filtered_categories: vec!["Added".into(), "Mod".into(), "Removed".into()],
+        filtered_categories: DELTA_CATEGORIES.iter().map(|s| (*s).to_string()).collect(),
         contents: setup::ViewContents::DeltaRows(rows),
-        category_list_len: 3,
-        content_len: paths.len(),
+        category_list_len: DELTA_CATEGORIES.len(),
+        content_len,
     }
 }
 
-/// **Classification of each call per tick:**
-/// 1. **View data** — `compute_loop_view`: filter categories/contents by search and category, clamp selection, update preview key.
-/// 2. **Right-pane content** — `resolve_right_pane_content`: templates/metadata/writing/viewer for current selection.
-/// 3. **Draw** — `draw_ublx_frame`: layout and render categories, contents, right pane, search, help.
+/// **Per-tick flow:**
+/// 1. **View data** — Snapshot: `build_view_data` (filter by search/category, clamp selection). Delta: `view_data_for_delta_mode` + `clamp_delta_selection` (filter delta paths by search).
+/// 2. **Right-pane content** — Snapshot: `resolve_right_pane_content` (templates/metadata/writing/viewer for selection). Delta: empty.
+/// 3. **Draw** — `draw_ublx_frame`: layout and render tabs, categories, contents, right pane, search line, help/toast/theme selector if active.
 /// 4. **Input** — `handle_ublx_input`: poll key, map to action, apply to state; returns true if quit.
 pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
     let (mut categories, mut all_rows) = load_snapshot_for_tui(params.db_path);
@@ -232,8 +235,8 @@ pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
         let (view, right_content, delta_data, rows_for_draw) =
             if state.main_mode == setup::MainMode::Delta {
                 let d = build_delta_view_data(params.db_path);
-                clamp_delta_selection(&mut state, &d);
                 let view = view_data_for_delta_mode(&state, &d);
+                clamp_delta_selection(&mut state, &view);
                 let right_content = setup::RightPaneContent {
                     templates: String::new(),
                     metadata: None,
@@ -255,24 +258,40 @@ pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
                 );
                 (view, right_content, None, Some(all_rows.as_slice()))
             };
-        let latest_snapshot_ns = (state.main_mode == setup::MainMode::Snapshot)
-            .then(|| db_ops::load_delta_log_snapshot_timestamps(params.db_path).ok())
-            .flatten()
+        let latest_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(params.db_path)
+            .ok()
             .and_then(|v| v.into_iter().next());
+        let theme_name_owned: Option<String> = if state.theme_selector_visible {
+            Some(
+                crate::layout::themes::theme_options()[state.theme_selector_index]
+                    .display_name
+                    .to_string(),
+            )
+        } else {
+            state
+                .theme_override
+                .clone()
+                .or_else(|| params.theme.clone())
+        };
+        let theme_name = theme_name_owned.as_deref();
         let draw_args = DrawFrameArgs {
             delta_data: delta_data.as_ref(),
             all_rows: rows_for_draw,
-            dir_to_ublx: (state.main_mode == setup::MainMode::Snapshot).then_some(params.dir_to_ublx),
-            theme_name: params.theme.as_deref(),
+            dir_to_ublx: Some(params.dir_to_ublx),
+            theme_name,
             transparent: params.transparent,
             latest_snapshot_ns,
             bumper: params.bumper,
             dev: params.dev,
         };
-        terminal.draw(|f| {
-            draw_ublx_frame(f, &mut state, &view, &right_content, &draw_args)
-        })?;
-        if handle_ublx_input(&mut state, &view, &right_content)? {
+        terminal.draw(|f| draw_ublx_frame(f, &mut state, &view, &right_content, &draw_args))?;
+        if handle_ublx_input(
+            &mut state,
+            &view,
+            &right_content,
+            Some((params.dir_to_ublx, theme_name)),
+            params.bumper,
+        )? {
             break;
         }
     }

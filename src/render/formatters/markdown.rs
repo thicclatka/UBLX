@@ -4,8 +4,10 @@
 //! (with styled headings) or [MarkdownDoc::to_plain_string] for plain text.
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
+
+use crate::layout::themes;
 
 pub fn is_markdown_path(path: &str) -> bool {
     path.ends_with(".md") || path.ends_with(".markdown")
@@ -105,34 +107,32 @@ pub fn parse_markdown(s: &str) -> MarkdownDoc {
     MarkdownDoc { blocks }
 }
 
-/// Style for heading lines in the TUI (bold + cyan).
+/// Style for heading lines: H1 (#) bold; H2 and below (##, ###, …) italic. All use theme tab-active color.
 fn heading_style(level: u8) -> Style {
-    let mut s = Style::default()
-        .add_modifier(Modifier::BOLD)
-        .fg(Color::Cyan);
+    let t = themes::current();
+    let base = Style::default().fg(t.tab_active_fg);
     if level == 1 {
-        s = s.add_modifier(Modifier::UNDERLINED);
+        base.add_modifier(Modifier::BOLD)
+            .add_modifier(Modifier::UNDERLINED)
+    } else {
+        base.add_modifier(Modifier::ITALIC)
+            .add_modifier(Modifier::BOLD)
     }
-    s
 }
 
 /// Box-drawing horizontal line for full-width rules.
 const RULE_CHAR: char = '─';
 
 impl MarkdownDoc {
-    /// Render as ratatui [Text] with headings styled (bold, cyan; H1 also underlined).
+    /// Render as ratatui [Text] with headings styled (H1 bold, H2+ italic; theme color).
     /// `width` is the content area width, used to draw horizontal rules as a full line.
     pub fn to_text(&self, width: u16) -> Text<'static> {
         let mut lines: Vec<Line<'static>> = Vec::new();
         for block in &self.blocks {
             match block {
                 Block::Heading { level, text } => {
-                    let prefix = "#".repeat(*level as usize);
                     let style = heading_style(*level);
-                    lines.push(Line::from(Span::styled(
-                        format!("{} {}", prefix, text),
-                        style,
-                    )));
+                    lines.push(Line::from(Span::styled(text.clone(), style)));
                     lines.push(Line::from(String::new()));
                 }
                 Block::Paragraph(s) => {
@@ -178,9 +178,9 @@ impl MarkdownDoc {
         let mut out = String::new();
         for block in &self.blocks {
             match block {
-                Block::Heading { level, text } => {
-                    let prefix = "#".repeat(*level as usize);
-                    out.push_str(&format!("{} {}\n\n", prefix, text));
+                Block::Heading { level: _, text } => {
+                    out.push_str(text);
+                    out.push_str("\n\n");
                 }
                 Block::Paragraph(s) => {
                     out.push_str(s);

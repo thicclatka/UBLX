@@ -5,6 +5,8 @@ pub struct ToastConfig {
     pub vt_padding: u16,
     pub duration: std::time::Duration,
     pub display_lines: usize,
+    /// theme-selector toast shows only this many lines (1 = no history).
+    pub theme_selector_display_lines: usize,
     pub bumper_cap: usize,
     /// Dev mode: larger toast and more lines.
     pub dev_width: u16,
@@ -27,6 +29,7 @@ impl ToastConfig {
             vt_padding: 2,
             duration: std::time::Duration::from_secs(4),
             display_lines: 2,
+            theme_selector_display_lines: 1,
             bumper_cap: 100,
             dev_width: 100,
             dev_height: 20,
@@ -50,6 +53,15 @@ impl ToastConfig {
     pub fn display_lines_for(&self, dev: bool) -> usize {
         pick(dev, self.display_lines, self.dev_display_lines)
     }
+
+    /// Line count for the toast body: theme-selector uses 1 line only; others use display_lines_for(dev).
+    pub fn display_lines_for_operation(&self, dev: bool, operation: Option<&str>) -> usize {
+        if operation == Some("theme-selector") {
+            self.theme_selector_display_lines
+        } else {
+            self.display_lines_for(dev)
+        }
+    }
 }
 
 pub const TOAST_CONFIG: ToastConfig = ToastConfig::new();
@@ -68,6 +80,11 @@ impl OperationName {
 
     pub fn snapshot(&self) -> String {
         format!("{}-snapshot", self.executable)
+    }
+
+    /// Theme selector toast: operation name is just "theme-selector" (no executable prefix).
+    pub fn theme_selector(&self) -> &'static str {
+        "theme-selector"
     }
 
     /// For future operations: e.g. `op("export")` → "ublx-export".

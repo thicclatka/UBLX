@@ -13,7 +13,7 @@ use super::right_pane;
 use super::search;
 use super::snapshot_panels;
 use crate::config::TOAST_CONFIG;
-use crate::layout::{help, setup, style, themes};
+use crate::layout::{help, setup, style, theme_selector, themes};
 use crate::utils::notifications;
 
 const UI: UiStrings = UiStrings::new();
@@ -43,7 +43,7 @@ pub fn draw_ublx_frame(
     right: &setup::RightPaneContent,
     args: &DrawFrameArgs<'_>,
 ) {
-    crate::layout::themes::set_current(args.theme_name);
+    themes::set_current(Some(themes::theme_name_from_config(args.theme_name)));
     let area = f.area();
 
     draw_background(f, area, args);
@@ -53,10 +53,13 @@ pub fn draw_ublx_frame(
     let body = compute_body_areas(body_area);
     draw_main_content(f, state, view, right, args, &body);
 
+    draw_toast_if_visible(f, state, args);
     if state.help_visible {
         help::render_help_box(f);
     }
-    draw_toast_if_visible(f, state, args);
+    if state.theme_selector_visible {
+        theme_selector::render_theme_selector(f, state.theme_selector_index);
+    }
 }
 
 fn draw_background(f: &mut Frame, area: Rect, args: &DrawFrameArgs<'_>) {
@@ -137,11 +140,27 @@ fn draw_main_content(
         }
         setup::MainMode::Delta => {
             if let Some(delta) = args.delta_data {
-                delta::draw_delta_panes(f, state, delta, left, middle, right_rect);
+                delta::draw_delta_panes(
+                    f,
+                    delta::DrawDeltaPanesParams {
+                        state,
+                        delta,
+                        view,
+                        left,
+                        middle,
+                        right: right_rect,
+                    },
+                );
             } else {
                 delta::draw_delta_placeholder(f, left, middle, right_rect);
             }
-            search::draw_status_line(f, body.status_area, None, state.search_active, &state.search_query);
+            search::draw_status_line(
+                f,
+                body.status_area,
+                args.latest_snapshot_ns,
+                state.search_active,
+                &state.search_query,
+            );
         }
     }
 }

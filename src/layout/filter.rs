@@ -53,3 +53,15 @@ pub fn content_indices_for_view(
             .collect(),
     }
 }
+
+/// Filter raw delta rows (created_ns, path) by path containing query. Keeps dates when building display lines.
+pub fn filter_delta_rows(rows: &[(i64, String)], search_query: &str) -> Vec<(i64, String)> {
+    let q = search_query.trim();
+    if q.is_empty() {
+        return rows.to_vec();
+    }
+    rows.iter()
+        .filter(|(_, path)| path.contains(q))
+        .cloned()
+        .collect()
+}

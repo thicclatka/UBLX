@@ -1,4 +1,4 @@
-//! Delta mode: left (type list), middle (paths), right (overview text).
+//! Delta mode: left (Added / Mod / Removed), middle (paths filtered by search), right (overview).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -6,21 +6,18 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 
-use super::consts::{panel_title, UiStrings};
+use super::consts::{UiStrings, panel_title};
 use super::panels;
 use crate::layout::{setup, style};
 
 const UI: UiStrings = UiStrings::new();
 
-pub(super) fn draw_delta_placeholder(
-    f: &mut Frame,
-    left: Rect,
-    middle: Rect,
-    right: Rect,
-) {
+pub(super) fn draw_delta_placeholder(f: &mut Frame, left: Rect, middle: Rect, right: Rect) {
     let block = Block::default().borders(Borders::ALL).title(" Delta ");
     f.render_widget(
-        Paragraph::new("Loading…").style(style::text_style()).block(block),
+        Paragraph::new("Loading…")
+            .style(style::text_style())
+            .block(block),
         left,
     );
     f.render_widget(
@@ -30,36 +27,49 @@ pub(super) fn draw_delta_placeholder(
         middle,
     );
     f.render_widget(
-        Paragraph::new("—")
-            .style(style::text_style())
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(UI.delta_right_title),
-            ),
+        Paragraph::new("—").style(style::text_style()).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(UI.delta_right_title),
+        ),
         right,
     );
 }
 
-pub(super) fn draw_delta_panes(
-    f: &mut Frame,
-    state: &mut setup::UblxState,
-    delta: &setup::DeltaViewData,
-    left: Rect,
-    middle: Rect,
-    right: Rect,
-) {
-    let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
-    let focused = matches!(state.focus, setup::PanelFocus::Categories);
-    let labels: [(&'static str, Style); 3] = [
+/// Parameters for [draw_delta_panes] (avoids too many arguments).
+pub(super) struct DrawDeltaPanesParams<'a> {
+    pub state: &'a mut setup::UblxState,
+    pub delta: &'a setup::DeltaViewData,
+    pub view: &'a setup::ViewData,
+    pub left: Rect,
+    pub middle: Rect,
+    pub right: Rect,
+}
+
+/// Left-pane labels for Delta: Added / Mod / Removed, with styles.
+fn delta_left_labels() -> [(&'static str, Style); 3] {
+    [
         (UI.delta_added, style::delta_added()),
         (UI.delta_mod, style::delta_mod()),
         (UI.delta_removed, style::delta_removed()),
-    ];
-    let items: Vec<ListItem> = labels
+    ]
+}
+
+pub(super) fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
+    let state = params.state;
+    let focused = matches!(state.focus, setup::PanelFocus::Categories);
+    let labels = delta_left_labels();
+    let items: Vec<ListItem> = params
+        .view
+        .filtered_categories
         .iter()
-        .map(|(label, s)| {
-            let span = ratatui::text::Span::styled(*label, *s);
+        .enumerate()
+        .map(|(i, s)| {
+            let style = labels
+                .get(i)
+                .map(|(_, st)| *st)
+                .unwrap_or(style::text_style());
+            let span = ratatui::text::Span::styled(s.as_str(), style);
             ListItem::new(Line::from(span))
         })
         .collect();
@@ -67,17 +77,24 @@ pub(super) fn draw_delta_panes(
     let left_block = panels::panel_block(title, focused);
     f.render_stateful_widget(
         panels::styled_list(items, left_block, focused, state.highlight_style),
-        left,
+        params.left,
         &mut state.category_state,
     );
 
-    let paths = delta.paths_by_index(cat_idx);
     let content_focused = matches!(state.focus, setup::PanelFocus::Contents);
     let mid_title = panel_title("Paths", content_focused);
-    let mid_items: Vec<ListItem> = if paths.is_empty() {
-        vec![ListItem::new("(none)")]
+    let mid_items: Vec<ListItem> = if params.view.content_len == 0 {
+        vec![ListItem::new(if state.search_query.is_empty() {
+            UI.no_contents
+        } else {
+            UI.no_matches
+        })]
     } else {
-        paths.iter().map(|p| ListItem::new(p.as_str())).collect()
+        params
+            .view
+            .iter_contents(None)
+            .map(|(path, _, _)| ListItem::new(path.as_str()))
+            .collect()
     };
     panels::draw_list_panel(
         f,
@@ -86,18 +103,20 @@ pub(super) fn draw_delta_panes(
         content_focused,
         state.highlight_style,
         &mut state.content_state,
-        middle,
+        params.middle,
     );
 
     let right_block = Block::default()
         .borders(Borders::ALL)
         .title(UI.delta_right_title);
-    f.render_widget(&right_block, right);
-    let right_inner = right_block.inner(right);
+    f.render_widget(&right_block, params.right);
+    let right_inner = right_block.inner(params.right);
     f.render_widget(
-        Paragraph::new(ratatui::text::Text::from(delta.overview_text.as_str()))
-            .style(style::text_style())
-            .scroll((state.preview_scroll, 0)),
+        Paragraph::new(ratatui::text::Text::from(
+            params.delta.overview_text.as_str(),
+        ))
+        .style(style::text_style())
+        .scroll((state.preview_scroll, 0)),
         right_inner,
     );
 }

@@ -6,7 +6,7 @@
 use log::Level;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use std::collections::VecDeque;
@@ -14,6 +14,7 @@ use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 
 use crate::config::TOAST_CONFIG;
+use crate::layout::themes;
 
 static BUMPER_FOR_LOG: OnceLock<BumperBuffer> = OnceLock::new();
 static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();
@@ -120,12 +121,13 @@ pub fn move_log_events() {
 }
 
 fn level_style(level: Level) -> Style {
+    let colors = themes::DEFAULT_COLORS;
     let color = match level {
-        Level::Error => Color::Red,
-        Level::Warn => Color::Yellow,
-        Level::Info => Color::Cyan,
-        Level::Debug => Color::Magenta,
-        Level::Trace => Color::Gray,
+        Level::Error => colors.red,
+        Level::Warn => colors.yellow,
+        Level::Info => colors.cyan,
+        Level::Debug => colors.magenta,
+        Level::Trace => colors.gray,
     };
     Style::default().fg(color)
 }
@@ -148,8 +150,10 @@ const NOT_TITLE_FALLBACK: &str = " Notification ";
 pub fn render_toast(f: &mut Frame, area: Rect, bumper: &BumperBuffer, dev: bool) {
     f.render_widget(Clear, area);
 
-    let lines = TOAST_CONFIG.display_lines_for(dev);
-    let messages = bumper.last_n(lines);
+    let peek = bumper.last_n(1);
+    let operation = peek.first().and_then(|m| m.operation.as_deref());
+    let line_count = TOAST_CONFIG.display_lines_for_operation(dev, operation);
+    let messages = bumper.last_n(line_count);
     if messages.is_empty() {
         return;
     }
@@ -169,10 +173,11 @@ pub fn render_toast(f: &mut Frame, area: Rect, bumper: &BumperBuffer, dev: bool)
             ))
         })
         .collect();
+    let t = themes::current();
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan).bg(Color::Black))
-        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(t.focused_border).bg(t.notification_bg))
+        .style(Style::default().bg(t.notification_bg))
         .title(title);
     let para = Paragraph::new(Text::from(lines))
         .block(block)

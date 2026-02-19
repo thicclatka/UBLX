@@ -9,6 +9,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 
 use log::warn;
 use nefaxer::NefaxOpts;
@@ -152,6 +153,11 @@ impl UblxOpts {
     #[allow(dead_code)]
     pub fn load_overlay_from_cache(ublx_paths: &UblxPaths) -> Option<UblxOverlay> {
         Self::load_ublx_toml(ublx_paths.last_applied_config_path())
+    }
+
+    /// Load overlay from a single toml file path. Returns default if path is None, file missing, or parse error.
+    pub fn load_overlay_from_path(path: Option<PathBuf>) -> UblxOverlay {
+        Self::load_ublx_toml(path).unwrap_or_default()
     }
 
     /// Save overlay to cache dir as `last_config.toml`. Creates cache dir if needed. Logs and ignores write errors.
@@ -352,5 +358,26 @@ impl UblxOpts {
         config.output_mode = OutputMode::Templates;
         config.max_workers = self.effective_zahir_workers();
         config
+    }
+}
+
+/// Write local config with `theme = "display_name"`. Uses existing file at [UblxPaths::toml_path] if present, otherwise creates `.ublx.toml`. Preserves other keys from existing file or default. Logs and ignores errors.
+pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
+    let path = paths.toml_path().unwrap_or_else(|| paths.hidden_toml());
+    let mut overlay = UblxOpts::load_overlay_from_path(Some(path.clone()));
+    overlay.theme = Some(theme_display_name.to_string());
+    if let Some(parent) = path.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        warn!("could not create config dir {}: {}", parent.display(), e);
+        return;
+    }
+    match toml::to_string_pretty(&overlay) {
+        Ok(s) => {
+            if let Err(e) = fs::write(&path, s) {
+                warn!("could not write theme to {}: {}", path.display(), e);
+            }
+        }
+        Err(e) => warn!("could not serialize overlay: {}", e),
     }
 }

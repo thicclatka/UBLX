@@ -1,10 +1,24 @@
 //! Theme and colors for the TUI. Multiple themes can be added; the active theme is chosen via opts (e.g. config `theme` key).
 
+mod palettes;
+
 use ratatui::style::Color;
 use std::cell::RefCell;
 
-/// Theme name used when config does not set one.
-pub const DEFAULT_THEME_NAME: &str = "default";
+pub use palettes::{DEFAULT_COLORS, OBLIVION_INK, all_ublx_themes, theme_options};
+
+/// One theme in the selector: display name (for UI and for `theme = "..."` in toml) and reference.
+#[derive(Clone, Copy)]
+pub struct ThemeOption {
+    pub display_name: &'static str,
+    pub theme: &'static Theme,
+}
+
+/// Default theme (Oblivion Ink). Used when opts theme is unset or "default".
+pub const DEFAULT_THEME: ThemeOption = ThemeOption {
+    display_name: "Oblivion Ink",
+    theme: &OBLIVION_INK,
+};
 
 /// Named set of colors for the TUI. Extend with more fields as styles are themed.
 #[derive(Clone, Debug)]
@@ -27,43 +41,21 @@ pub struct Theme {
     pub search_text: Color,
     /// Hint text (e.g. "Esc to clear").
     pub hint: Color,
+    /// Popup background (help box, theme selector, etc.); same hue as notification_bg.
+    pub popup_bg: Color,
     /// Node/footer powerline color.
     pub node_bg: Color,
-    /// Delta: added (green).
+    /// Delta: added (green)
     pub delta_added: Color,
-    /// Delta: modified (yellow).
+    /// Delta: modified (yellow)
     pub delta_mod: Color,
-    /// Delta: removed (red).
+    /// Delta: removed (red)
     pub delta_removed: Color,
-    /// Brand title (e.g. UBLX).
+    /// Brand title (e.g. UBLX)
     pub title_brand: Color,
-    /// Background for node circle (powerline).
-    pub node_circle_bg: Color,
+    /// Toast/notification overlay background (defaults same as background; can be adjusted per theme).
+    pub notification_bg: Color,
 }
-
-/// Default theme (dark, cyan accent). Used when opts theme is unset or "default".
-#[allow(dead_code)]
-pub fn default_theme() -> &'static Theme {
-    &DEFAULT_THEME
-}
-
-static DEFAULT_THEME: Theme = Theme {
-    name: DEFAULT_THEME_NAME,
-    background: Color::Black,
-    text: Color::White,
-    focused_border: Color::Cyan,
-    tab_active_fg: Color::Cyan,
-    tab_active_bg: Color::Rgb(70, 70, 90),
-    tab_inactive_bg: Color::Rgb(45, 45, 45),
-    search_text: Color::Yellow,
-    hint: Color::Cyan,
-    node_bg: Color::Rgb(55, 55, 65),
-    delta_added: Color::Green,
-    delta_mod: Color::Yellow,
-    delta_removed: Color::Red,
-    title_brand: Color::Magenta,
-    node_circle_bg: Color::Black,
-};
 
 thread_local! {
     static CURRENT_THEME_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -82,11 +74,40 @@ pub fn current() -> &'static Theme {
     get(name.as_deref())
 }
 
-/// Resolve theme by name. Returns the default theme for `None` or unknown names.
-pub fn get(name: Option<&str>) -> &'static Theme {
-    match name {
-        Some(n) if n == DEFAULT_THEME_NAME => &DEFAULT_THEME,
-        Some(_) => &DEFAULT_THEME,
-        None => &DEFAULT_THEME,
+/// Resolve config theme to the theme name to use. When config is `None`, empty, or `"default"`, returns [DEFAULT_THEME_NAME]. Otherwise returns the config value. Use before passing to [set_current] or [get].
+pub fn theme_name_from_config(config_theme: Option<&str>) -> &str {
+    match config_theme {
+        None => DEFAULT_THEME.display_name,
+        Some(s) => {
+            let t = s.trim();
+            if t.is_empty() || t == "default" {
+                DEFAULT_THEME.display_name
+            } else {
+                t
+            }
+        }
     }
+}
+
+/// Lighten an RGB color by a fraction toward white (e.g. 0.1 = 10% lighter). Non-RGB colors are returned unchanged.
+pub fn lighten_rgb(color: Color, pct: f32) -> Color {
+    let Color::Rgb(r, g, b) = color else {
+        return color;
+    };
+    let p = pct.clamp(0.0, 1.0);
+    let blend = |c: u8| (f32::from(c) * (1.0 - p) + 255.0 * p).round() as u8;
+    Color::Rgb(blend(r), blend(g), blend(b))
+}
+
+/// Resolve theme by name. Uses [theme_name_from_config] so `None` / empty / `"default"` use [default_theme]; then looks up by id or display name.
+pub fn get(name: Option<&str>) -> &'static Theme {
+    let n = theme_name_from_config(name);
+    if n == DEFAULT_THEME.display_name {
+        return DEFAULT_THEME.theme;
+    }
+    all_ublx_themes()
+        .iter()
+        .find(|(id, t)| *id == n || t.name == n)
+        .map(|(_, t)| *t)
+        .unwrap_or(DEFAULT_THEME.theme)
 }

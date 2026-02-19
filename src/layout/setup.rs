@@ -26,6 +26,14 @@ pub struct UblxState {
     pub search_active: bool,
     pub cached_tree: Option<(String, String)>,
     pub help_visible: bool,
+    /// When true, show theme selector popup; j/k to move, Enter to pick and save, Esc to revert.
+    pub theme_selector_visible: bool,
+    /// Selected index in theme_options() when theme selector is open.
+    pub theme_selector_index: usize,
+    /// Theme name before opening selector; restored on Esc.
+    pub theme_before_selector: Option<String>,
+    /// Override theme for this run (set when user picks in selector; used instead of opts theme).
+    pub theme_override: Option<String>,
     pub right_pane_mode: RightPaneMode,
     pub highlight_style: Style,
     /// Set by TakeSnapshot key; event loop spawns pipeline and clears.
@@ -51,6 +59,10 @@ impl UblxState {
             search_active: false,
             cached_tree: None,
             help_visible: false,
+            theme_selector_visible: false,
+            theme_selector_index: 0,
+            theme_before_selector: None,
+            theme_override: None,
             right_pane_mode: RightPaneMode::default(),
             highlight_style: style::list_highlight(),
             snapshot_requested: false,
@@ -133,21 +145,24 @@ impl ViewData {
     }
 }
 
-/// Data for Delta mode: snapshot overview text and paths per delta type (from delta_log).
+/// Raw delta row: (created_ns, path) from delta_log. Used to build display lines with dates preserved when filtering.
+pub type DeltaRow = (i64, String);
+
+/// Data for Delta mode: snapshot overview text and raw (created_ns, path) rows per delta type.
 pub struct DeltaViewData {
     pub overview_text: String,
-    pub added_paths: Vec<String>,
-    pub mod_paths: Vec<String>,
-    pub removed_paths: Vec<String>,
+    pub added_rows: Vec<DeltaRow>,
+    pub mod_rows: Vec<DeltaRow>,
+    pub removed_rows: Vec<DeltaRow>,
 }
 
 impl DeltaViewData {
-    /// Paths for the given category index: 0 = added, 1 = mod, 2+ = removed.
-    pub fn paths_by_index(&self, idx: usize) -> &Vec<String> {
+    /// Raw rows for the given category index: 0 = added, 1 = mod, 2 = removed.
+    pub fn rows_by_index(&self, idx: usize) -> &[DeltaRow] {
         match idx {
-            0 => &self.added_paths,
-            1 => &self.mod_paths,
-            _ => &self.removed_paths,
+            0 => &self.added_rows,
+            1 => &self.mod_rows,
+            _ => &self.removed_rows,
         }
     }
 }
