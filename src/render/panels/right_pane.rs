@@ -1,16 +1,16 @@
-use ratatui::Frame;
+//! Right pane: tabs, viewer/templates/metadata/writing content, fullscreen.
+
 use ratatui::layout::{Constraint, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use super::formatters::markdown::is_markdown_path;
-use super::scrollable_content;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
 use crate::layout::style;
+use crate::render::formatters::markdown::is_markdown_path;
+use crate::render::{kv_tables, scrollable_content};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::format_bytes;
 
-/// Approximate number of wrapped lines for viewer text at the given width (for scroll clamping).
 fn wrapped_line_count(text: &str, width: u16) -> u16 {
     let w = width as usize;
     if w == 0 {
@@ -22,8 +22,6 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
         .min(u16::MAX as usize) as u16
 }
 
-/// Viewer tab only: if markdown, return styled [ratatui::text::Text] (e.g. nice headers); else plain string.
-/// `content_width` is used for full-width horizontal rules when rendering markdown.
 fn viewer_display_text(
     right: &RightPaneContent,
     content_width: u16,
@@ -35,12 +33,11 @@ fn viewer_display_text(
     if let Some(ref path) = right.viewer_path
         && is_markdown_path(path)
     {
-        return super::formatters::markdown::parse_markdown(raw).to_text(content_width);
+        return crate::render::formatters::markdown::parse_markdown(raw).to_text(content_width);
     }
     ratatui::text::Text::from(raw.to_string())
 }
 
-/// Returns the content to display for the current tab as [ratatui::text::Text].
 fn content_display_text(
     state: &UblxState,
     right: &RightPaneContent,
@@ -90,8 +87,8 @@ fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> 
     .collect()
 }
 
-pub(super) fn draw_right_pane(
-    f: &mut Frame,
+pub(crate) fn draw_right_pane(
+    f: &mut ratatui::Frame,
     state: &mut UblxState,
     right: &RightPaneContent,
     area: Rect,
@@ -129,7 +126,6 @@ pub(super) fn draw_right_pane(
     let content_chunks = style::tab_row_padded(right_split[2]);
 
     f.render_widget(&right_block, area);
-
     f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
 
     let content_area = content_chunks[1];
@@ -140,7 +136,7 @@ pub(super) fn draw_right_pane(
         _ => None,
     };
     let total_lines = match (state.right_pane_mode, use_kv_tables) {
-        (_, Some(json)) => super::kv_tables::content_height(json) as usize,
+        (_, Some(json)) => kv_tables::content_height(json) as usize,
         (RightPaneMode::Viewer, _) => right
             .viewer
             .as_deref()
@@ -157,7 +153,7 @@ pub(super) fn draw_right_pane(
     );
     let text_rect = layout.content_rect;
     if let Some(json) = use_kv_tables {
-        super::kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
+        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
         f.render_widget(
             Paragraph::new(content_display_text(state, right, text_rect.width))
@@ -171,8 +167,8 @@ pub(super) fn draw_right_pane(
 }
 
 /// Draw the current right-pane tab in full screen (hide categories and contents). Esc to exit.
-pub(super) fn draw_right_pane_fullscreen(
-    f: &mut Frame,
+pub(crate) fn draw_right_pane_fullscreen(
+    f: &mut ratatui::Frame,
     state: &mut UblxState,
     right: &RightPaneContent,
     area: Rect,
@@ -202,7 +198,7 @@ pub(super) fn draw_right_pane_fullscreen(
         _ => None,
     };
     let total_lines = match (state.right_pane_mode, use_kv_tables) {
-        (_, Some(json)) => super::kv_tables::content_height(json) as usize,
+        (_, Some(json)) => kv_tables::content_height(json) as usize,
         (RightPaneMode::Viewer, _) => right
             .viewer
             .as_deref()
@@ -220,7 +216,7 @@ pub(super) fn draw_right_pane_fullscreen(
     let text_rect = layout.content_rect;
     f.render_widget(&block, area);
     if let Some(json) = use_kv_tables {
-        super::kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
+        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
         f.render_widget(
             Paragraph::new(content_display_text(state, right, text_rect.width))

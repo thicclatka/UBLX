@@ -1,15 +1,22 @@
 //! Top-level run dispatch: test mode (no TUI) or TUI with background snapshot pipeline.
+//! TUI setup/teardown (terminal, raw mode) lives here; the main loop lives in [crate::layout::event_loop::main_app_loop].
 
+use std::io;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use crate::handlers::nefax_ops::NefaxResult;
-use crate::handlers::snapshot;
-use crate::layout::event_loop::{run_ublx, RunUblxParams};
-use crate::utils::notifications;
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
+use ratatui::Terminal;
+use ratatui::prelude::CrosstermBackend;
 
 use crate::config::UblxOpts;
+use crate::handlers::nefax_ops::NefaxResult;
+use crate::handlers::snapshot;
+use crate::layout::{event_loop, setup};
+use crate::utils::notifications;
 
 /// Parameters for [run_app]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
@@ -71,7 +78,7 @@ fn run_tui_mode(
         snapshot::run_snapshot_pipeline(&dir_clone, &opts_clone, &prior_clone, Some(tx), None);
     });
 
-    run_ublx(RunUblxParams {
+    run_ublx(event_loop::RunUblxParams {
         db_path,
         dir_to_ublx,
         snapshot_done_rx: Some(rx),
@@ -86,5 +93,30 @@ fn run_tui_mode(
     {
         notifications::flush_bumper_to_stderr(b);
     }
+    Ok(())
+}
+
+/// Setup terminal, run [crate::layout::event_loop::main_app_loop], then teardown. Called by [run_tui_mode].
+pub fn run_ublx(params: event_loop::RunUblxParams<'_>) -> io::Result<()> {
+    let (mut categories, mut all_rows) = event_loop::load_snapshot_for_tui(params.db_path);
+    let mut state = setup::UblxState::new();
+
+    enable_raw_mode()?;
+    let mut out = io::stdout();
+    crossterm::execute!(out, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(out);
+    let mut terminal = Terminal::new(backend)?;
+
+    event_loop::main_app_loop(
+        &mut terminal,
+        &mut state,
+        &mut categories,
+        &mut all_rows,
+        &params,
+    )?;
+
+    disable_raw_mode()?;
+    crossterm::execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
     Ok(())
 }

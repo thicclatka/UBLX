@@ -1,3 +1,6 @@
+//! Load and fill right-pane content for the current selection (tree, file viewer, zahir JSON).
+//! Moved from layout so "get the data that goes into the view" lives with other handlers.
+
 use serde_json;
 use std::fs;
 use std::io::Read;
@@ -5,8 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::engine::db_ops;
-
-use super::setup::{CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState};
+use crate::layout::setup::{
+    CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState, ViewData,
+};
 
 /// Max bytes to load into the viewer for a single file (avoid OOM). Larger files are truncated.
 const VIEWER_MAX_BYTES: usize = 512 * 1024;
@@ -26,7 +30,6 @@ fn is_likely_binary(path: &Path) -> bool {
 }
 
 /// Resolve viewer string for a file: (directory), (binary file), (file not found), or file contents (with size limit).
-/// Future: per-filetype customization can be added here.
 fn file_content_for_viewer(path: &Path) -> Option<String> {
     let meta = match fs::metadata(path) {
         Ok(m) => m,
@@ -101,7 +104,7 @@ pub fn resolve_right_pane_content(
     state: &mut UblxState,
     dir_to_ublx: &Path,
     db_path: &Path,
-    view: &super::setup::ViewData,
+    view: &ViewData,
     all_rows: Option<&[TuiRow]>,
 ) -> RightPaneContent {
     let selected = state.content_state.selected().and_then(|i| view.row_at(i, all_rows));
@@ -181,6 +184,7 @@ pub fn resolve_right_pane_content(
     }
 }
 
+/// Build SectionedPreview (templates, metadata, writing) from zahir JSON value.
 pub fn sectioned_preview_from_zahir(value: &serde_json::Value) -> SectionedPreview {
     let templates = value
         .get("templates")

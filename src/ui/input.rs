@@ -3,7 +3,8 @@ use std::io;
 use std::path::Path;
 
 use crate::config::{write_local_theme, UblxPaths, OPERATION_NAME};
-use crate::layout::setup::{RightPaneContent, UblxActionContext, UblxState, ViewData};
+use crate::handlers::state_transitions::UblxActionContext;
+use crate::layout::setup::{RightPaneContent, UblxState, ViewData};
 use crate::layout::themes;
 use crate::ui::keymap::{key_action_setup, search_consumes, UblxAction};
 use crate::utils::notifications::{show_toast_slot, BumperBuffer};

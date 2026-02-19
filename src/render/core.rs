@@ -8,7 +8,6 @@ use ratatui::widgets::{Block, Paragraph};
 
 use super::delta;
 use super::panels;
-use super::right_pane;
 use super::search;
 use super::snapshot_panels;
 use crate::config::TOAST_CONFIG;
@@ -115,7 +114,7 @@ fn draw_main_content(
     match state.main_mode {
         setup::MainMode::Snapshot => {
             if state.viewer_fullscreen {
-                right_pane::draw_right_pane_fullscreen(f, state, right, body.main_area);
+                panels::draw_right_pane_fullscreen(f, state, right, body.main_area);
             } else {
                 snapshot_panels::draw_categories_panel(f, state, view, left);
                 snapshot_panels::draw_contents_panel(
@@ -126,7 +125,7 @@ fn draw_main_content(
                     args.dir_to_ublx,
                     middle,
                 );
-                right_pane::draw_right_pane(f, state, right, right_rect);
+                panels::draw_right_pane(f, state, right, right_rect);
             }
             search::draw_status_line(
                 f,
