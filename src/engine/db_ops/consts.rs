@@ -21,12 +21,14 @@ CREATE TABLE IF NOT EXISTS snapshot (
 ";
 
     /// Settings table: single row storing disk/tuning so we can skip disk check when .ublx exists.
+    /// config_source: 'local' | 'global' when global config exists; which config to use (stored in .ublx).
     pub const CREATE_SETTINGS: &'static str = "
 CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     num_threads INTEGER NOT NULL,
     drive_type TEXT NOT NULL,
-    parallel_walk INTEGER NOT NULL
+    parallel_walk INTEGER NOT NULL,
+    config_source TEXT
 );
 ";
 
@@ -64,7 +66,7 @@ impl UblxDbStatements {
     pub const UPDATE_SNAPSHOT_ZAHIR: &'static str =
         "UPDATE snapshot SET category = ?1, zahir_json = ?2 WHERE path = ?3";
 
-    pub const INSERT_SETTINGS: &'static str = "INSERT OR REPLACE INTO settings (id, num_threads, drive_type, parallel_walk) VALUES (1, ?1, ?2, ?3)";
+    pub const INSERT_SETTINGS: &'static str = "INSERT OR REPLACE INTO settings (id, num_threads, drive_type, parallel_walk, config_source) VALUES (1, ?1, ?2, ?3, ?4)";
 
     pub const INSERT_DELTA_LOG: &'static str = "INSERT INTO delta_log (created_ns, path, mtime_ns, size, hash, delta_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
 
@@ -77,12 +79,43 @@ impl UblxDbStatements {
     pub const SELECT_COUNT_DELTA_LOG_ROWS: &'static str =
         "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='delta_log'";
 
+    /// (path, zahir_json) for paths that have non-empty zahir_json. Used for prior-zahir reuse.
+    pub const SELECT_SNAPSHOT_PATH_ZAHIR_JSON: &'static str =
+        "SELECT path, zahir_json FROM snapshot WHERE zahir_json IS NOT NULL AND zahir_json != ''";
+
+    /// Distinct categories for TUI left bar.
+    pub const SELECT_SNAPSHOT_CATEGORIES: &'static str = "SELECT DISTINCT category FROM snapshot WHERE category IS NOT NULL AND category != '' ORDER BY category";
+
+    /// Distinct created_ns from delta_log, newest first (for Delta mode).
+    pub const SELECT_DELTA_LOG_SNAPSHOT_TIMESTAMPS: &'static str =
+        "SELECT DISTINCT created_ns FROM delta_log ORDER BY created_ns DESC";
+
+    /// (created_ns, path) for a given delta_type, newest first then path.
+    pub const SELECT_DELTA_LOG_ROWS_BY_TYPE: &'static str = "SELECT created_ns, path FROM delta_log WHERE delta_type = ?1 ORDER BY created_ns DESC, path";
+
+    /// (path, category, size) for TUI list; zahir_json loaded on demand for selected row.
+    pub const SELECT_SNAPSHOT_ROWS_FOR_TUI_BY_CATEGORY: &'static str =
+        "SELECT path, category, size FROM snapshot WHERE category = ?1 ORDER BY path";
+
+    /// (path, category, size) for TUI list; zahir_json loaded on demand for selected row.
+    pub const SELECT_SNAPSHOT_ROWS_FOR_TUI_ALL: &'static str =
+        "SELECT path, category, size FROM snapshot ORDER BY category, path";
+
+    /// zahir_json for a single path (for right-pane on-demand load).
+    pub const SELECT_SNAPSHOT_ZAHIR_JSON_BY_PATH: &'static str =
+        "SELECT zahir_json FROM snapshot WHERE path = ?1";
+
+    /// mtime_ns for a single path (for viewer footer last-modified).
+    pub const SELECT_SNAPSHOT_MTIME_BY_PATH: &'static str =
+        "SELECT mtime_ns FROM snapshot WHERE path = ?1";
+
     pub fn create_query_for_nefax_from_db(table_name: &str) -> String {
         format!("SELECT path, mtime_ns, size, hash FROM {}", table_name)
     }
 
     pub fn create_query_for_settings_from_db() -> String {
-        "SELECT num_threads, drive_type, parallel_walk FROM settings WHERE id = 1".to_string()
+        "SELECT num_threads, drive_type, parallel_walk, config_source FROM settings WHERE id = 1"
+            .to_string()
     }
 }
 
@@ -114,7 +147,7 @@ pub enum UblxDbCategory {
     UblxSettings,
     UblxLog,
     Git,
-    Hidden,
+    // Hidden,
     Directory,
     File,
     /// All zahirscan file types; use [ZahirFileType::as_metadata_name] for the display string.
@@ -128,7 +161,7 @@ impl UblxDbCategory {
             UblxDbCategory::UblxSettings => "UBLX Settings",
             UblxDbCategory::UblxLog => "UBLX Log",
             UblxDbCategory::Git => "Git",
-            UblxDbCategory::Hidden => "Hidden",
+            // UblxDbCategory::Hidden => "Hidden",
             UblxDbCategory::Directory => "Directory",
             UblxDbCategory::File => "File",
             UblxDbCategory::Zahir(ft) => ft.as_metadata_name(),
@@ -154,9 +187,9 @@ impl UblxDbCategory {
             return UblxDbCategory::Git.as_str().to_string();
         }
         // Check for hidden files
-        if Self::is_hidden_path(path_ref) {
-            return UblxDbCategory::Hidden.as_str().to_string();
-        }
+        // if Self::is_hidden_path(path_ref) {
+        //     return UblxDbCategory::Hidden.as_str().to_string();
+        // }
         // Get zahir file type or fallback
         Self::get_zahir_file_type_or_fallback(zahir_file_type, path_ref)
     }
@@ -174,6 +207,7 @@ impl UblxDbCategory {
     }
 
     #[inline]
+    #[allow(dead_code)]
     fn is_hidden_path(path_ref: &Path) -> bool {
         path_ref
             .file_name()

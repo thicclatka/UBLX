@@ -8,7 +8,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
@@ -144,7 +144,10 @@ const NOT_TITLE_FALLBACK: &str = " Notification ";
 
 /// Draw a small toast overlay (last N messages) in the given rect. Use for transient notifications.
 /// Title is the most recently pushed message's operation (e.g. " ublx-snapshot ") if set, else " Notification ".
+/// Clears the full rect first so overlapped content (e.g. scrollbar) does not show through.
 pub fn render_toast(f: &mut Frame, area: Rect, bumper: &BumperBuffer, dev: bool) {
+    f.render_widget(Clear, area);
+
     let lines = TOAST_CONFIG.display_lines_for(dev);
     let messages = bumper.last_n(lines);
     if messages.is_empty() {
@@ -168,7 +171,8 @@ pub fn render_toast(f: &mut Frame, area: Rect, bumper: &BumperBuffer, dev: bool)
         .collect();
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(Color::Cyan).bg(Color::Black))
+        .style(Style::default().bg(Color::Black))
         .title(title);
     let para = Paragraph::new(Text::from(lines))
         .block(block)

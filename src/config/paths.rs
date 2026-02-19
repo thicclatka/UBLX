@@ -1,14 +1,70 @@
 use anyhow::Result;
 use std::{
-    fs,
+    env, fs,
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
 
+/// Stable hex string for a path (for cache filenames). Same path => same string.
+fn path_to_hex(path: &Path) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    path.to_string_lossy().as_ref().hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
 /// Package name from Cargo; used as stem for all index files.
 pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
-
 /// Name of the Nefaxer DB file.
 pub const NEFAX_DB: &str = ".nefaxer";
+
+/// User config directory for ublx. Global config lives here (e.g. `ublx.toml`).
+/// - **Unix (macOS, Linux):** `~/.config/ublx`
+/// - **Windows:** `%APPDATA%\ublx`
+///   Returns `None` if the underlying env (e.g. `HOME`, `APPDATA`) is not set.
+fn config_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        env::var("APPDATA")
+            .ok()
+            .map(|p| PathBuf::from(p).join(PKG_NAME))
+    }
+    #[cfg(not(windows))]
+    {
+        env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".config").join(PKG_NAME))
+    }
+}
+
+/// User cache/data directory for ublx.
+/// - **Unix (macOS, Linux):** `~/.local/share/ublx`
+/// - **Windows:** `%LOCALAPPDATA%\ublx`
+///   Returns `None` if the underlying env (e.g. `HOME`, `LOCALAPPDATA`) is not set.
+fn cache_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        env::var("LOCALAPPDATA")
+            .ok()
+            .map(|p| PathBuf::from(p).join(PKG_NAME))
+    }
+    #[cfg(not(windows))]
+    {
+        env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".local").join("share").join(PKG_NAME))
+    }
+}
+
+/// Path to the global config file: `config_dir()/ublx.toml`. `None` if [config_dir] is unavailable.
+pub fn global_config_toml() -> Option<PathBuf> {
+    config_dir().map(|c| c.join(format!("{}.toml", PKG_NAME)))
+}
+
+/// Path to the cached "last applied" config for this dir: `cache_dir()/configs/[path_hex].toml`.
+/// Per-indexed-dir so global + local overlay is cached by path. Fallback when hot reload gets invalid config.
+pub fn last_applied_config_path(dir: &Path) -> Option<PathBuf> {
+    cache_dir().map(|c| c.join("configs").join(format!("{}.toml", path_to_hex(dir))))
+}
 
 /// Paths for the index DB and related files under an indexed dir_to_ublx_abs. All names use `PKG_NAME` (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
 #[derive(Clone, Debug)]
@@ -102,6 +158,20 @@ impl UblxPaths {
             }
         }
         Ok(())
+    }
+
+    pub fn global_config(&self) -> Option<PathBuf> {
+        global_config_toml()
+    }
+
+    /// User cache dir (`~/.local/share/ublx` or Windows equivalent). Used for last-applied config and future hot-reload fallback.
+    #[allow(dead_code)]
+    pub fn cache_dir(&self) -> Option<PathBuf> {
+        cache_dir()
+    }
+
+    pub fn last_applied_config_path(&self) -> Option<PathBuf> {
+        last_applied_config_path(&self.dir_to_ublx_abs)
     }
 }
 

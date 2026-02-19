@@ -16,7 +16,6 @@ pub struct UiStrings {
     pub templates: &'static str,
     pub metadata: &'static str,
     pub writing: &'static str,
-    pub search_title: &'static str,
     // Tab bar labels
     pub tab_templates: &'static str,
     pub tab_viewer: &'static str,
@@ -28,9 +27,10 @@ pub struct UiStrings {
     pub no_matches: &'static str,
     pub list_highlight: &'static str,
     pub list_unfocused: &'static str,
-    /// Search and hints
-    pub search_clear_hint_prefix: &'static str,
-    pub search_prompt: &'static str,
+    /// Status line: label before search query (e.g. "Search: ").
+    pub status_search_label: &'static str,
+    /// Status line: "Esc to clear" label next to search.
+    pub status_esc_to_clear: &'static str,
     /// Right pane placeholders
     pub not_available: &'static str,
     pub viewer_placeholder: &'static str,
@@ -42,6 +42,9 @@ pub struct UiStrings {
     pub delta_mod: &'static str,
     pub delta_removed: &'static str,
     pub delta_right_title: &'static str,
+    /// UBLX Settings config labels
+    pub global_config: &'static str,
+    pub local_config: &'static str,
 }
 
 impl UiStrings {
@@ -53,7 +56,6 @@ impl UiStrings {
             templates: " Templates ",
             metadata: " Metadata ",
             writing: " Writing ",
-            search_title: " Search ",
             tab_templates: "Templates",
             tab_viewer: "Viewer",
             tab_metadata: "Metadata",
@@ -63,8 +65,8 @@ impl UiStrings {
             no_matches: "(no matches)",
             list_highlight: "▌ ",
             list_unfocused: "  ",
-            search_clear_hint_prefix: " Esc to clear (current query: ",
-            search_prompt: " / ",
+            status_search_label: "Search: ",
+            status_esc_to_clear: "Esc to clear",
             not_available: "(not available for this item)",
             viewer_placeholder: "(viewer — file content will load here)",
             main_tab_snapshot: "Snapshot",
@@ -73,6 +75,8 @@ impl UiStrings {
             delta_mod: "Modified",
             delta_removed: "Removed",
             delta_right_title: " Snapshot overview ",
+            global_config: "Global",
+            local_config: "Local",
         }
     }
 }

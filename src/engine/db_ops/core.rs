@@ -13,8 +13,8 @@ use crate::handlers::nefax_ops::{NefaxDiff, NefaxResult};
 use crate::handlers::zahir_ops::{ZahirOutput, ZahirResult, get_zahir_output_by_path};
 use crate::utils::canonicalize_dir_to_ublx;
 
-/// One row from snapshot for TUI contents/preview: (path, category, zahir_json, size_bytes).
-pub type SnapshotTuiRow = (String, String, String, u64);
+/// One row from snapshot for TUI list: (path, category, size_bytes). zahir_json is loaded on demand for the selected row.
+pub type SnapshotTuiRow = (String, String, u64);
 
 /// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime). When `zahir_result` is None (no paths to zahir), all paths use prior.
 pub fn write_snapshot_to_db(
@@ -126,6 +126,7 @@ fn write_settings(conn: &Connection, s: &UblxSettings) -> Result<(), anyhow::Err
             s.num_threads as i64,
             s.drive_type,
             if s.parallel_walk { 1i64 } else { 0i64 },
+            s.config_source.as_deref(),
         ],
     )?;
     Ok(())
@@ -176,15 +177,22 @@ fn write_delta_log(
     Ok(())
 }
 
+/// Ensure settings table has config_source column (migration for existing DBs).
+fn ensure_settings_config_source(conn: &Connection) {
+    let _ = conn.execute("ALTER TABLE settings ADD COLUMN config_source TEXT", []);
+}
+
 /// Load cached settings from the ublx DB. Returns `None` if the settings table is empty (e.g. DB created before settings existed).
 pub fn load_settings_from_db(db_path: &Path) -> Result<Option<UblxSettings>, anyhow::Error> {
     let conn = Connection::open(db_path)?;
+    ensure_settings_config_source(&conn);
     let settings_query = UblxDbStatements::create_query_for_settings_from_db();
     conn.query_row(&settings_query, [], |row| {
         Ok(UblxSettings {
             num_threads: row.get::<_, i64>(0)? as usize,
             drive_type: row.get(1)?,
             parallel_walk: row.get::<_, i64>(2)? != 0,
+            config_source: row.get::<_, Option<String>>(3).ok().flatten(),
         })
     })
     .optional()
@@ -199,9 +207,7 @@ pub fn load_snapshot_zahir_json_map(
         return Ok(std::collections::HashMap::new());
     }
     let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare(
-        "SELECT path, zahir_json FROM snapshot WHERE zahir_json IS NOT NULL AND zahir_json != ''",
-    )?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_PATH_ZAHIR_JSON)?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
@@ -224,7 +230,7 @@ pub fn load_nefax_from_db(
 /// Load distinct categories from the snapshot table for the TUI. Returns empty vec if table missing or empty.
 pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
     let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare("SELECT DISTINCT category FROM snapshot WHERE category IS NOT NULL AND category != '' ORDER BY category")?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_CATEGORIES)?;
     let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
     let mut out = Vec::new();
     for r in rows {
@@ -236,8 +242,7 @@ pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::E
 /// Distinct snapshot timestamps from delta_log (created_ns), newest first. Empty if table missing or empty.
 pub fn load_delta_log_snapshot_timestamps(db_path: &Path) -> Result<Vec<i64>, anyhow::Error> {
     let conn = Connection::open(db_path)?;
-    let mut stmt =
-        conn.prepare("SELECT DISTINCT created_ns FROM delta_log ORDER BY created_ns DESC")?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_DELTA_LOG_SNAPSHOT_TIMESTAMPS)?;
     let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
     let mut out = Vec::new();
     for r in rows {
@@ -252,9 +257,7 @@ pub fn load_delta_log_rows_by_type(
     delta_type: &str,
 ) -> Result<Vec<(i64, String)>, anyhow::Error> {
     let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare(
-        "SELECT created_ns, path FROM delta_log WHERE delta_type = ?1 ORDER BY created_ns DESC, path",
-    )?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_DELTA_LOG_ROWS_BY_TYPE)?;
     let rows = stmt.query_map(rusqlite::params![delta_type], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
@@ -265,7 +268,7 @@ pub fn load_delta_log_rows_by_type(
     Ok(out)
 }
 
-/// Load snapshot rows (path, category, zahir_json, size) for the TUI. Optional category filter.
+/// Load snapshot rows (path, category, size) for the TUI. zahir_json is not loaded; use [load_zahir_json_for_path] for the selected row.
 pub fn load_snapshot_rows_for_tui(
     db_path: &Path,
     category_filter: Option<&str>,
@@ -273,15 +276,12 @@ pub fn load_snapshot_rows_for_tui(
     let conn = Connection::open(db_path)?;
     let mut out = Vec::new();
     if let Some(cat) = category_filter {
-        let mut stmt = conn.prepare(
-            "SELECT path, category, COALESCE(zahir_json, ''), size FROM snapshot WHERE category = ?1 ORDER BY path",
-        )?;
+        let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_ROWS_FOR_TUI_BY_CATEGORY)?;
         let rows = stmt.query_map(rusqlite::params![cat], |row| {
-            let size: i64 = row.get(3)?;
+            let size: i64 = row.get(2)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
                 size.max(0) as u64,
             ))
         })?;
@@ -289,15 +289,12 @@ pub fn load_snapshot_rows_for_tui(
             out.push(r?);
         }
     } else {
-        let mut stmt = conn.prepare(
-            "SELECT path, category, COALESCE(zahir_json, ''), size FROM snapshot ORDER BY category, path",
-        )?;
+        let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_ROWS_FOR_TUI_ALL)?;
         let rows = stmt.query_map([], |row| {
-            let size: i64 = row.get(3)?;
+            let size: i64 = row.get(2)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
                 size.max(0) as u64,
             ))
         })?;
@@ -306,4 +303,29 @@ pub fn load_snapshot_rows_for_tui(
         }
     }
     Ok(out)
+}
+
+/// Load zahir_json for a single path (for right-pane content). Returns None if path not found or zahir_json is null/empty.
+pub fn load_zahir_json_for_path(db_path: &Path, path: &str) -> Result<Option<String>, anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(None);
+    }
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_ZAHIR_JSON_BY_PATH)?;
+    let opt: Option<String> = stmt
+        .query_row(rusqlite::params![path], |row| row.get::<_, String>(0))
+        .optional()?;
+    Ok(opt.filter(|s| !s.is_empty()))
+}
+
+/// Load mtime_ns for a single path (for viewer footer last-modified). Returns None if path not found.
+pub fn load_mtime_for_path(db_path: &Path, path: &str) -> Result<Option<i64>, anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(None);
+    }
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_MTIME_BY_PATH)?;
+    stmt.query_row(rusqlite::params![path], |row| row.get::<_, i64>(0))
+        .optional()
+        .map_err(Into::into)
 }

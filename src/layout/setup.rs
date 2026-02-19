@@ -9,9 +9,8 @@ use crate::ui::keymap::UblxAction;
 
 use super::style;
 
-/// Snapshot row for TUI: (path_str, category, zahir_json).
-/// (path, category, zahir_json, size_bytes)
-pub type TuiRow = (String, String, String, u64);
+/// Row for TUI list: (path, category, size_bytes). Same as [crate::engine::db_ops::SnapshotTuiRow]; zahir_json is loaded on demand for the selected row.
+pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
 
 /// Category string for directories in the snapshot (matches [crate::engine::db_ops::UblxDbCategory]).
 pub const CATEGORY_DIRECTORY: &str = "Directory";
@@ -35,6 +34,8 @@ pub struct UblxState {
     pub toast_visible_until: Option<std::time::Instant>,
     /// Viewer takes full screen (hide categories and contents).
     pub viewer_fullscreen: bool,
+    /// For double-key detection (e.g. gg → ListTop). Cleared on any other key.
+    pub last_key_for_double: Option<char>,
 }
 
 impl UblxState {
@@ -55,6 +56,7 @@ impl UblxState {
             snapshot_requested: false,
             toast_visible_until: None,
             viewer_fullscreen: false,
+            last_key_for_double: None,
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));
@@ -85,16 +87,50 @@ pub struct SectionedPreview {
     pub writing: Option<String>,
 }
 
-// -----------------------------------------------------------------------------
-// Class 1: View data — filtered lists and selection clamping
-// -----------------------------------------------------------------------------
+/// Snapshot mode: indices into the single in-memory list (no copy). Delta mode: small owned vec.
+#[derive(Clone)]
+pub enum ViewContents {
+    /// Indices into the caller's all_rows slice (snapshot mode — one copy of list).
+    SnapshotIndices(Vec<usize>),
+    /// Owned rows for delta mode (added/mod/removed paths; typically small).
+    DeltaRows(Vec<TuiRow>),
+}
 
-/// Derived list data for this tick: filtered categories/contents and lengths for navigation.
+/// Derived list data for this tick: filtered categories and contents (by index or owned), lengths for navigation.
+/// Scalability: snapshot mode uses [ViewContents::SnapshotIndices] so we keep a single copy of the list; no cloned row vec.
 pub struct ViewData {
     pub filtered_categories: Vec<String>,
-    pub filtered_contents_rows: Vec<TuiRow>,
+    pub contents: ViewContents,
     pub category_list_len: usize,
     pub content_len: usize,
+}
+
+impl ViewData {
+    /// Row at content index `i`. For [ViewContents::SnapshotIndices], pass `Some(all_rows)`; for [ViewContents::DeltaRows], pass `None`.
+    pub fn row_at<'a>(&'a self, i: usize, all_rows: Option<&'a [TuiRow]>) -> Option<&'a TuiRow> {
+        match &self.contents {
+            ViewContents::SnapshotIndices(indices) => indices
+                .get(i)
+                .and_then(|&pos| all_rows.and_then(|r| r.get(pos))),
+            ViewContents::DeltaRows(rows) => rows.get(i),
+        }
+    }
+
+    /// Iterate over content rows. For [ViewContents::SnapshotIndices], pass `Some(all_rows)`; for [ViewContents::DeltaRows], pass `None`.
+    pub fn iter_contents<'a>(
+        &'a self,
+        all_rows: Option<&'a [TuiRow]>,
+    ) -> Box<dyn Iterator<Item = &'a TuiRow> + 'a> {
+        match &self.contents {
+            ViewContents::SnapshotIndices(indices) => {
+                let iter = indices
+                    .iter()
+                    .filter_map(move |&pos| all_rows.and_then(|r| r.get(pos)));
+                Box::new(iter)
+            }
+            ViewContents::DeltaRows(rows) => Box::new(rows.iter()),
+        }
+    }
 }
 
 /// Data for Delta mode: snapshot overview text and paths per delta type (from delta_log).
@@ -115,15 +151,6 @@ impl DeltaViewData {
         }
     }
 }
-
-// -----------------------------------------------------------------------------
-// Class 3: Draw — layout and render all panels
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Class 4: Input — poll key, map to action, apply to state
-// -----------------------------------------------------------------------------
-
 /// Context (view + right-pane content) required to apply actions to state.
 pub struct UblxActionContext<'a> {
     view: &'a ViewData,
@@ -149,6 +176,12 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::Help => state.help_visible = true,
             UblxAction::MainModeSnapshot => state.main_mode = MainMode::Snapshot,
             UblxAction::MainModeDelta => state.main_mode = MainMode::Delta,
+            UblxAction::MainModeToggle => {
+                state.main_mode = match state.main_mode {
+                    MainMode::Snapshot => MainMode::Delta,
+                    MainMode::Delta => MainMode::Snapshot,
+                };
+            }
             UblxAction::SearchStart => state.search_active = true,
             UblxAction::CycleRightPane => {
                 let available: Vec<RightPaneMode> = [
@@ -196,6 +229,34 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::ScrollPreviewDown => {
                 state.preview_scroll = state.preview_scroll.saturating_add(1);
             }
+            UblxAction::ListTop => match state.focus {
+                PanelFocus::Categories => {
+                    if self.view.category_list_len > 0 {
+                        state.category_state.select(Some(0));
+                    }
+                }
+                PanelFocus::Contents => {
+                    if self.view.content_len > 0 {
+                        state.content_state.select(Some(0));
+                    }
+                }
+            },
+            UblxAction::ListBottom => match state.focus {
+                PanelFocus::Categories => {
+                    if self.view.category_list_len > 0 {
+                        let last = self.view.category_list_len.saturating_sub(1);
+                        state.category_state.select(Some(last));
+                    }
+                }
+                PanelFocus::Contents => {
+                    if self.view.content_len > 0 {
+                        let last = self.view.content_len.saturating_sub(1);
+                        state.content_state.select(Some(last));
+                    }
+                }
+            },
+            UblxAction::PreviewTop => state.preview_scroll = 0,
+            UblxAction::PreviewBottom => state.preview_scroll = u16::MAX,
             UblxAction::MoveUp => match state.focus {
                 PanelFocus::Categories => {
                     if self.view.category_list_len > 0 {
@@ -259,6 +320,8 @@ pub struct RightPaneContent {
     pub viewer_path: Option<String>,
     /// When viewer shows file content, size in bytes from snapshot (for footer display).
     pub viewer_byte_size: Option<u64>,
+    /// When viewer shows file content, mtime in ns from snapshot (for footer last-modified).
+    pub viewer_mtime_ns: Option<i64>,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]

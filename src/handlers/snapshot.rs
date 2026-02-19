@@ -79,7 +79,25 @@ pub fn run_snapshot_pipeline_from_dir_db(
     run_snapshot_pipeline(dir, &ublx_opts, &prior_nefax, done_tx, bumper);
 }
 
-/// Push "Snapshot finished" and, if this run had changes, a summary line to the bumper.
+/// Spawn a thread that runs [run_snapshot_pipeline_from_dir_db]. Use from the TUI when the user triggers a snapshot (e.g. Shift+S).
+pub fn spawn_snapshot_from_dir_db(
+    dir: &Path,
+    db_path: &Path,
+    done_tx: Option<&mpsc::Sender<(usize, usize, usize)>>,
+    bumper: Option<&BumperBuffer>,
+) {
+    if let Some(tx) = done_tx {
+        let dir = dir.to_path_buf();
+        let db = db_path.to_path_buf();
+        let tx_clone = tx.clone();
+        let bumper_clone = bumper.cloned();
+        std::thread::spawn(move || {
+            run_snapshot_pipeline_from_dir_db(&dir, &db, Some(tx_clone), bumper_clone);
+        });
+    }
+}
+
+/// Push "Snapshot finished" and a second line: counts when there are changes, "No changes" at Info when there are not.
 pub fn push_snapshot_done_to_bumper(
     bumper: &BumperBuffer,
     added: usize,
@@ -97,5 +115,11 @@ pub fn push_snapshot_done_to_bumper(
             added, mod_count, removed
         );
         bumper.push_with_operation(log::Level::Info, summary, Some(OPERATION_NAME.snapshot()));
+    } else {
+        bumper.push_with_operation(
+            log::Level::Info,
+            "No changes".into(),
+            Some(OPERATION_NAME.snapshot()),
+        );
     }
 }

@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use rusqlite::{Connection, Statement};
 
@@ -81,6 +82,45 @@ pub fn insert_results_into_snapshot(
             zahir_json,
         ])?;
     }
+    insert_global_config_row_if_exists(stmt, ublx_paths)?;
+    Ok(())
+}
+
+/// If global config file exists, insert a row under UBLX Settings with path = absolute path to that config.
+fn insert_global_config_row_if_exists(
+    stmt: &mut Statement,
+    ublx_paths: Option<&UblxPaths>,
+) -> Result<(), anyhow::Error> {
+    let Some(paths) = ublx_paths else {
+        return Ok(());
+    };
+    let Some(global_path) = paths.global_config() else {
+        return Ok(());
+    };
+    if !global_path.exists() {
+        return Ok(());
+    }
+    let (mtime_ns, size) = fs::metadata(&global_path)
+        .map(|m| {
+            let mtime_ns = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos() as i64)
+                .unwrap_or(0);
+            let size = m.len() as i64;
+            (mtime_ns, size)
+        })
+        .unwrap_or((0, 0));
+    let path_str = global_path.to_string_lossy().into_owned();
+    stmt.execute(rusqlite::params![
+        path_str,
+        mtime_ns,
+        size,
+        None::<&[u8]>,
+        UblxDbCategory::UblxSettings.as_str(),
+        "",
+    ])?;
     Ok(())
 }
 
@@ -112,6 +152,7 @@ pub fn insert_nefax_only_into_snapshot(
             zahir_json,
         ])?;
     }
+    insert_global_config_row_if_exists(stmt, ublx_paths)?;
     Ok(())
 }
 

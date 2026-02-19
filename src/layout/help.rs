@@ -5,13 +5,16 @@ use ratatui::text::Text;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 pub const HELP_STR: &str = r#"1 / 2      main tabs: Snapshot / Delta
+Shift+Tab  alternate Snapshot ↔ Delta
 /          search (strict substring)
 Enter      hide search bar (filter stays); Esc to clear search
 Shift+S    take snapshot (runs in background; bumper when done)
 q / Esc    quit
 h / l      focus Categories / Contents
 j / k      move down / up in list
-Shift+↑↓   scroll right pane (or Shift+J / Shift+K)
+gg / G     go to top / bottom of list (Categories or Contents)
+Ctrl+b / Ctrl+e  viewer: scroll to beginning / end of preview
+Shift+↑↓   scroll right pane; or double-tap Shift+J / Shift+K to scroll down / up
 Tab        switch focus
 t / v / m / w  right pane: Templates / Viewer / Metadata / Writing (m,w only if data exists)
 Shift+V        cycle right pane tab (only tabs with data)

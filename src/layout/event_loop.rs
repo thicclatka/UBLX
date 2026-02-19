@@ -3,8 +3,6 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use chrono::{DateTime, Local};
-
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -14,15 +12,35 @@ use ratatui::prelude::CrosstermBackend;
 use crate::config::TOAST_CONFIG;
 use crate::engine::db_ops;
 use crate::handlers::snapshot;
-use crate::layout::{setup, viewing_pane};
-use crate::render::draw_ublx_frame;
+use crate::layout::{filter, setup, viewing_pane};
+use crate::render::{draw_ublx_frame, DrawFrameArgs};
 use crate::ui::input::handle_ublx_input;
-use crate::utils::notifications;
+use crate::utils::{format::format_timestamp_ns, notifications};
+
+/// Parameters for the TUI event loop.
+pub struct RunUblxParams<'a> {
+    pub db_path: &'a Path,
+    pub dir_to_ublx: &'a Path,
+    pub snapshot_done_rx: Option<mpsc::Receiver<(usize, usize, usize)>>,
+    pub snapshot_done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
+    pub bumper: Option<&'a notifications::BumperBuffer>,
+    pub dev: bool,
+    pub theme: Option<String>,
+    pub transparent: bool,
+}
 
 /// Sort categories and contents alphanumeric. Rows are ordered by path only.
 fn sort_categories_and_rows(categories: &mut [String], all_rows: &mut [setup::TuiRow]) {
     categories.sort();
     all_rows.sort_by(|a, b| a.0.cmp(&b.0));
+}
+
+/// Load snapshot categories and rows for the TUI, sorted. Use at startup and when a snapshot run completes.
+fn load_snapshot_for_tui(db_path: &Path) -> (Vec<String>, Vec<setup::TuiRow>) {
+    let mut categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
+    let mut all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
+    sort_categories_and_rows(&mut categories, &mut all_rows);
+    (categories, all_rows)
 }
 
 /// Compute filtered categories and contents from search + category selection; clamp list
@@ -32,20 +50,9 @@ pub fn build_view_data(
     categories: &[String],
     all_rows: &[setup::TuiRow],
 ) -> setup::ViewData {
-    let filtered_categories: Vec<String> = if state.search_query.trim().is_empty() {
-        categories.to_vec()
-    } else {
-        let q = state.search_query.trim();
-        categories
-            .iter()
-            .filter(|cat| {
-                all_rows
-                    .iter()
-                    .any(|(path, c, _, _)| c == *cat && (path.contains(q) || c.contains(q)))
-            })
-            .cloned()
-            .collect()
-    };
+    let search_query = state.search_query.trim();
+    let filtered_categories =
+        filter::categories_for_search(categories, all_rows, search_query);
     let category_idx = state.category_state.selected().unwrap_or(0);
     let selected_category = if category_idx == 0 {
         None
@@ -54,30 +61,17 @@ pub fn build_view_data(
             .get(category_idx - 1)
             .map(String::as_str)
     };
-    let contents_rows: Vec<setup::TuiRow> = match selected_category {
-        None => all_rows.to_vec(),
-        Some(cat) => all_rows
-            .iter()
-            .filter(|(_, c, _, _)| c == cat)
-            .cloned()
-            .collect(),
-    };
-    let filtered_contents_rows: Vec<setup::TuiRow> = if state.search_query.trim().is_empty() {
-        contents_rows
-    } else {
-        let q = state.search_query.trim();
-        contents_rows
-            .iter()
-            .filter(|(path, category, _, _)| path.contains(q) || category.contains(q))
-            .cloned()
-            .collect()
-    };
+    let contents_indices = filter::content_indices_for_view(
+        all_rows,
+        selected_category,
+        search_query,
+    );
     let category_list_len = 1 + filtered_categories.len();
     if category_list_len > 0 {
         let idx = category_idx.min(category_list_len.saturating_sub(1));
         state.category_state.select(Some(idx));
     }
-    let content_len = filtered_contents_rows.len();
+    let content_len = contents_indices.len();
     if content_len > 0 {
         let sel = state
             .content_state
@@ -96,23 +90,9 @@ pub fn build_view_data(
     }
     setup::ViewData {
         filtered_categories,
-        filtered_contents_rows,
+        contents: setup::ViewContents::SnapshotIndices(contents_indices),
         category_list_len,
         content_len,
-    }
-}
-
-/// Format Unix timestamp in nanoseconds as local date-time (e.g. "2025-02-06 14:30:00").
-fn format_timestamp_ns(ns: i64) -> String {
-    const NS_PER_S: i64 = 1_000_000_000;
-    let secs = ns / NS_PER_S;
-    let subsec = ((ns % NS_PER_S) + NS_PER_S) % NS_PER_S;
-    match DateTime::from_timestamp(secs, subsec as u32) {
-        Some(utc) => {
-            let local = utc.with_timezone(&Local);
-            local.format("%Y-%m-%d %H:%M:%S").to_string()
-        }
-        None => format!("{} (invalid)", ns),
     }
 }
 
@@ -185,18 +165,20 @@ pub fn clamp_delta_selection(state: &mut setup::UblxState, delta: &setup::DeltaV
 }
 
 /// ViewData for input/navigation when in Delta mode (3 categories, content_len = current type's path count).
+/// Uses owned rows (delta list is typically small).
 pub fn view_data_for_delta_mode(
     state: &setup::UblxState,
     delta: &setup::DeltaViewData,
 ) -> setup::ViewData {
     let cat_idx = state.category_state.selected().unwrap_or(0).min(2);
     let paths = delta.paths_by_index(cat_idx);
+    let rows: Vec<setup::TuiRow> = paths
+        .iter()
+        .map(|p| (p.clone(), String::new(), 0u64))
+        .collect();
     setup::ViewData {
         filtered_categories: vec!["Added".into(), "Mod".into(), "Removed".into()],
-        filtered_contents_rows: paths
-            .iter()
-            .map(|p| (p.clone(), String::new(), String::new(), 0))
-            .collect(),
+        contents: setup::ViewContents::DeltaRows(rows),
         category_list_len: 3,
         content_len: paths.len(),
     }
@@ -207,17 +189,8 @@ pub fn view_data_for_delta_mode(
 /// 2. **Right-pane content** — `resolve_right_pane_content`: templates/metadata/writing/viewer for current selection.
 /// 3. **Draw** — `draw_ublx_frame`: layout and render categories, contents, right pane, search, help.
 /// 4. **Input** — `handle_ublx_input`: poll key, map to action, apply to state; returns true if quit.
-pub fn run_ublx(
-    db_path: &Path,
-    dir_to_ublx: &Path,
-    snapshot_done_rx: Option<mpsc::Receiver<(usize, usize, usize)>>,
-    snapshot_done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
-    bumper: Option<&notifications::BumperBuffer>,
-    dev: bool,
-) -> io::Result<()> {
-    let mut categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
-    let mut all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
-    sort_categories_and_rows(&mut categories, &mut all_rows);
+pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
+    let (mut categories, mut all_rows) = load_snapshot_for_tui(params.db_path);
 
     let mut state = setup::UblxState::new();
 
@@ -235,71 +208,69 @@ pub fn run_ublx(
             state.toast_visible_until = None;
         }
         if state.snapshot_requested {
-            if let Some(tx) = snapshot_done_tx.as_ref() {
-                let dir = dir_to_ublx.to_path_buf();
-                let db = db_path.to_path_buf();
-                let tx_clone = tx.clone();
-                let bumper_clone = bumper.cloned();
-                std::thread::spawn(move || {
-                    snapshot::run_snapshot_pipeline_from_dir_db(
-                        &dir,
-                        &db,
-                        Some(tx_clone),
-                        bumper_clone,
-                    );
-                });
-            }
-            // when snapshot is done, reset the snapshot_requested flag
+            snapshot::spawn_snapshot_from_dir_db(
+                params.dir_to_ublx,
+                params.db_path,
+                params.snapshot_done_tx.as_ref(),
+                params.bumper,
+            );
             state.snapshot_requested = false;
         }
-        if let Some(ref rx) = snapshot_done_rx
+        if let Some(ref rx) = params.snapshot_done_rx
             && let Ok((added, mod_count, removed)) = rx.try_recv()
         {
-            categories = db_ops::load_snapshot_categories(db_path).unwrap_or_default();
-            all_rows = db_ops::load_snapshot_rows_for_tui(db_path, None).unwrap_or_default();
-            sort_categories_and_rows(&mut categories, &mut all_rows);
-            if let Some(b) = bumper {
+            (categories, all_rows) = load_snapshot_for_tui(params.db_path);
+            if let Some(b) = params.bumper {
                 snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
             }
             state.toast_visible_until = Some(Instant::now() + TOAST_CONFIG.duration);
         }
-        if dev {
+        if params.dev {
             notifications::move_log_events();
         }
 
-        let (view, right_content, delta_data) = if state.main_mode == setup::MainMode::Delta {
-            let d = build_delta_view_data(db_path);
-            clamp_delta_selection(&mut state, &d);
-            let view = view_data_for_delta_mode(&state, &d);
-            let right_content = setup::RightPaneContent {
-                templates: String::new(),
-                metadata: None,
-                writing: None,
-                viewer: None,
-                viewer_path: None,
-                viewer_byte_size: None,
+        let (view, right_content, delta_data, rows_for_draw) =
+            if state.main_mode == setup::MainMode::Delta {
+                let d = build_delta_view_data(params.db_path);
+                clamp_delta_selection(&mut state, &d);
+                let view = view_data_for_delta_mode(&state, &d);
+                let right_content = setup::RightPaneContent {
+                    templates: String::new(),
+                    metadata: None,
+                    writing: None,
+                    viewer: None,
+                    viewer_path: None,
+                    viewer_byte_size: None,
+                    viewer_mtime_ns: None,
+                };
+                (view, right_content, Some(d), None)
+            } else {
+                let view = build_view_data(&mut state, &categories, &all_rows);
+                let right_content = viewing_pane::resolve_right_pane_content(
+                    &mut state,
+                    params.dir_to_ublx,
+                    params.db_path,
+                    &view,
+                    Some(&all_rows),
+                );
+                (view, right_content, None, Some(all_rows.as_slice()))
             };
-            (view, right_content, Some(d))
-        } else {
-            let view = build_view_data(&mut state, &categories, &all_rows);
-            let right_content = viewing_pane::resolve_right_pane_content(
-                &mut state,
-                dir_to_ublx,
-                &view.filtered_contents_rows,
-            );
-            (view, right_content, None)
+        let latest_snapshot_ns = (state.main_mode == setup::MainMode::Snapshot)
+            .then(|| db_ops::load_delta_log_snapshot_timestamps(params.db_path).ok())
+            .flatten()
+            .and_then(|v| v.into_iter().next());
+        let draw_args = DrawFrameArgs {
+            delta_data: delta_data.as_ref(),
+            all_rows: rows_for_draw,
+            dir_to_ublx: (state.main_mode == setup::MainMode::Snapshot).then_some(params.dir_to_ublx),
+            theme_name: params.theme.as_deref(),
+            transparent: params.transparent,
+            latest_snapshot_ns,
+            bumper: params.bumper,
+            dev: params.dev,
         };
-        let bumper_ref = bumper;
         terminal.draw(|f| {
-            draw_ublx_frame(
-                f,
-                &mut state,
-                &view,
-                &right_content,
-                delta_data.as_ref(),
-                bumper_ref,
-                dev,
-            )
+            draw_ublx_frame(f, &mut state, &view, &right_content, &draw_args)
         })?;
         if handle_ublx_input(&mut state, &view, &right_content)? {
             break;

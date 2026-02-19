@@ -1,78 +1,45 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Paragraph, ScrollbarState, Wrap};
 
 use super::consts::UiStrings;
+use super::formatters::markdown::is_markdown_path;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
 use crate::layout::style;
+use crate::utils::format_bytes;
 
 const UI: UiStrings = UiStrings::new();
 
-const ROUND_LEFT: char = '\u{e0b6}';
-const ROUND_RIGHT: char = '\u{e0b4}';
-
-/// One tab as a powerline-style node: round + " label " + round. No separator.
-/// Used for right-pane tabs and main (Snapshot/Delta) tabs.
-pub fn tab_node_segment(label: &str, active: bool) -> Vec<Span<'static>> {
-    let (circle_style, node_style) = if active {
-        (
-            Style::default().fg(Color::Rgb(70, 70, 90)),
-            style::tab_active(),
-        )
-    } else {
-        (
-            Style::default().fg(Color::Rgb(45, 45, 45)),
-            style::tab_inactive(),
-        )
-    };
-    vec![
-        Span::styled(ROUND_LEFT.to_string(), circle_style),
-        Span::styled(format!(" {} ", label), node_style),
-        Span::styled(ROUND_RIGHT.to_string(), circle_style),
-    ]
-}
-
-fn footer_node_line(size_str: &str) -> Line<'static> {
-    let node_color = Color::Rgb(55, 55, 65);
-    let circle_style = Style::default().fg(node_color).bg(Color::Black);
-    let node_style = Style::default().bg(node_color);
-    Line::from(vec![
-        Span::styled(ROUND_LEFT.to_string(), circle_style),
-        Span::styled(format!(" {} ", size_str), node_style),
-        Span::styled(ROUND_RIGHT.to_string(), circle_style),
-    ])
-    .right_aligned()
-}
-
-/// Format byte count as "B", "KB", "MB", "GB" etc.
-pub fn format_bytes(n: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    if n < KB {
-        format!("{} B", n)
-    } else if n < MB {
-        format!("{:.2} KB", n as f64 / KB as f64)
-    } else if n < GB {
-        format!("{:.2} MB", n as f64 / MB as f64)
-    } else {
-        format!("{:.2} GB", n as f64 / GB as f64)
+/// Approximate number of wrapped lines for viewer text at the given width (for scroll clamping).
+fn wrapped_line_count(text: &str, width: u16) -> u16 {
+    let w = width as usize;
+    if w == 0 {
+        return 0;
     }
+    text.lines()
+        .map(|line| (line.chars().count().div_ceil(w)).max(1))
+        .sum::<usize>()
+        .min(u16::MAX as usize) as u16
 }
 
-fn is_markdown_path(path: &str) -> bool {
-    path.ends_with(".md") || path.ends_with(".markdown")
+/// Clamp preview_scroll so we don't scroll past content (which would blank the viewer).
+fn clamped_preview_scroll(scroll: u16, viewer_text: Option<&str>, width: u16, height: u16) -> u16 {
+    let Some(text) = viewer_text else {
+        return 0;
+    };
+    let total = wrapped_line_count(text, width);
+    let max_scroll = total.saturating_sub(height);
+    scroll.min(max_scroll)
 }
 
 /// Viewer tab only: if markdown, return styled [ratatui::text::Text] (e.g. nice headers); else plain string.
 /// `content_width` is used for full-width horizontal rules when rendering markdown.
-fn viewer_display_text(right: &RightPaneContent, content_width: u16) -> ratatui::text::Text<'static> {
-    let raw = right
-        .viewer
-        .as_deref()
-        .unwrap_or(UI.viewer_placeholder);
+fn viewer_display_text(
+    right: &RightPaneContent,
+    content_width: u16,
+) -> ratatui::text::Text<'static> {
+    let raw = right.viewer.as_deref().unwrap_or(UI.viewer_placeholder);
     if let Some(ref path) = right.viewer_path
         && is_markdown_path(path)
     {
@@ -132,26 +99,28 @@ fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> 
 
 pub(super) fn draw_right_pane(
     f: &mut Frame,
-    state: &UblxState,
+    state: &mut UblxState,
     right: &RightPaneContent,
     area: Rect,
 ) {
-    let show_size_on_border =
-        state.right_pane_mode == RightPaneMode::Viewer && right.viewer_byte_size.is_some();
-    let size_str =
-        show_size_on_border.then(|| right.viewer_byte_size.map(format_bytes).unwrap_or_default());
-    let right_block = if let Some(ref s) = size_str {
+    let show_footer = state.right_pane_mode == RightPaneMode::Viewer
+        && (right.viewer_byte_size.is_some() || right.viewer_mtime_ns.is_some());
+    let size_str = right.viewer_byte_size.map(format_bytes);
+    let footer_line = show_footer
+        .then(|| style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns))
+        .flatten();
+    let right_block = if let Some(ref line) = footer_line {
         Block::default()
             .borders(Borders::ALL)
             .title(title(state))
-            .title_bottom(footer_node_line(s))
+            .title_bottom(line.clone())
     } else {
         Block::default().borders(Borders::ALL).title(title(state))
     };
     let tabs = visible_tabs(right);
     let tab_spans: Vec<Span> = tabs
         .iter()
-        .flat_map(|(mode, label)| tab_node_segment(label, *mode == state.right_pane_mode))
+        .flat_map(|(mode, label)| style::tab_node_segment(label, *mode == state.right_pane_mode))
         .collect();
     let right_inner = right_block.inner(area);
     let constraints = &[
@@ -167,38 +136,110 @@ pub(super) fn draw_right_pane(
 
     f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
 
-    f.render_widget(
-        Paragraph::new(content_display_text(state, right, content_chunks[1].width))
-            .wrap(Wrap { trim: false })
-            .scroll((state.preview_scroll, 0)),
-        content_chunks[1],
+    let content_rect = content_chunks[1];
+    let show_scrollbar = state.right_pane_mode == RightPaneMode::Viewer;
+    let (text_rect, scrollbar_rect) = if show_scrollbar && content_rect.width > 1 {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .split(content_rect);
+        (chunks[0], chunks[1])
+    } else {
+        (content_rect, Rect::default())
+    };
+    let scroll_y = clamped_preview_scroll(
+        state.preview_scroll,
+        right.viewer.as_deref(),
+        text_rect.width,
+        text_rect.height,
     );
+    if state.right_pane_mode == RightPaneMode::Viewer && state.preview_scroll > scroll_y {
+        state.preview_scroll = scroll_y;
+    }
+    f.render_widget(
+        Paragraph::new(content_display_text(state, right, text_rect.width))
+            .style(style::text_style())
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_y, 0)),
+        text_rect,
+    );
+    if show_scrollbar && scrollbar_rect.width > 0 && scrollbar_rect.height > 0 {
+        let total = right
+            .viewer
+            .as_deref()
+            .map(|t| wrapped_line_count(t, text_rect.width) as usize)
+            .unwrap_or(0);
+        let viewport = text_rect.height as usize;
+        let max_scroll = total.saturating_sub(viewport);
+        if max_scroll > 0 {
+            let content_len = max_scroll + 1;
+            let mut scrollbar_state = ScrollbarState::new(content_len)
+                .position(scroll_y as usize)
+                .viewport_content_length(1);
+            f.render_stateful_widget(style::viewer_scrollbar(), scrollbar_rect, &mut scrollbar_state);
+        }
+    }
 }
 
 /// Draw the viewer tab content in full screen (hide categories and contents). Esc to exit.
 pub(super) fn draw_viewer_fullscreen(
     f: &mut Frame,
-    state: &UblxState,
+    state: &mut UblxState,
     right: &RightPaneContent,
     area: Rect,
 ) {
     let size_str = right.viewer_byte_size.map(format_bytes);
-    let block = match &size_str {
-        Some(s) => Block::default()
+    let footer_line = style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns);
+    let block = if let Some(line) = footer_line {
+        Block::default()
             .borders(Borders::ALL)
             .title(" Viewer (Esc to exit fullscreen) ")
-            .title_bottom(footer_node_line(s)),
-        None => Block::default()
+            .title_bottom(line)
+    } else {
+        Block::default()
             .borders(Borders::ALL)
-            .title(" Viewer (Esc to exit fullscreen) "),
+            .title(" Viewer (Esc to exit fullscreen) ")
     };
     let inner = block.inner(area);
-    let viewer_content = viewer_display_text(right, inner.width);
+    let (text_rect, scrollbar_rect) = if inner.width > 1 {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .split(inner);
+        (chunks[0], chunks[1])
+    } else {
+        (inner, Rect::default())
+    };
+    let viewer_content = viewer_display_text(right, text_rect.width);
+    let scroll_y = clamped_preview_scroll(
+        state.preview_scroll,
+        right.viewer.as_deref(),
+        text_rect.width,
+        text_rect.height,
+    );
+    if state.preview_scroll > scroll_y {
+        state.preview_scroll = scroll_y;
+    }
     f.render_widget(&block, area);
     f.render_widget(
         Paragraph::new(viewer_content)
+            .style(style::text_style())
             .wrap(Wrap { trim: false })
-            .scroll((state.preview_scroll, 0)),
-        inner,
+            .scroll((scroll_y, 0)),
+        text_rect,
     );
+    let total = right
+        .viewer
+        .as_deref()
+        .map(|t| wrapped_line_count(t, text_rect.width) as usize)
+        .unwrap_or(0);
+    let viewport = text_rect.height as usize;
+    let max_scroll = total.saturating_sub(viewport);
+    if scrollbar_rect.width > 0 && scrollbar_rect.height > 0 && max_scroll > 0 {
+        let content_len = max_scroll + 1;
+        let mut scrollbar_state = ScrollbarState::new(content_len)
+            .position(scroll_y as usize)
+            .viewport_content_length(1);
+        f.render_stateful_widget(style::viewer_scrollbar(), scrollbar_rect, &mut scrollbar_state);
+    }
 }

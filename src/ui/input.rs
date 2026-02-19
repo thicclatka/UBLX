@@ -17,7 +17,14 @@ pub fn handle_ublx_input(
         return Ok(false);
     };
     let has_search_filter = !state.search_query.is_empty();
-    let action = key_action_setup(e, state.search_active, has_search_filter);
+    let result = key_action_setup(
+        e,
+        state.search_active,
+        has_search_filter,
+        state.last_key_for_double,
+    );
+    state.last_key_for_double = result.last_key_for_double;
+    let action = result.action;
     if state.help_visible {
         state.help_visible = false;
         return Ok(false);

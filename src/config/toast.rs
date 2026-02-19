@@ -1,6 +1,8 @@
 pub struct ToastConfig {
     pub width: u16,
     pub height: u16,
+    pub hz_padding: u16,
+    pub vt_padding: u16,
     pub duration: std::time::Duration,
     pub display_lines: usize,
     pub bumper_cap: usize,
@@ -13,11 +15,7 @@ pub struct ToastConfig {
 
 /// Pick `dev_val` when `dev` is true, else `normal`. Used by ToastConfig `*_for(dev)` methods.
 fn pick<T>(dev: bool, normal: T, dev_val: T) -> T {
-    if dev {
-        dev_val
-    } else {
-        normal
-    }
+    if dev { dev_val } else { normal }
 }
 
 impl ToastConfig {
@@ -25,6 +23,8 @@ impl ToastConfig {
         Self {
             width: 44,
             height: 4,
+            hz_padding: 1,
+            vt_padding: 2,
             duration: std::time::Duration::from_secs(4),
             display_lines: 2,
             bumper_cap: 100,

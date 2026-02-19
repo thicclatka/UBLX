@@ -1,8 +1,10 @@
 use serde_json;
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use crate::engine::db_ops;
 
 use super::setup::{CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState};
 
@@ -49,62 +51,84 @@ fn file_content_for_viewer(path: &Path) -> Option<String> {
     Some(out)
 }
 
+/// Run `tree` on `full_path`; use cached result if keyed by `path`. Updates state.cached_tree.
+fn tree_for_path(state: &mut UblxState, path: &str, full_path: &Path) -> String {
+    let use_cache = state
+        .cached_tree
+        .as_ref()
+        .is_some_and(|(cached_path, _)| cached_path == path);
+    if use_cache {
+        state.cached_tree.as_ref().unwrap().1.clone()
+    } else {
+        match Command::new("tree").arg(full_path).output() {
+            Ok(out) if out.status.success() => {
+                let text = String::from_utf8_lossy(&out.stdout).into_owned();
+                state.cached_tree = Some((path.to_string(), text.clone()));
+                text
+            }
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                state.cached_tree = None;
+                format!(
+                    "tree failed: {}",
+                    stderr.trim().lines().next().unwrap_or("unknown")
+                )
+            }
+            Err(e) => {
+                state.cached_tree = None;
+                format!("tree not available: {}", e)
+            }
+        }
+    }
+}
+
+fn tree_content(tree_str: String) -> RightPaneContent {
+    RightPaneContent {
+        templates: "no template found".to_string(),
+        metadata: None,
+        writing: None,
+        viewer: Some(tree_str),
+        viewer_path: None,
+        viewer_byte_size: None,
+        viewer_mtime_ns: None,
+    }
+}
+
 /// Resolve right-pane strings from current selection: directory => tree; file => zahir sections.
+/// zahir_json is loaded from the DB only for the selected row (lazy load).
+/// For snapshot mode pass `Some(all_rows)`; for delta mode pass `None` (view holds rows).
 pub fn resolve_right_pane_content(
     state: &mut UblxState,
     dir_to_ublx: &Path,
-    filtered_contents_rows: &[TuiRow],
+    db_path: &Path,
+    view: &super::setup::ViewData,
+    all_rows: Option<&[TuiRow]>,
 ) -> RightPaneContent {
-    let selected = state
-        .content_state
-        .selected()
-        .and_then(|i| filtered_contents_rows.get(i));
+    let selected = state.content_state.selected().and_then(|i| view.row_at(i, all_rows));
     match selected {
-        Some((path, category, zahir_json, size)) => {
+        Some((path, category, size)) => {
             if *category == CATEGORY_DIRECTORY {
-                let tree_str = {
-                    let use_cache = state
-                        .cached_tree
-                        .as_ref()
-                        .is_some_and(|(cached_path, _)| cached_path == path);
-                    if use_cache {
-                        state.cached_tree.as_ref().unwrap().1.clone()
-                    } else {
-                        let full_path = dir_to_ublx.join(Path::new(path.as_str()));
-                        match Command::new("tree").arg(&full_path).output() {
-                            Ok(out) if out.status.success() => {
-                                let text = String::from_utf8_lossy(&out.stdout).into_owned();
-                                state.cached_tree = Some((path.clone(), text.clone()));
-                                text
-                            }
-                            Ok(out) => {
-                                let stderr = String::from_utf8_lossy(&out.stderr);
-                                state.cached_tree = None;
-                                format!(
-                                    "tree failed: {}",
-                                    stderr.trim().lines().next().unwrap_or("unknown")
-                                )
-                            }
-                            Err(e) => {
-                                state.cached_tree = None;
-                                format!("tree not available: {}", e)
-                            }
-                        }
-                    }
-                };
-                RightPaneContent {
-                    templates: "no template found".to_string(),
-                    metadata: None,
-                    writing: None,
-                    viewer: Some(tree_str),
-                    viewer_path: None,
-                    viewer_byte_size: None,
-                }
-            } else {
-                state.cached_tree = None;
                 let full_path = dir_to_ublx.join(Path::new(path.as_str()));
+                let tree_str = tree_for_path(state, path, &full_path);
+                tree_content(tree_str)
+            } else {
+                let full_path: PathBuf = if Path::new(path.as_str()).is_absolute() {
+                    PathBuf::from(path.as_str())
+                } else {
+                    dir_to_ublx.join(Path::new(path.as_str()))
+                };
+                if full_path.is_dir() {
+                    let tree_str = tree_for_path(state, path, &full_path);
+                    return tree_content(tree_str);
+                }
+                state.cached_tree = None;
                 let viewer_str = file_content_for_viewer(&full_path);
                 let viewer_byte_size = viewer_str.as_ref().map(|_| *size);
+                let viewer_mtime_ns = db_ops::load_mtime_for_path(db_path, path).ok().flatten();
+                let zahir_json: String = db_ops::load_zahir_json_for_path(db_path, path)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
                 if zahir_json.is_empty() {
                     RightPaneContent {
                         templates: "no template found".to_string(),
@@ -113,9 +137,10 @@ pub fn resolve_right_pane_content(
                         viewer: viewer_str,
                         viewer_path: Some(path.clone()),
                         viewer_byte_size,
+                        viewer_mtime_ns,
                     }
                 } else {
-                    match serde_json::from_str::<serde_json::Value>(zahir_json) {
+                    match serde_json::from_str::<serde_json::Value>(&zahir_json) {
                         Ok(v) => {
                             let s = sectioned_preview_from_zahir(&v);
                             RightPaneContent {
@@ -125,6 +150,7 @@ pub fn resolve_right_pane_content(
                                 viewer: viewer_str,
                                 viewer_path: Some(path.clone()),
                                 viewer_byte_size,
+                                viewer_mtime_ns,
                             }
                         }
                         _ => RightPaneContent {
@@ -134,6 +160,7 @@ pub fn resolve_right_pane_content(
                             viewer: viewer_str,
                             viewer_path: Some(path.clone()),
                             viewer_byte_size,
+                            viewer_mtime_ns,
                         },
                     }
                 }
@@ -148,6 +175,7 @@ pub fn resolve_right_pane_content(
                 viewer: None,
                 viewer_path: None,
                 viewer_byte_size: None,
+                viewer_mtime_ns: None,
             }
         }
     }

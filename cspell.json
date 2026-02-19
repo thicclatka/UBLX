@@ -5,6 +5,7 @@
   "dictionaries": [],
   "words": [
     "AUTOINCREMENT",
+    "cmark",
     "crossterm",
     "Deque",
     "ratatui",

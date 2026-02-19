@@ -7,6 +7,10 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 
+pub fn is_markdown_path(path: &str) -> bool {
+    path.ends_with(".md") || path.ends_with(".markdown")
+}
+
 /// One block of markdown (heading, paragraph, code block, list, etc.).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Block {

@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use crate::handlers::nefax_ops::NefaxResult;
 use crate::handlers::snapshot;
-use crate::layout::event_loop::run_ublx;
+use crate::layout::event_loop::{run_ublx, RunUblxParams};
 use crate::utils::notifications;
 
 use crate::config::UblxOpts;
@@ -71,14 +71,16 @@ fn run_tui_mode(
         snapshot::run_snapshot_pipeline(&dir_clone, &opts_clone, &prior_clone, Some(tx), None);
     });
 
-    run_ublx(
+    run_ublx(RunUblxParams {
         db_path,
         dir_to_ublx,
-        Some(rx),
-        Some(tx_for_tui),
+        snapshot_done_rx: Some(rx),
+        snapshot_done_tx: Some(tx_for_tui),
         bumper,
         dev,
-    )?;
+        theme: ublx_opts.theme.clone(),
+        transparent: ublx_opts.transparent,
+    })?;
     if let Some(b) = bumper
         && dev
     {
