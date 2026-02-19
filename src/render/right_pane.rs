@@ -1,15 +1,14 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Rect};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, ScrollbarState, Wrap};
+use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use super::consts::UiStrings;
 use super::formatters::markdown::is_markdown_path;
+use super::scrollable_content;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
 use crate::layout::style;
+use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::format_bytes;
-
-const UI: UiStrings = UiStrings::new();
 
 /// Approximate number of wrapped lines for viewer text at the given width (for scroll clamping).
 fn wrapped_line_count(text: &str, width: u16) -> u16 {
@@ -23,23 +22,16 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
         .min(u16::MAX as usize) as u16
 }
 
-/// Clamp preview_scroll so we don't scroll past content (which would blank the viewer).
-fn clamped_preview_scroll(scroll: u16, viewer_text: Option<&str>, width: u16, height: u16) -> u16 {
-    let Some(text) = viewer_text else {
-        return 0;
-    };
-    let total = wrapped_line_count(text, width);
-    let max_scroll = total.saturating_sub(height);
-    scroll.min(max_scroll)
-}
-
 /// Viewer tab only: if markdown, return styled [ratatui::text::Text] (e.g. nice headers); else plain string.
 /// `content_width` is used for full-width horizontal rules when rendering markdown.
 fn viewer_display_text(
     right: &RightPaneContent,
     content_width: u16,
 ) -> ratatui::text::Text<'static> {
-    let raw = right.viewer.as_deref().unwrap_or(UI.viewer_placeholder);
+    let raw = right
+        .viewer
+        .as_deref()
+        .unwrap_or(UI_STRINGS.viewer_placeholder);
     if let Some(ref path) = right.viewer_path
         && is_markdown_path(path)
     {
@@ -61,36 +53,37 @@ fn content_display_text(
             right
                 .metadata
                 .clone()
-                .unwrap_or_else(|| UI.not_available.to_string()),
+                .unwrap_or_else(|| UI_STRINGS.not_available.to_string()),
         ),
         RightPaneMode::Writing => ratatui::text::Text::from(
             right
                 .writing
                 .clone()
-                .unwrap_or_else(|| UI.not_available.to_string()),
+                .unwrap_or_else(|| UI_STRINGS.not_available.to_string()),
         ),
     }
 }
 
 fn title(state: &UblxState) -> &'static str {
     match state.right_pane_mode {
-        RightPaneMode::Viewer => UI.viewer,
-        RightPaneMode::Templates => UI.templates,
-        RightPaneMode::Metadata => UI.metadata,
-        RightPaneMode::Writing => UI.writing,
+        RightPaneMode::Viewer => UI_STRINGS.viewer,
+        RightPaneMode::Templates => UI_STRINGS.templates,
+        RightPaneMode::Metadata => UI_STRINGS.metadata,
+        RightPaneMode::Writing => UI_STRINGS.writing,
     }
 }
 
 fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> {
     [
-        (RightPaneMode::Viewer, UI.tab_viewer),
-        (RightPaneMode::Templates, UI.tab_templates),
-        (RightPaneMode::Metadata, UI.tab_metadata),
-        (RightPaneMode::Writing, UI.tab_writing),
+        (RightPaneMode::Viewer, UI_STRINGS.tab_viewer),
+        (RightPaneMode::Templates, UI_STRINGS.tab_templates),
+        (RightPaneMode::Metadata, UI_STRINGS.tab_metadata),
+        (RightPaneMode::Writing, UI_STRINGS.tab_writing),
     ]
     .into_iter()
     .filter(|(mode, _)| match mode {
-        RightPaneMode::Templates | RightPaneMode::Viewer => true,
+        RightPaneMode::Viewer => true,
+        RightPaneMode::Templates => !right.templates.is_empty(),
         RightPaneMode::Metadata => right.metadata.is_some(),
         RightPaneMode::Writing => right.writing.is_some(),
     })
@@ -118,6 +111,9 @@ pub(super) fn draw_right_pane(
         Block::default().borders(Borders::ALL).title(title(state))
     };
     let tabs = visible_tabs(right);
+    if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
+        state.right_pane_mode = tabs[0].0;
+    }
     let tab_spans: Vec<Span> = tabs
         .iter()
         .flat_map(|(mode, label)| style::tab_node_segment(label, *mode == state.right_pane_mode))
@@ -137,129 +133,102 @@ pub(super) fn draw_right_pane(
     f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
 
     let content_area = content_chunks[1];
-    let bottom_pad = style::UI_CONSTANTS.viewer_content_bottom_pad;
-    let content_rect = if content_area.height > bottom_pad {
-        let chunks = style::split_vertical(
-            content_area,
-            &[Constraint::Min(0), Constraint::Length(bottom_pad)],
-        );
-        chunks[0]
-    } else {
-        content_area
+    let bottom_pad = UI_CONSTANTS.v_pad;
+    let use_kv_tables = match state.right_pane_mode {
+        RightPaneMode::Metadata => right.metadata.as_deref(),
+        RightPaneMode::Writing => right.writing.as_deref(),
+        _ => None,
     };
-    let show_scrollbar = state.right_pane_mode == RightPaneMode::Viewer;
-    let (text_rect, scrollbar_rect) = if show_scrollbar && content_rect.width > 1 {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Length(1)])
-            .split(content_rect);
-        (chunks[0], chunks[1])
-    } else {
-        (content_rect, Rect::default())
-    };
-    let scroll_y = clamped_preview_scroll(
-        state.preview_scroll,
-        right.viewer.as_deref(),
-        text_rect.width,
-        text_rect.height,
-    );
-    if state.right_pane_mode == RightPaneMode::Viewer && state.preview_scroll > scroll_y {
-        state.preview_scroll = scroll_y;
-    }
-    f.render_widget(
-        Paragraph::new(content_display_text(state, right, text_rect.width))
-            .style(style::text_style())
-            .wrap(Wrap { trim: false })
-            .scroll((scroll_y, 0)),
-        text_rect,
-    );
-    if show_scrollbar && scrollbar_rect.width > 0 && scrollbar_rect.height > 0 {
-        let total = right
+    let total_lines = match (state.right_pane_mode, use_kv_tables) {
+        (_, Some(json)) => super::kv_tables::content_height(json) as usize,
+        (RightPaneMode::Viewer, _) => right
             .viewer
             .as_deref()
-            .map(|t| wrapped_line_count(t, text_rect.width) as usize)
-            .unwrap_or(0);
-        let viewport = text_rect.height as usize;
-        let max_scroll = total.saturating_sub(viewport);
-        if max_scroll > 0 {
-            let content_len = max_scroll + 1;
-            let mut scrollbar_state = ScrollbarState::new(content_len)
-                .position(scroll_y as usize)
-                .viewport_content_length(1);
-            f.render_stateful_widget(style::viewer_scrollbar(), scrollbar_rect, &mut scrollbar_state);
-        }
+            .map(|t| wrapped_line_count(t, content_area.width) as usize)
+            .unwrap_or(0),
+        (RightPaneMode::Templates, _) => right.templates.lines().count(),
+        (RightPaneMode::Writing, _) | (RightPaneMode::Metadata, _) => 0,
+    };
+    let layout = scrollable_content::layout_scrollable_content(
+        content_area,
+        total_lines,
+        &mut state.preview_scroll,
+        bottom_pad,
+    );
+    let text_rect = layout.content_rect;
+    if let Some(json) = use_kv_tables {
+        super::kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
+    } else {
+        f.render_widget(
+            Paragraph::new(content_display_text(state, right, text_rect.width))
+                .style(style::text_style())
+                .wrap(Wrap { trim: false })
+                .scroll((layout.scroll_y, 0)),
+            text_rect,
+        );
     }
+    scrollable_content::draw_scrollbar(f, &layout, total_lines);
 }
 
-/// Draw the viewer tab content in full screen (hide categories and contents). Esc to exit.
-pub(super) fn draw_viewer_fullscreen(
+/// Draw the current right-pane tab in full screen (hide categories and contents). Esc to exit.
+pub(super) fn draw_right_pane_fullscreen(
     f: &mut Frame,
     state: &mut UblxState,
     right: &RightPaneContent,
     area: Rect,
 ) {
+    let show_footer = state.right_pane_mode == RightPaneMode::Viewer
+        && (right.viewer_byte_size.is_some() || right.viewer_mtime_ns.is_some());
     let size_str = right.viewer_byte_size.map(format_bytes);
-    let footer_line = style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns);
-    let block = if let Some(line) = footer_line {
+    let footer_line = show_footer
+        .then(|| style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns))
+        .flatten();
+    let fullscreen_title = format!("{} (Esc to exit fullscreen)", title(state));
+    let block = if let Some(ref line) = footer_line {
         Block::default()
             .borders(Borders::ALL)
-            .title(" Viewer (Esc to exit fullscreen) ")
-            .title_bottom(line)
+            .title(fullscreen_title.as_str())
+            .title_bottom(line.clone())
     } else {
         Block::default()
             .borders(Borders::ALL)
-            .title(" Viewer (Esc to exit fullscreen) ")
+            .title(fullscreen_title.as_str())
     };
     let inner = block.inner(area);
-    let bottom_pad = style::UI_CONSTANTS.viewer_content_bottom_pad;
-    let content_area = if inner.height > bottom_pad {
-        let chunks = style::split_vertical(
-            inner,
-            &[Constraint::Min(0), Constraint::Length(bottom_pad)],
-        );
-        chunks[0]
-    } else {
-        inner
+    let bottom_pad = UI_CONSTANTS.v_pad;
+    let use_kv_tables = match state.right_pane_mode {
+        RightPaneMode::Metadata => right.metadata.as_deref(),
+        RightPaneMode::Writing => right.writing.as_deref(),
+        _ => None,
     };
-    let (text_rect, scrollbar_rect) = if content_area.width > 1 {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Length(1)])
-            .split(content_area);
-        (chunks[0], chunks[1])
-    } else {
-        (content_area, Rect::default())
+    let total_lines = match (state.right_pane_mode, use_kv_tables) {
+        (_, Some(json)) => super::kv_tables::content_height(json) as usize,
+        (RightPaneMode::Viewer, _) => right
+            .viewer
+            .as_deref()
+            .map(|t| wrapped_line_count(t, inner.width) as usize)
+            .unwrap_or(0),
+        (RightPaneMode::Templates, _) => right.templates.lines().count(),
+        (RightPaneMode::Writing, _) | (RightPaneMode::Metadata, _) => 0,
     };
-    let viewer_content = viewer_display_text(right, text_rect.width);
-    let scroll_y = clamped_preview_scroll(
-        state.preview_scroll,
-        right.viewer.as_deref(),
-        text_rect.width,
-        text_rect.height,
+    let layout = scrollable_content::layout_scrollable_content(
+        inner,
+        total_lines,
+        &mut state.preview_scroll,
+        bottom_pad,
     );
-    if state.preview_scroll > scroll_y {
-        state.preview_scroll = scroll_y;
-    }
+    let text_rect = layout.content_rect;
     f.render_widget(&block, area);
-    f.render_widget(
-        Paragraph::new(viewer_content)
-            .style(style::text_style())
-            .wrap(Wrap { trim: false })
-            .scroll((scroll_y, 0)),
-        text_rect,
-    );
-    let total = right
-        .viewer
-        .as_deref()
-        .map(|t| wrapped_line_count(t, text_rect.width) as usize)
-        .unwrap_or(0);
-    let viewport = text_rect.height as usize;
-    let max_scroll = total.saturating_sub(viewport);
-    if scrollbar_rect.width > 0 && scrollbar_rect.height > 0 && max_scroll > 0 {
-        let content_len = max_scroll + 1;
-        let mut scrollbar_state = ScrollbarState::new(content_len)
-            .position(scroll_y as usize)
-            .viewport_content_length(1);
-        f.render_stateful_widget(style::viewer_scrollbar(), scrollbar_rect, &mut scrollbar_state);
+    if let Some(json) = use_kv_tables {
+        super::kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
+    } else {
+        f.render_widget(
+            Paragraph::new(content_display_text(state, right, text_rect.width))
+                .style(style::text_style())
+                .wrap(Wrap { trim: false })
+                .scroll((layout.scroll_y, 0)),
+            text_rect,
+        );
     }
+    scrollable_content::draw_scrollbar(f, &layout, total_lines);
 }

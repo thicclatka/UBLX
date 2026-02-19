@@ -6,7 +6,6 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Paragraph};
 
-use super::consts::UiStrings;
 use super::delta;
 use super::panels;
 use super::right_pane;
@@ -14,9 +13,8 @@ use super::search;
 use super::snapshot_panels;
 use crate::config::TOAST_CONFIG;
 use crate::layout::{help, setup, style, theme_selector, themes};
+use crate::ui::UI_STRINGS;
 use crate::utils::notifications;
-
-const UI: UiStrings = UiStrings::new();
 
 /// Arguments for [draw_ublx_frame] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
@@ -117,7 +115,7 @@ fn draw_main_content(
     match state.main_mode {
         setup::MainMode::Snapshot => {
             if state.viewer_fullscreen {
-                right_pane::draw_viewer_fullscreen(f, state, right, body.main_area);
+                right_pane::draw_right_pane_fullscreen(f, state, right, body.main_area);
             } else {
                 snapshot_panels::draw_categories_panel(f, state, view, left);
                 snapshot_panels::draw_contents_panel(
@@ -199,12 +197,12 @@ fn draw_main_tabs(f: &mut Frame, state: &setup::UblxState, area: Rect) {
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
     let line = Line::from(
         style::tab_node_segment(
-            UI.main_tab_snapshot,
+            UI_STRINGS.main_tab_snapshot,
             state.main_mode == setup::MainMode::Snapshot,
         )
         .into_iter()
         .chain(style::tab_node_segment(
-            UI.main_tab_delta,
+            UI_STRINGS.main_tab_delta,
             state.main_mode == setup::MainMode::Delta,
         ))
         .collect::<Vec<_>>(),

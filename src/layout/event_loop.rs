@@ -13,11 +13,9 @@ use crate::config::OPERATION_NAME;
 use crate::engine::db_ops;
 use crate::handlers::snapshot;
 use crate::layout::{filter, setup, viewing_pane};
-use crate::render::{DrawFrameArgs, consts::UiStrings, draw_ublx_frame};
-use crate::ui::input::handle_ublx_input;
+use crate::render::{DrawFrameArgs, draw_ublx_frame};
+use crate::ui::{UI_STRINGS, input::handle_ublx_input};
 use crate::utils::{format::format_timestamp_ns, notifications};
-
-const UI: UiStrings = UiStrings::new();
 
 /// Parameters for the TUI event loop.
 pub struct RunUblxParams<'a> {
@@ -157,7 +155,11 @@ pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewDat
 }
 
 /// Delta mode category names (order matches [setup::DeltaViewData::paths_by_index] 0, 1, 2).
-const DELTA_CATEGORIES: &[&str] = &[UI.delta_added, UI.delta_mod, UI.delta_removed];
+const DELTA_CATEGORIES: &[&str] = &[
+    UI_STRINGS.delta_added,
+    UI_STRINGS.delta_mod,
+    UI_STRINGS.delta_removed,
+];
 
 /// ViewData for Delta mode. Search filters by path; display lines keep timestamp groupings (dates preserved).
 pub fn view_data_for_delta_mode(

@@ -5,13 +5,11 @@ use ratatui::layout::{HorizontalAlignment, Rect};
 use ratatui::text::Line;
 use ratatui::widgets::ListItem;
 
-use super::consts::{UiStrings, panel_title};
 use super::panels;
 use crate::config::UblxPaths;
 use crate::layout::setup;
 use crate::layout::style;
-
-const UI: UiStrings = UiStrings::new();
+use crate::ui::UI_STRINGS;
 
 pub(super) fn draw_categories_panel(
     f: &mut Frame,
@@ -20,8 +18,8 @@ pub(super) fn draw_categories_panel(
     area: Rect,
 ) {
     let focused = matches!(state.focus, setup::PanelFocus::Categories);
-    let title = panel_title(UI.categories, focused);
-    let mut items = vec![ListItem::new(UI.all_categories)];
+    let title = panels::set_title(UI_STRINGS.categories, focused);
+    let mut items = vec![ListItem::new(UI_STRINGS.all_categories)];
     items.extend(
         view.filtered_categories
             .iter()
@@ -56,9 +54,9 @@ fn contents_display_label(
         .global_config()
         .map(|p| p.to_string_lossy().into_owned());
     if local.as_deref() == Some(path) {
-        UI.local_config.to_string()
+        UI_STRINGS.local_config.to_string()
     } else if global.as_deref() == Some(path) {
-        UI.global_config.to_string()
+        UI_STRINGS.global_config.to_string()
     } else {
         path.to_string()
     }
@@ -73,7 +71,7 @@ pub(super) fn draw_contents_panel(
     area: Rect,
 ) {
     let focused = matches!(state.focus, setup::PanelFocus::Contents);
-    let left_title = panel_title(UI.contents, focused);
+    let left_title = panels::set_title(UI_STRINGS.contents, focused);
     let current = state
         .content_state
         .selected()
@@ -93,9 +91,9 @@ pub(super) fn draw_contents_panel(
         .title(style::node_line(&counter_str, HorizontalAlignment::Right));
     let items: Vec<ListItem> = if view.content_len == 0 {
         vec![ListItem::new(if state.search_query.is_empty() {
-            UI.no_contents
+            UI_STRINGS.no_contents
         } else {
-            UI.no_matches
+            UI_STRINGS.no_matches
         })]
     } else {
         view.iter_contents(all_rows)

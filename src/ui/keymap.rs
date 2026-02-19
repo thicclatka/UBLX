@@ -21,7 +21,7 @@ pub enum UblxAction {
     SearchClear,
     CycleRightPane,
     RightPaneViewer,
-    /// Toggle viewer fullscreen (only when on Viewer tab).
+    /// Toggle right-pane fullscreen (current tab).
     ViewerFullscreenToggle,
     RightPaneTemplates,
     RightPaneMetadata,

@@ -9,6 +9,7 @@
     "crossterm",
     "Deque",
     "ratatui",
+    "strs",
     "ublx"
   ],
   "ignoreWords": [],

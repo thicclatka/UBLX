@@ -207,7 +207,8 @@ impl<'a> UblxActionContext<'a> {
                 ]
                 .into_iter()
                 .filter(|m| match m {
-                    RightPaneMode::Templates | RightPaneMode::Viewer => true,
+                    RightPaneMode::Viewer => true,
+                    RightPaneMode::Templates => !self.right.templates.is_empty(),
                     RightPaneMode::Metadata => self.right.metadata.is_some(),
                     RightPaneMode::Writing => self.right.writing.is_some(),
                 })
@@ -223,11 +224,13 @@ impl<'a> UblxActionContext<'a> {
             }
             UblxAction::RightPaneViewer => state.right_pane_mode = RightPaneMode::Viewer,
             UblxAction::ViewerFullscreenToggle => {
-                if state.right_pane_mode == RightPaneMode::Viewer {
-                    state.viewer_fullscreen = !state.viewer_fullscreen;
+                state.viewer_fullscreen = !state.viewer_fullscreen;
+            }
+            UblxAction::RightPaneTemplates => {
+                if !self.right.templates.is_empty() {
+                    state.right_pane_mode = RightPaneMode::Templates;
                 }
             }
-            UblxAction::RightPaneTemplates => state.right_pane_mode = RightPaneMode::Templates,
             UblxAction::RightPaneMetadata => {
                 if self.right.metadata.is_some() {
                     state.right_pane_mode = RightPaneMode::Metadata;

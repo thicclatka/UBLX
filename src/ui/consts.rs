@@ -1,12 +1,3 @@
-/// Builds a panel block title: `" Label "` or `" ► Label "` when focused.
-pub fn panel_title(label: &str, focused: bool) -> String {
-    if focused {
-        format!(" ► {} ", label)
-    } else {
-        format!(" {} ", label)
-    }
-}
-
 /// All symbols and string literals used by the renderer. Single place to tweak UI copy/symbols.
 pub struct UiStrings {
     pub categories: &'static str,
@@ -80,3 +71,24 @@ impl UiStrings {
         }
     }
 }
+
+pub const UI_STRINGS: UiStrings = UiStrings::new();
+
+/// Shared UI layout constants (padding, etc.).
+pub struct UiConstants {
+    pub h_pad: u16,
+    pub v_pad: u16,
+    pub table_stripe_lighten: f32,
+}
+
+impl UiConstants {
+    pub const fn new() -> Self {
+        Self {
+            h_pad: 1,
+            v_pad: 1,
+            table_stripe_lighten: 0.06,
+        }
+    }
+}
+
+pub const UI_CONSTANTS: UiConstants = UiConstants::new();

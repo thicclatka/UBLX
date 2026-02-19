@@ -1,0 +1,29 @@
+//! Table styling: header and alternating row stripes.
+
+use ratatui::style::{Modifier, Style};
+
+use crate::layout::themes;
+use crate::ui::UI_CONSTANTS;
+
+use super::{CurrentTheme, ThemeStyles};
+
+/// Style for a table header row (text color, popup bg, bold, underlined). Uses current theme.
+pub fn table_header_style() -> Style {
+    let t = CurrentTheme::palette();
+    Style::default()
+        .fg(t.text)
+        .bg(t.popup_bg)
+        .add_modifier(Modifier::BOLD)
+        .add_modifier(Modifier::UNDERLINED)
+}
+
+/// Style for a table data row at `index`. Even indices use popup_bg; odd use a lightened shade for alternating stripes. Uses current theme.
+pub fn table_row_style(index: usize) -> Style {
+    let t = CurrentTheme::palette();
+    let bg = if index.is_multiple_of(2) {
+        t.popup_bg
+    } else {
+        themes::lighten_rgb(t.popup_bg, UI_CONSTANTS.table_stripe_lighten)
+    };
+    Style::default().fg(t.text).bg(bg)
+}

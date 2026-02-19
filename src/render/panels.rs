@@ -3,10 +3,8 @@
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::{Block, Borders, HighlightSpacing, List, ListItem};
 
-use super::consts::UiStrings;
 use crate::layout::style;
-
-const UI: UiStrings = UiStrings::new();
+use crate::ui::UI_STRINGS;
 
 /// Split content area into main area and one status line (Latest Snapshot + Search:).
 pub(super) fn split_main_and_status(content_area: Rect) -> (Rect, Rect) {
@@ -37,9 +35,9 @@ pub(super) fn styled_list<'a>(
     highlight_style: ratatui::style::Style,
 ) -> List<'a> {
     let symbol = if focused {
-        UI.list_highlight
+        UI_STRINGS.list_highlight
     } else {
-        UI.list_unfocused
+        UI_STRINGS.list_unfocused
     };
     List::new(items)
         .block(block)
@@ -63,4 +61,13 @@ pub(super) fn draw_list_panel(
         area,
         list_state,
     );
+}
+
+/// Builds a panel block title: `" Label "` or `" ► Label "` when focused.
+pub fn set_title(label: &str, focused: bool) -> String {
+    if focused {
+        format!(" ► {} ", label)
+    } else {
+        format!(" {} ", label)
+    }
 }

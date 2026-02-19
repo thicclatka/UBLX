@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 
@@ -16,43 +16,32 @@ macro_rules! help_entries {
 
 /// All help rows: (shortcut, action). Edit this list to change the help popup.
 const HELP_ENTRIES: &[(&str, &str)] = help_entries![
-    ("1 / 2", "main tabs: Snapshot / Delta"),
-    ("Shift+Tab", "alternate Snapshot ↔ Delta"),
-    ("/", "search (strict substring)"),
+    ("1 | 2", "Main tabs: Snapshot / Delta"),
+    ("Shift+Tab", "Alternate between Main tabs"),
+    ("/", "Search (strict substring search)"),
+    ("Shift+S", "Take snapshot"),
+    ("h | l", "Focus on Left or Middle panes"),
+    ("j | k", "Move down / up in Left or Middle panes"),
     (
-        "Enter",
-        "hide search bar (filter stays); Esc to clear search"
+        "gg | G",
+        "Go to top / bottom of list (Left or Middle panes)"
     ),
-    (
-        "Shift+S",
-        "take snapshot (runs in background; bumper when done)"
-    ),
-    ("q / Esc", "quit"),
-    ("h / l", "focus Categories / Contents"),
-    ("j / k", "move down / up in list"),
-    (
-        "gg / G",
-        "go to top / bottom of list (Categories or Contents)"
-    ),
-    (
-        "Ctrl+b / Ctrl+e",
-        "viewer: scroll to beginning / end of preview"
-    ),
-    (
-        "Shift+↑↓",
-        "scroll right pane; or double-tap Shift+J / Shift+K to scroll down / up"
-    ),
-    ("Tab", "switch focus"),
-    (
-        "t / v / m / w",
-        "right pane: Templates / Viewer / Metadata / Writing (m,w only if data exists)"
-    ),
-    ("Shift+V", "cycle right pane tab (only tabs with data)"),
+    ("Ctrl+b", "Scroll to beginning of preview"),
+    ("Ctrl+e", "Scroll to end of preview"),
+    ("Shift+↑↓", "Scroll up / down in preview"),
+    ("Shift+J | Shift+K", "Scroll down / up in preview"),
+    ("Tab", "Switch between left and middle panes"),
+    ("v", "Focus on Viewer tab in right pane"),
+    ("t", "Focus on Templates tab in right pane (if tab exists)"),
+    ("m", "Focus on Metadata tab in right pane (if tab exists)"),
+    ("w", "Focus on Writing tab in right pane (if tab exists)"),
+    ("Shift+V", "Cycle right pane tab"),
     (
         "Shift+T",
-        "theme selector (j/k preview, Enter save to .ublx.toml, Esc revert)"
+        "Theme selector (j/k preview, Enter save to .ublx.toml, Esc cancel)"
     ),
-    ("?", "show this help"),
+    ("q | Esc", "Quit"),
+    ("?", "Show this help"),
 ];
 
 pub fn render_help_box(f: &mut Frame) {
@@ -78,24 +67,24 @@ pub fn render_help_box(f: &mut Frame) {
     let inner = Style::default().fg(t.text).bg(t.popup_bg);
 
     let header = Row::new(vec!["Command", "Action"])
-        .style(
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(Modifier::UNDERLINED),
-        )
+        .style(style::table_header_style())
         .bottom_margin(0);
     let data_rows: Vec<Row> = HELP_ENTRIES
         .iter()
-        .map(|(k, d)| Row::new(vec![Cell::from(*k), Cell::from(*d)]))
+        .enumerate()
+        .map(|(i, (k, d))| {
+            Row::new(vec![Cell::from(*k), Cell::from(*d)]).style(style::table_row_style(i))
+        })
         .collect();
+    let table_rect = style::rect_with_h_pad(block.inner(rect));
     let table = Table::new(
         data_rows,
         [Constraint::Length(key_width), Constraint::Min(20)],
     )
     .header(header)
     .column_spacing(1)
-    .block(block)
     .style(inner);
 
-    f.render_widget(table, rect);
+    f.render_widget(block, rect);
+    f.render_widget(table, table_rect);
 }
