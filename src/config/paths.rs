@@ -8,7 +8,7 @@ use std::{
 /// Stable hex string for a path (for cache filenames). Same path => same string.
 fn path_to_hex(path: &Path) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    path.to_string_lossy().as_ref().hash(&mut hasher);
+    path.to_string_lossy().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 

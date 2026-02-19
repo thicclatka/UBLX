@@ -1,6 +1,9 @@
 //! Theme and colors for the TUI. Multiple themes can be added; the active theme is chosen via opts (e.g. config `theme` key).
 
+mod color_utils;
 mod palettes;
+
+pub use color_utils::lighten_rgb;
 
 use ratatui::style::Color;
 use std::cell::RefCell;
@@ -23,7 +26,7 @@ pub const DEFAULT_THEME: ThemeOption = ThemeOption {
 /// Named set of colors for the TUI. Extend with more fields as styles are themed.
 #[derive(Clone, Debug)]
 pub struct Theme {
-    #[allow(dead_code)]
+    // #[allow(dead_code)]
     pub name: &'static str,
     /// Background for the whole app (full frame).
     pub background: Color,
@@ -41,10 +44,12 @@ pub struct Theme {
     pub search_text: Color,
     /// Hint text (e.g. "Esc to clear").
     pub hint: Color,
-    /// Popup background (help box, theme selector, etc.); same hue as notification_bg.
+    /// Popup background (help box, theme selector, etc.)
     pub popup_bg: Color,
-    /// Node/footer powerline color.
+    /// Node/footer powerline color
     pub node_bg: Color,
+    /// Toast/notification overlay background
+    pub notification_bg: Color,
     /// Delta: added (green)
     pub delta_added: Color,
     /// Delta: modified (yellow)
@@ -53,8 +58,6 @@ pub struct Theme {
     pub delta_removed: Color,
     /// Brand title (e.g. UBLX)
     pub title_brand: Color,
-    /// Toast/notification overlay background (defaults same as background; can be adjusted per theme).
-    pub notification_bg: Color,
 }
 
 thread_local! {
@@ -87,16 +90,6 @@ pub fn theme_name_from_config(config_theme: Option<&str>) -> &str {
             }
         }
     }
-}
-
-/// Lighten an RGB color by a fraction toward white (e.g. 0.1 = 10% lighter). Non-RGB colors are returned unchanged.
-pub fn lighten_rgb(color: Color, pct: f32) -> Color {
-    let Color::Rgb(r, g, b) = color else {
-        return color;
-    };
-    let p = pct.clamp(0.0, 1.0);
-    let blend = |c: u8| (f32::from(c) * (1.0 - p) + 255.0 * p).round() as u8;
-    Color::Rgb(blend(r), blend(g), blend(b))
 }
 
 /// Resolve theme by name. Uses [theme_name_from_config] so `None` / empty / `"default"` use [default_theme]; then looks up by id or display name.

@@ -11,7 +11,7 @@ use crate::utils::UI_GLYPHS;
 
 const POPUP_PADDING_W: u16 = 4;
 const POPUP_PADDING_H: u16 = 2;
-const SWATCH_LIGHTEN: f32 = 0.23;
+const SWATCH_LIGHTEN: f32 = 0.2;
 
 /// Draw centered popup with theme list; each row shows a small swatch (theme background lightened) then the name.
 pub fn render_theme_selector(f: &mut Frame, selected_index: usize) {

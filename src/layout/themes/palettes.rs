@@ -35,13 +35,13 @@ pub static SHADOW_INDEX: Theme = Theme {
     tab_inactive_bg: Color::Rgb(45, 45, 45),
     search_text: Color::Rgb(128, 128, 128),
     hint: Color::Rgb(128, 128, 153),
-    popup_bg: Color::Rgb(8, 8, 8),
-    node_bg: Color::Rgb(18, 18, 18),
+    popup_bg: Color::Rgb(13, 12, 12),
+    node_bg: Color::Rgb(27, 24, 24),
+    notification_bg: Color::Rgb(13, 12, 12),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(128, 128, 153),
-    notification_bg: Color::Rgb(8, 8, 8),
 };
 
 // ---- Oblivion Ink (blue) ----
@@ -55,13 +55,13 @@ pub static OBLIVION_INK: Theme = Theme {
     tab_inactive_bg: Color::Rgb(17, 34, 64),
     search_text: Color::Rgb(100, 255, 218),
     hint: Color::Rgb(164, 95, 250),
-    popup_bg: Color::Rgb(17, 32, 53),
-    node_bg: Color::Rgb(27, 41, 62),
+    popup_bg: Color::Rgb(14, 35, 66),
+    node_bg: Color::Rgb(17, 45, 85),
+    notification_bg: Color::Rgb(14, 35, 66),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(164, 95, 250),
-    notification_bg: Color::Rgb(17, 32, 53),
 };
 
 // ---- Garden Unseen (green) ----
@@ -75,13 +75,13 @@ pub static GARDEN_UNSEEN: Theme = Theme {
     tab_inactive_bg: Color::Rgb(10, 95, 53),
     search_text: Color::Rgb(98, 237, 181),
     hint: Color::Rgb(73, 67, 44),
-    popup_bg: Color::Rgb(8, 48, 28),
-    node_bg: Color::Rgb(18, 57, 37),
+    popup_bg: Color::Rgb(0, 65, 33),
+    node_bg: Color::Rgb(0, 89, 44),
+    notification_bg: Color::Rgb(0, 65, 33),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(73, 67, 44),
-    notification_bg: Color::Rgb(8, 48, 28),
 };
 
 // ---- Burning Glyph (red) ----
@@ -95,13 +95,13 @@ pub static BURNING_GLYPH: Theme = Theme {
     tab_inactive_bg: Color::Rgb(131, 15, 15),
     search_text: Color::Rgb(237, 98, 98),
     hint: Color::Rgb(237, 181, 98),
-    popup_bg: Color::Rgb(48, 8, 8),
-    node_bg: Color::Rgb(57, 18, 18),
+    popup_bg: Color::Rgb(65, 0, 0),
+    node_bg: Color::Rgb(89, 0, 0),
+    notification_bg: Color::Rgb(65, 0, 0),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(237, 181, 98),
-    notification_bg: Color::Rgb(48, 8, 8),
 };
 
 // ---- Golden Delirium (yellow) ----
@@ -115,13 +115,13 @@ pub static GOLDEN_DELIRIUM: Theme = Theme {
     tab_inactive_bg: Color::Rgb(131, 131, 15),
     search_text: Color::Rgb(237, 237, 98),
     hint: Color::Rgb(167, 107, 78),
-    popup_bg: Color::Rgb(48, 48, 8),
-    node_bg: Color::Rgb(57, 57, 18),
+    popup_bg: Color::Rgb(65, 65, 0),
+    node_bg: Color::Rgb(89, 89, 0),
+    notification_bg: Color::Rgb(65, 65, 0),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(167, 107, 78),
-    notification_bg: Color::Rgb(48, 48, 8),
 };
 
 // ---- Tangerine Memory (orange) ----
@@ -135,13 +135,13 @@ pub static TANGERINE_MEMORY: Theme = Theme {
     tab_inactive_bg: Color::Rgb(131, 59, 15),
     search_text: Color::Rgb(237, 155, 98),
     hint: Color::Rgb(226, 169, 157),
-    popup_bg: Color::Rgb(48, 33, 8),
-    node_bg: Color::Rgb(57, 42, 18),
+    popup_bg: Color::Rgb(65, 40, 0),
+    node_bg: Color::Rgb(89, 55, 0),
+    notification_bg: Color::Rgb(65, 40, 0),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(226, 169, 157),
-    notification_bg: Color::Rgb(48, 33, 8),
 };
 
 // ---- Purple Haze (purple) ----
@@ -155,13 +155,13 @@ pub static PURPLE_HAZE: Theme = Theme {
     tab_inactive_bg: Color::Rgb(82, 15, 131),
     search_text: Color::Rgb(221, 98, 237),
     hint: Color::Rgb(116, 80, 240),
-    popup_bg: Color::Rgb(20, 8, 33),
-    node_bg: Color::Rgb(31, 18, 42),
+    popup_bg: Color::Rgb(25, 0, 50),
+    node_bg: Color::Rgb(37, 0, 74),
+    notification_bg: Color::Rgb(25, 0, 50),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(116, 80, 240),
-    notification_bg: Color::Rgb(20, 8, 33),
 };
 
 // ---- Silent Page (white) ----
@@ -176,12 +176,12 @@ pub static SILENT_PAGE: Theme = Theme {
     search_text: Color::Rgb(102, 102, 102),
     hint: Color::Rgb(102, 92, 82),
     popup_bg: Color::Rgb(255, 255, 255),
-    node_bg: Color::Rgb(230, 230, 230),
+    node_bg: Color::Rgb(255, 255, 255),
+    notification_bg: Color::Rgb(255, 255, 255),
     delta_added: DEFAULT_COLORS.green,
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(102, 92, 82),
-    notification_bg: Color::Rgb(255, 255, 255),
 };
 
 /// All AlephMetrics palettes: (config id, theme). Config id matches JSON key (e.g. "ShadowIndex"); display name is theme.name (e.g. "Shadow Index"). "Oblivion_Ink" is an alias for the default.
