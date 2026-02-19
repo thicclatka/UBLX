@@ -12,6 +12,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 use crate::config::TOAST_CONFIG;
 use crate::layout::themes;
@@ -71,6 +72,36 @@ impl BumperBuffer {
         let len = g.len();
         let start = len.saturating_sub(n);
         g.range(start..).cloned().collect()
+    }
+}
+
+/// One stacked toast: snapshot of messages and its own timer.
+#[derive(Clone, Debug)]
+pub struct ToastSlot {
+    pub visible_until: Instant,
+    pub operation: Option<String>,
+    pub messages: Vec<BumperMessage>,
+}
+
+/// Push a new toast onto the stack (snapshot from bumper, trim to max_toast_stack). Call after pushing to bumper.
+pub fn show_toast_slot(
+    slots: &mut Vec<ToastSlot>,
+    bumper: &BumperBuffer,
+    operation: Option<&str>,
+    dev: bool,
+) {
+    let line_count = TOAST_CONFIG.display_lines_for_operation(dev, operation);
+    let messages = bumper.last_n(line_count);
+    if messages.is_empty() {
+        return;
+    }
+    slots.push(ToastSlot {
+        visible_until: Instant::now() + TOAST_CONFIG.duration,
+        operation: operation.map(String::from),
+        messages,
+    });
+    while slots.len() > TOAST_CONFIG.max_toast_stack {
+        slots.remove(0);
     }
 }
 
@@ -144,27 +175,20 @@ fn level_short(level: Level) -> &'static str {
 
 const NOT_TITLE_FALLBACK: &str = " Notification ";
 
-/// Draw a small toast overlay (last N messages) in the given rect. Use for transient notifications.
-/// Title is the most recently pushed message's operation (e.g. " ublx-snapshot ") if set, else " Notification ".
-/// Clears the full rect first so overlapped content (e.g. scrollbar) does not show through.
-pub fn render_toast(f: &mut Frame, area: Rect, bumper: &BumperBuffer, dev: bool) {
+/// Draw one toast slot in the given rect (used for stacked toasts).
+pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
     f.render_widget(Clear, area);
-
-    let peek = bumper.last_n(1);
-    let operation = peek.first().and_then(|m| m.operation.as_deref());
-    let line_count = TOAST_CONFIG.display_lines_for_operation(dev, operation);
-    let messages = bumper.last_n(line_count);
-    if messages.is_empty() {
+    if slot.messages.is_empty() {
         return;
     }
-
-    let title = messages
+    let title = slot
+        .messages
         .last()
         .and_then(|m| m.operation.as_deref())
         .map(|s| format!(" {} ", s))
         .unwrap_or_else(|| NOT_TITLE_FALLBACK.to_string());
-
-    let lines: Vec<Line<'_>> = messages
+    let lines: Vec<Line<'_>> = slot
+        .messages
         .iter()
         .map(|m| {
             Line::from(Span::styled(

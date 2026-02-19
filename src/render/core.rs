@@ -31,7 +31,7 @@ pub struct DrawFrameArgs<'a> {
     pub transparent: bool,
     /// Latest snapshot timestamp from delta_log (for categories panel footer). Set in Snapshot mode.
     pub latest_snapshot_ns: Option<i64>,
-    pub bumper: Option<&'a notifications::BumperBuffer>,
+    /// When true, show dev-mode toast notifications.
     pub dev: bool,
 }
 
@@ -166,27 +166,28 @@ fn draw_main_content(
 }
 
 fn draw_toast_if_visible(f: &mut Frame, state: &setup::UblxState, args: &DrawFrameArgs<'_>) {
-    let Some(_) = state.toast_visible_until else {
+    if state.toast_slots.is_empty() {
         return;
-    };
-    let Some(b) = args.bumper else {
-        return;
-    };
+    }
     let area = f.area();
     let w = TOAST_CONFIG.width_for(args.dev).min(area.width);
-    let h = TOAST_CONFIG.height_for(args.dev).min(area.height);
     let x = area.x.saturating_add(
         area.width
             .saturating_sub(w)
             .saturating_sub(TOAST_CONFIG.hz_padding),
     );
-    let y = area.y.saturating_add(
-        area.height
-            .saturating_sub(h)
-            .saturating_sub(TOAST_CONFIG.vt_padding),
-    );
-    let toast_rect = Rect::new(x, y, w, h);
-    notifications::render_toast(f, toast_rect, b, args.dev);
+    let gap = TOAST_CONFIG.toast_stack_gap;
+    let mut bottom = area.y + area.height.saturating_sub(TOAST_CONFIG.vt_padding);
+    for slot in state.toast_slots.iter().rev() {
+        let h = TOAST_CONFIG
+            .height_for_operation(args.dev, slot.operation.as_deref())
+            .min(area.height);
+        let top = bottom.saturating_sub(h);
+        if top >= area.y && h > 0 {
+            notifications::render_toast_slot(f, Rect::new(x, top, w, h), slot);
+        }
+        bottom = top.saturating_sub(gap);
+    }
 }
 
 fn draw_main_tabs(f: &mut Frame, state: &setup::UblxState, area: Rect) {

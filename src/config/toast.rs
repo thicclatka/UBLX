@@ -5,7 +5,7 @@ pub struct ToastConfig {
     pub vt_padding: u16,
     pub duration: std::time::Duration,
     pub display_lines: usize,
-    /// theme-selector toast shows only this many lines (1 = no history).
+    pub theme_selector_height: u16,
     pub theme_selector_display_lines: usize,
     pub bumper_cap: usize,
     /// Dev mode: larger toast and more lines.
@@ -13,6 +13,10 @@ pub struct ToastConfig {
     pub dev_height: u16,
     pub dev_display_lines: usize,
     pub dev_bumper_cap: usize,
+    /// Max number of toasts to show stacked at once (oldest dropped when exceeded).
+    pub max_toast_stack: usize,
+    /// Vertical gap (rows) between stacked toasts.
+    pub toast_stack_gap: u16,
 }
 
 /// Pick `dev_val` when `dev` is true, else `normal`. Used by ToastConfig `*_for(dev)` methods.
@@ -29,12 +33,15 @@ impl ToastConfig {
             vt_padding: 2,
             duration: std::time::Duration::from_secs(4),
             display_lines: 2,
+            theme_selector_height: 3,
             theme_selector_display_lines: 1,
             bumper_cap: 100,
             dev_width: 100,
             dev_height: 20,
             dev_display_lines: 10,
             dev_bumper_cap: 500,
+            max_toast_stack: 3,
+            toast_stack_gap: 1,
         }
     }
 
@@ -60,6 +67,14 @@ impl ToastConfig {
             self.theme_selector_display_lines
         } else {
             self.display_lines_for(dev)
+        }
+    }
+
+    pub fn height_for_operation(&self, dev: bool, operation: Option<&str>) -> u16 {
+        if operation == Some("theme-selector") {
+            self.theme_selector_height
+        } else {
+            self.height_for(dev)
         }
     }
 }

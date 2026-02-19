@@ -9,7 +9,7 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
-use crate::config::TOAST_CONFIG;
+use crate::config::OPERATION_NAME;
 use crate::engine::db_ops;
 use crate::handlers::snapshot;
 use crate::layout::{filter, setup, viewing_pane};
@@ -114,8 +114,7 @@ pub fn build_delta_view_data(db_path: &Path) -> setup::DeltaViewData {
 
     let added_rows = db_ops::load_delta_log_rows_by_type(db_path, "added").unwrap_or_default();
     let mod_rows = db_ops::load_delta_log_rows_by_type(db_path, "mod").unwrap_or_default();
-    let removed_rows =
-        db_ops::load_delta_log_rows_by_type(db_path, "removed").unwrap_or_default();
+    let removed_rows = db_ops::load_delta_log_rows_by_type(db_path, "removed").unwrap_or_default();
 
     setup::DeltaViewData {
         overview_text,
@@ -204,12 +203,9 @@ pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     loop {
-        if state
-            .toast_visible_until
-            .is_some_and(|until| Instant::now() >= until)
-        {
-            state.toast_visible_until = None;
-        }
+        state
+            .toast_slots
+            .retain(|s| Instant::now() < s.visible_until);
         if state.snapshot_requested {
             snapshot::spawn_snapshot_from_dir_db(
                 params.dir_to_ublx,
@@ -225,8 +221,14 @@ pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
             (categories, all_rows) = load_snapshot_for_tui(params.db_path);
             if let Some(b) = params.bumper {
                 snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
+                let op = OPERATION_NAME.snapshot();
+                notifications::show_toast_slot(
+                    &mut state.toast_slots,
+                    b,
+                    Some(op.as_str()),
+                    params.dev,
+                );
             }
-            state.toast_visible_until = Some(Instant::now() + TOAST_CONFIG.duration);
         }
         if params.dev {
             notifications::move_log_events();
@@ -281,7 +283,6 @@ pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
             theme_name,
             transparent: params.transparent,
             latest_snapshot_ns,
-            bumper: params.bumper,
             dev: params.dev,
         };
         terminal.draw(|f| draw_ublx_frame(f, &mut state, &view, &right_content, &draw_args))?;
@@ -291,6 +292,7 @@ pub fn run_ublx(params: RunUblxParams<'_>) -> io::Result<()> {
             &right_content,
             Some((params.dir_to_ublx, theme_name)),
             params.bumper,
+            params.dev,
         )? {
             break;
         }

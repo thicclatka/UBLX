@@ -20,11 +20,16 @@ pub fn viewer_scrollbar() -> Scrollbar<'static> {
 /// Shared UI layout constants (padding, etc.).
 pub struct UiConstants {
     pub h_pad: u16,
+    /// Bottom padding (in rows) for the right-pane viewer content.
+    pub viewer_content_bottom_pad: u16,
 }
 
 impl UiConstants {
     pub const fn new() -> Self {
-        Self { h_pad: 1 }
+        Self {
+            h_pad: 1,
+            viewer_content_bottom_pad: 1,
+        }
     }
 }
 

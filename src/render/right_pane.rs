@@ -136,7 +136,17 @@ pub(super) fn draw_right_pane(
 
     f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
 
-    let content_rect = content_chunks[1];
+    let content_area = content_chunks[1];
+    let bottom_pad = style::UI_CONSTANTS.viewer_content_bottom_pad;
+    let content_rect = if content_area.height > bottom_pad {
+        let chunks = style::split_vertical(
+            content_area,
+            &[Constraint::Min(0), Constraint::Length(bottom_pad)],
+        );
+        chunks[0]
+    } else {
+        content_area
+    };
     let show_scrollbar = state.right_pane_mode == RightPaneMode::Viewer;
     let (text_rect, scrollbar_rect) = if show_scrollbar && content_rect.width > 1 {
         let chunks = Layout::default()
@@ -201,14 +211,24 @@ pub(super) fn draw_viewer_fullscreen(
             .title(" Viewer (Esc to exit fullscreen) ")
     };
     let inner = block.inner(area);
-    let (text_rect, scrollbar_rect) = if inner.width > 1 {
+    let bottom_pad = style::UI_CONSTANTS.viewer_content_bottom_pad;
+    let content_area = if inner.height > bottom_pad {
+        let chunks = style::split_vertical(
+            inner,
+            &[Constraint::Min(0), Constraint::Length(bottom_pad)],
+        );
+        chunks[0]
+    } else {
+        inner
+    };
+    let (text_rect, scrollbar_rect) = if content_area.width > 1 {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
-            .split(inner);
+            .split(content_area);
         (chunks[0], chunks[1])
     } else {
-        (inner, Rect::default())
+        (content_area, Rect::default())
     };
     let viewer_content = viewer_display_text(right, text_rect.width);
     let scroll_y = clamped_preview_scroll(

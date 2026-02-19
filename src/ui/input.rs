@@ -1,13 +1,12 @@
 use crossterm::event::{self, Event};
 use std::io;
 use std::path::Path;
-use std::time::Instant;
 
-use crate::config::{write_local_theme, UblxPaths, OPERATION_NAME, TOAST_CONFIG};
+use crate::config::{write_local_theme, UblxPaths, OPERATION_NAME};
 use crate::layout::setup::{RightPaneContent, UblxActionContext, UblxState, ViewData};
 use crate::layout::themes;
 use crate::ui::keymap::{key_action_setup, search_consumes, UblxAction};
-use crate::utils::notifications::BumperBuffer;
+use crate::utils::notifications::{show_toast_slot, BumperBuffer};
 
 /// Theme context for theme selector: (dir for local config, current theme name for preview/revert).
 pub type ThemeContext<'a> = Option<(&'a Path, Option<&'a str>)>;
@@ -18,6 +17,7 @@ pub fn handle_ublx_input(
     right: &RightPaneContent,
     theme_ctx: ThemeContext<'_>,
     bumper: Option<&BumperBuffer>,
+    dev: bool,
 ) -> io::Result<bool> {
     if !event::poll(std::time::Duration::from_millis(100))? {
         return Ok(false);
@@ -61,7 +61,12 @@ pub fn handle_ublx_input(
                         format!("Changed theme to {}", display_name),
                         Some(OPERATION_NAME.theme_selector()),
                     );
-                    state.toast_visible_until = Some(Instant::now() + TOAST_CONFIG.duration);
+                    show_toast_slot(
+                        &mut state.toast_slots,
+                        b,
+                        Some(OPERATION_NAME.theme_selector()),
+                        dev,
+                    );
                 }
                 state.theme_override = Some(display_name.to_string());
                 state.theme_selector_visible = false;

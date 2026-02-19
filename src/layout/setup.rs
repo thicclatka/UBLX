@@ -38,8 +38,8 @@ pub struct UblxState {
     pub highlight_style: Style,
     /// Set by TakeSnapshot key; event loop spawns pipeline and clears.
     pub snapshot_requested: bool,
-    /// When set, show toast until this instant (transient notification).
-    pub toast_visible_until: Option<std::time::Instant>,
+    /// Stack of toasts (each has its own timer); oldest first, newest last.
+    pub toast_slots: Vec<crate::utils::notifications::ToastSlot>,
     /// Viewer takes full screen (hide categories and contents).
     pub viewer_fullscreen: bool,
     /// For double-key detection (e.g. gg → ListTop). Cleared on any other key.
@@ -66,7 +66,7 @@ impl UblxState {
             right_pane_mode: RightPaneMode::default(),
             highlight_style: style::list_highlight(),
             snapshot_requested: false,
-            toast_visible_until: None,
+            toast_slots: Vec::new(),
             viewer_fullscreen: false,
             last_key_for_double: None,
         };
