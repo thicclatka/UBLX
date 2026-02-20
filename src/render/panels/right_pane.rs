@@ -6,7 +6,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
 use crate::layout::style;
-use crate::render::formatters::markdown::is_markdown_path;
+use crate::render::viewers::markdown::is_markdown_path;
 use crate::render::{kv_tables, scrollable_content};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::format_bytes;
@@ -33,7 +33,7 @@ fn viewer_display_text(
     if let Some(ref path) = right.viewer_path
         && is_markdown_path(path)
     {
-        return crate::render::formatters::markdown::parse_markdown(raw).to_text(content_width);
+        return crate::render::viewers::markdown::parse_markdown(raw).to_text(content_width);
     }
     ratatui::text::Text::from(raw.to_string())
 }

@@ -38,7 +38,7 @@ pub(super) fn draw_delta_placeholder(f: &mut Frame, left: Rect, middle: Rect, ri
 }
 
 /// Parameters for [draw_delta_panes] (avoids too many arguments).
-pub(super) struct DrawDeltaPanesParams<'a> {
+pub struct DrawDeltaPanesParams<'a> {
     pub state: &'a mut setup::UblxState,
     pub delta: &'a setup::DeltaViewData,
     pub view: &'a setup::ViewData,
@@ -56,7 +56,7 @@ fn delta_left_labels() -> [(&'static str, Style); 3] {
     ]
 }
 
-pub(super) fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
+pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
     let state = params.state;
     let focused = matches!(state.focus, setup::PanelFocus::Categories);
     let labels = delta_left_labels();

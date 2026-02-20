@@ -6,8 +6,10 @@
 use ratatui::layout::Constraint;
 use ratatui::widgets::{Cell, Row, Table};
 
-use super::format;
-use super::sections::{ContentsSection, KvSection, SingleColumnListSection};
+use super::kv_tables::{
+    format,
+    sections::{ContentsSection, KvSection, SingleColumnListSection},
+};
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;

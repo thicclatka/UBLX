@@ -2,10 +2,11 @@
 
 use ratatui::layout::Rect;
 
+use super::consts::TABLE_GAP;
 use super::sections;
-use super::sections::{Section, TABLE_GAP};
-use super::tables;
+use super::sections::Section;
 use crate::layout::{style, themes};
+use crate::render::tables;
 use crate::ui::UI_STRINGS;
 
 /// Visible line range for a section: (skip_lines, take_lines) or None if section is off-screen.

@@ -1,5 +1,6 @@
 //! Key/value and value display formatting for metadata and contents tables.
 
+use crate::utils::format::Epsilon;
 use crate::utils::format_bytes;
 
 /// Words that are displayed in full caps (e.g. "svo" -> "SVO", "pdf" -> "PDF").
@@ -9,7 +10,16 @@ const ALL_CAPS: &[&str] = &[
 ];
 
 const FLOAT_PRECISION: usize = 4;
-const EPSILON: f64 = 1e-9;
+
+/// Schema tree: prefix + label (e.g. tree branch + node name).
+pub fn prefixed_label(prefix: &str, label: &str) -> String {
+    format!("{prefix}{label}")
+}
+
+/// Schema tree: prefix + label + ": " + value string (leaf line).
+pub fn prefixed_label_with_value(prefix: &str, label: &str, value_str: &str) -> String {
+    format!("{prefix}{label}: {value_str}")
+}
 
 pub fn format_key(key: &str) -> String {
     let words: Vec<String> = key
@@ -36,7 +46,7 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
         serde_json::Value::Bool(b) => b.to_string(),
         serde_json::Value::Number(n) => n
             .as_f64()
-            .filter(|f| f.fract().abs() >= EPSILON)
+            .filter(|f| f.fract().abs() >= Epsilon::FORMAT)
             .map(|f| format!("{f:.FLOAT_PRECISION$}"))
             .unwrap_or_else(|| n.to_string()),
         serde_json::Value::String(s) => s.clone(),

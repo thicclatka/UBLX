@@ -15,8 +15,7 @@ use ratatui::prelude::CrosstermBackend;
 
 use crate::config::UblxOpts;
 use crate::engine::db_ops::SnapshotReaderPreference;
-use crate::handlers::nefax_ops::NefaxResult;
-use crate::handlers::snapshot;
+use crate::handlers::{nefax_ops::NefaxResult, snapshot};
 use crate::layout::{event_loop, setup};
 use crate::utils::notifications;
 
@@ -108,10 +107,8 @@ fn restore_terminal() {
 /// Setup terminal, run [crate::layout::event_loop::main_app_loop], then teardown. Called by [run_tui_mode].
 /// A panic hook restores the terminal on panic so the shell stays usable.
 pub fn run_ublx(params: event_loop::RunUblxParams<'_>) -> io::Result<()> {
-    let (mut categories, mut all_rows) = event_loop::load_snapshot_for_tui(
-        params.db_path,
-        SnapshotReaderPreference::PreferUblx,
-    );
+    let (mut categories, mut all_rows) =
+        event_loop::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
     // Already-done dir: we have data, skip polling to avoid redundant first-tick load (stutter).
     if !categories.is_empty() || !all_rows.is_empty() {

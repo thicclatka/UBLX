@@ -2,6 +2,15 @@
 
 use chrono::{DateTime, Local};
 
+/// Float comparison epsilons: different tolerances per domain.
+pub struct Epsilon;
+impl Epsilon {
+    /// Number display: treat fractional part as zero below this (f64).
+    pub const FORMAT: f64 = 1e-9;
+    /// Color math (RGB/HSL): treat values as equal within this (f32).
+    pub const COLOR: f32 = 1e-6;
+}
+
 /// If `s` is longer than `max_len`, replace the middle with "..." so the result shows start and end (total length `max_len`). Uses character count.
 pub fn truncate_middle(s: &str, max_len: usize) -> String {
     const ELLIPSIS: &str = "...";

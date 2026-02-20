@@ -4,8 +4,9 @@
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
+use super::consts::SectionKeys;
 use super::format;
-use super::sections::{ContentsSection, Section};
+use super::sections::{ContentsSection, KvSection, Section};
 
 /// Keys in csv_metadata that are arrays (we build tables from them); scalars are shown as KV.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,4 +315,44 @@ fn table_numeric_or_other(
         column_keys,
         entries,
     })
+}
+
+/// Push flat KV section for csv_metadata scalars, then all array-based tables from `csv_metadata_to_sections`.
+pub fn push_csv_metadata_sections(
+    sections: &mut Vec<Section>,
+    section_key: &str,
+    csv_map: &Map<String, Value>,
+) {
+    let mut flat_kv: Vec<(String, String)> = csv_map
+        .iter()
+        .filter(|(key, _)| !MetadataArrayKey::all().contains_str(key))
+        .map(|(key, val)| (format::format_key(key), format::format_value(val, key)))
+        .collect();
+    flat_kv.sort_by(|a, b| a.0.cmp(&b.0));
+    if !flat_kv.is_empty() {
+        sections.push(Section::KeyValue(KvSection {
+            title: Some(format::format_key(section_key)),
+            rows: flat_kv,
+        }));
+    }
+    sections.extend(csv_metadata_to_sections(csv_map));
+}
+
+/// Build sections when the root object is CSV metadata (one KV table + array tables).
+pub fn sections_from_csv_root(map: &Map<String, Value>) -> Vec<Section> {
+    let mut out = Vec::new();
+    let mut flat: Vec<(String, String)> = map
+        .iter()
+        .filter(|(k, _)| !MetadataArrayKey::all().contains_str(k))
+        .map(|(k, v)| (format::format_key(k), format::format_value(v, k)))
+        .collect();
+    flat.sort_by(|a, b| a.0.cmp(&b.0));
+    if !flat.is_empty() {
+        out.push(Section::KeyValue(KvSection {
+            title: Some(format::format_key(SectionKeys::CSV_METADATA)),
+            rows: flat,
+        }));
+    }
+    out.extend(csv_metadata_to_sections(map));
+    out
 }

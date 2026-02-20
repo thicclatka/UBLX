@@ -2,7 +2,8 @@
 
 use ratatui::style::Color;
 
-const EPSILON: f32 = 1e-6;
+use crate::utils::format::Epsilon;
+
 const RGB_MAX: f32 = 255.0;
 const HSL_SEGMENT_ANGLE: f32 = 60.0;
 
@@ -28,7 +29,7 @@ fn rgb_u8_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
     let l = (max + min) / 2.0;
-    if (max - min).abs() < EPSILON {
+    if (max - min).abs() < Epsilon::COLOR {
         return (0.0, 0.0, l);
     }
     let s = if l <= 0.5 {
@@ -36,9 +37,9 @@ fn rgb_u8_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     } else {
         (max - min) / (2.0 - max - min)
     };
-    let h = if (max - r).abs() < EPSILON {
+    let h = if (max - r).abs() < Epsilon::COLOR {
         HSL_SEGMENT_ANGLE * ((g - b) / (max - min)).rem_euclid(6.0)
-    } else if (max - g).abs() < EPSILON {
+    } else if (max - g).abs() < Epsilon::COLOR {
         HSL_SEGMENT_ANGLE * ((b - r) / (max - min) + 2.0)
     } else {
         HSL_SEGMENT_ANGLE * ((r - g) / (max - min) + 4.0)
@@ -48,7 +49,7 @@ fn rgb_u8_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
 
 /// HSL (H in [0, 360), S and L in [0, 1]) → RGB u8.
 fn hsl_to_rgb_u8(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
-    if s <= EPSILON {
+    if s <= Epsilon::COLOR {
         let v = (l * RGB_MAX).round() as u8;
         return (v, v, v);
     }
@@ -92,8 +93,12 @@ mod tests {
             let bg = Color::Rgb(*r, *g, *b);
             let popup = lighten_rgb(bg, 0.05);
             let node = lighten_rgb(bg, 0.10);
-            let Color::Rgb(pr, pg, pb) = popup else { panic!() };
-            let Color::Rgb(nr, ng, nb) = node else { panic!() };
+            let Color::Rgb(pr, pg, pb) = popup else {
+                panic!()
+            };
+            let Color::Rgb(nr, ng, nb) = node else {
+                panic!()
+            };
             println!(
                 "{}: popup/notif Color::Rgb({}, {}, {}), node_bg Color::Rgb({}, {}, {})",
                 name, pr, pg, pb, nr, ng, nb
