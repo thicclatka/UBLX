@@ -11,24 +11,27 @@ use crate::layout::{setup, style};
 use crate::ui::UI_STRINGS;
 
 pub(super) fn draw_delta_placeholder(f: &mut Frame, left: Rect, middle: Rect, right: Rect) {
-    let block = Block::default().borders(Borders::ALL).title(" Delta ");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(UI_STRINGS.pad(UI_STRINGS.delta_block_title));
     f.render_widget(
-        Paragraph::new("Loading…")
+        Paragraph::new(UI_STRINGS.delta_loading)
             .style(style::text_style())
             .block(block),
         left,
     );
+    let dash = UI_STRINGS.delta_placeholder_dash;
     f.render_widget(
-        Paragraph::new("—")
+        Paragraph::new(dash)
             .style(style::text_style())
             .block(Block::default().borders(Borders::ALL)),
         middle,
     );
     f.render_widget(
-        Paragraph::new("—").style(style::text_style()).block(
+        Paragraph::new(dash).style(style::text_style()).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(UI_STRINGS.delta_right_title),
+                .title(UI_STRINGS.pad(UI_STRINGS.delta_right_title)),
         ),
         right,
     );
@@ -71,16 +74,16 @@ pub(super) fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) 
             ListItem::new(Line::from(span))
         })
         .collect();
-    let title = panels::set_title("Delta type", focused);
+    let title = panels::set_title(UI_STRINGS.delta_type_label, focused);
     let left_block = panels::panel_block(title, focused);
     f.render_stateful_widget(
-        panels::styled_list(items, left_block, focused, state.highlight_style),
+        panels::styled_list(items, left_block, state.highlight_style),
         params.left,
         &mut state.category_state,
     );
 
     let content_focused = matches!(state.focus, setup::PanelFocus::Contents);
-    let mid_title = panels::set_title("Paths", content_focused);
+    let mid_title = panels::set_title(UI_STRINGS.paths_label, content_focused);
     let mid_items: Vec<ListItem> = if params.view.content_len == 0 {
         vec![ListItem::new(if state.search_query.is_empty() {
             UI_STRINGS.no_contents
@@ -98,7 +101,6 @@ pub(super) fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) 
         f,
         mid_items,
         panels::panel_block(mid_title, content_focused),
-        content_focused,
         state.highlight_style,
         &mut state.content_state,
         params.middle,
@@ -106,7 +108,7 @@ pub(super) fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) 
 
     let right_block = Block::default()
         .borders(Borders::ALL)
-        .title(UI_STRINGS.delta_right_title);
+        .title(UI_STRINGS.pad(UI_STRINGS.delta_right_title));
     f.render_widget(&right_block, params.right);
     let right_inner = right_block.inner(params.right);
     f.render_widget(

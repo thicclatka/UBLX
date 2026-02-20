@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::Instant;
 
+use crossterm::cursor::Show as ShowCursor;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -13,6 +14,7 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::config::UblxOpts;
+use crate::engine::db_ops::SnapshotReaderPreference;
 use crate::handlers::nefax_ops::NefaxResult;
 use crate::handlers::snapshot;
 use crate::layout::{event_loop, setup};
@@ -96,10 +98,25 @@ fn run_tui_mode(
     Ok(())
 }
 
+/// Restore terminal to cooked mode, leave alternate screen, show cursor. Used on normal exit and from panic hook.
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let mut out = io::stdout();
+    let _ = crossterm::execute!(out, LeaveAlternateScreen, ShowCursor);
+}
+
 /// Setup terminal, run [crate::layout::event_loop::main_app_loop], then teardown. Called by [run_tui_mode].
+/// A panic hook restores the terminal on panic so the shell stays usable.
 pub fn run_ublx(params: event_loop::RunUblxParams<'_>) -> io::Result<()> {
-    let (mut categories, mut all_rows) = event_loop::load_snapshot_for_tui(params.db_path);
+    let (mut categories, mut all_rows) = event_loop::load_snapshot_for_tui(
+        params.db_path,
+        SnapshotReaderPreference::PreferUblx,
+    );
     let mut state = setup::UblxState::new();
+    // Already-done dir: we have data, skip polling to avoid redundant first-tick load (stutter).
+    if !categories.is_empty() || !all_rows.is_empty() {
+        state.snapshot_done_received = true;
+    }
 
     enable_raw_mode()?;
     let mut out = io::stdout();
@@ -107,16 +124,21 @@ pub fn run_ublx(params: event_loop::RunUblxParams<'_>) -> io::Result<()> {
     let backend = CrosstermBackend::new(out);
     let mut terminal = Terminal::new(backend)?;
 
-    event_loop::main_app_loop(
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        restore_terminal();
+        default_hook(info);
+    }));
+
+    let result = event_loop::main_app_loop(
         &mut terminal,
         &mut state,
         &mut categories,
         &mut all_rows,
         &params,
-    )?;
+    );
 
-    disable_raw_mode()?;
-    crossterm::execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    restore_terminal();
     terminal.show_cursor()?;
-    Ok(())
+    result
 }

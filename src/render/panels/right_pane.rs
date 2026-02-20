@@ -61,13 +61,14 @@ fn content_display_text(
     }
 }
 
-fn title(state: &UblxState) -> &'static str {
-    match state.right_pane_mode {
+fn title(state: &UblxState) -> String {
+    let label = match state.right_pane_mode {
         RightPaneMode::Viewer => UI_STRINGS.viewer,
         RightPaneMode::Templates => UI_STRINGS.templates,
         RightPaneMode::Metadata => UI_STRINGS.metadata,
         RightPaneMode::Writing => UI_STRINGS.writing,
-    }
+    };
+    UI_STRINGS.pad(label)
 }
 
 fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> {
@@ -87,7 +88,7 @@ fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> 
     .collect()
 }
 
-pub(crate) fn draw_right_pane(
+pub fn draw_right_pane(
     f: &mut ratatui::Frame,
     state: &mut UblxState,
     right: &RightPaneContent,
@@ -99,13 +100,16 @@ pub(crate) fn draw_right_pane(
     let footer_line = show_footer
         .then(|| style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns))
         .flatten();
+    let block_title = title(state);
     let right_block = if let Some(ref line) = footer_line {
         Block::default()
             .borders(Borders::ALL)
-            .title(title(state))
+            .title(block_title.as_str())
             .title_bottom(line.clone())
     } else {
-        Block::default().borders(Borders::ALL).title(title(state))
+        Block::default()
+            .borders(Borders::ALL)
+            .title(block_title.as_str())
     };
     let tabs = visible_tabs(right);
     if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
@@ -167,7 +171,7 @@ pub(crate) fn draw_right_pane(
 }
 
 /// Draw the current right-pane tab in full screen (hide categories and contents). Esc to exit.
-pub(crate) fn draw_right_pane_fullscreen(
+pub fn draw_right_pane_fullscreen(
     f: &mut ratatui::Frame,
     state: &mut UblxState,
     right: &RightPaneContent,
@@ -179,7 +183,7 @@ pub(crate) fn draw_right_pane_fullscreen(
     let footer_line = show_footer
         .then(|| style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns))
         .flatten();
-    let fullscreen_title = format!("{} (Esc to exit fullscreen)", title(state));
+    let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.fullscreen_suffix);
     let block = if let Some(ref line) = footer_line {
         Block::default()
             .borders(Borders::ALL)

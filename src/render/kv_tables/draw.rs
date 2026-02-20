@@ -88,15 +88,16 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
         if i > 0 {
             line_index += TABLE_GAP;
         }
-        let (title_opt, num_rows): (Option<&str>, usize) = match section {
-            Section::KeyValue(kv) => (kv.title.as_deref(), kv.rows.len()),
-            Section::Contents(c) => (Some(c.title.as_str()), c.entries.len()),
+        let (title_opt, header_lines, num_rows): (Option<&str>, u16, usize) = match section {
+            Section::KeyValue(kv) => (kv.title.as_deref(), 1, kv.rows.len()),
+            Section::Contents(c) => (Some(c.title.as_str()), 1, c.entries.len()),
+            Section::SingleColumnList(list) => (Some(list.title.as_str()), 0, list.values.len()),
         };
         let section_start = line_index;
         if title_opt.is_some() {
             line_index += 1;
         }
-        line_index += 1; // header
+        line_index += header_lines;
         line_index += num_rows as u16;
         let section_height = line_index - section_start;
 
@@ -164,6 +165,30 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                             skip + take,
                             rect.width,
                         ),
+                        rect,
+                    );
+                }
+            }
+            Section::SingleColumnList(list) => {
+                if title_opt.is_some() {
+                    draw_section_title(
+                        f,
+                        list.title.as_str(),
+                        table_area,
+                        visible_start,
+                        visible_end,
+                        section_start,
+                    );
+                }
+                let table_start = section_start + 1;
+                let skip =
+                    (visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
+                let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
+                if take > 0 {
+                    let y_offset = table_start.saturating_sub(visible_start);
+                    let rect = rect_in_viewport(table_area, y_offset, take as u16, viewport);
+                    f.render_widget(
+                        tables::single_column_list_to_table(list, row_offset, skip, skip + take),
                         rect,
                     );
                 }

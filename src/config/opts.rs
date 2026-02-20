@@ -30,7 +30,7 @@ pub struct UblxSettings {
 }
 
 /// Parse drive type string from DB/cache ("SSD", "HDD", "Network", "Unknown").
-pub(crate) fn parse_drive_type(s: &str) -> NefaxDriveType {
+pub fn parse_drive_type(s: &str) -> NefaxDriveType {
     match s {
         "SSD" => NefaxDriveType::SSD,
         "HDD" => NefaxDriveType::HDD,

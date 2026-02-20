@@ -5,6 +5,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 
 use crate::layout::{style, themes};
+use crate::ui::UI_STRINGS;
 
 /// Build a static slice of (shortcut, action) pairs. Add lines like:
 /// `help_entries![ ("keys", "description"), ... ]`
@@ -61,12 +62,12 @@ pub fn render_help_box(f: &mut Frame) {
     let t = themes::current();
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(Line::from(" Help ").centered())
+        .title(Line::from(UI_STRINGS.pad(UI_STRINGS.help_title)).centered())
         .border_style(Style::default().fg(t.focused_border))
         .style(Style::default().bg(t.popup_bg));
     let inner = Style::default().fg(t.text).bg(t.popup_bg);
 
-    let header = Row::new(vec!["Command", "Action"])
+    let header = Row::new(vec![UI_STRINGS.help_table_command, UI_STRINGS.help_table_action])
         .style(style::table_header_style())
         .bottom_margin(0);
     let data_rows: Vec<Row> = HELP_ENTRIES

@@ -7,11 +7,15 @@ use ratatui::layout::Constraint;
 use ratatui::widgets::{Cell, Row, Table};
 
 use super::format;
-use super::sections::{ContentsSection, KvSection};
+use super::sections::{ContentsSection, KvSection, SingleColumnListSection};
 use crate::layout::style;
+use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;
 
 const COLUMN_SPACING: usize = 1;
+
+/// When a table has more than this many columns, we balance widths to fill the pane; otherwise we use natural (compact) widths so few-column tables (e.g. sheet stats) don’t look over-spaced.
+const SIZE_OPTIMIZATION_COLUMN_THRESHOLD: usize = 3;
 
 /// Compute column widths (in characters) from natural widths and available width.
 /// Natural width per column is typically max(header len, max cell len in column).
@@ -59,9 +63,12 @@ pub fn entry_cell(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -
 
 /// Build key/value table for one section.
 pub fn section_to_table(section: &KvSection, row_offset: usize) -> Table<'_> {
-    let header = Row::new(vec!["Key", "Value"])
-        .style(style::table_header_style())
-        .bottom_margin(0);
+    let header = Row::new(vec![
+        UI_STRINGS.table_header_key,
+        UI_STRINGS.table_header_value,
+    ])
+    .style(style::table_header_style())
+    .bottom_margin(0);
     let data_rows: Vec<Row> = section
         .rows
         .iter()
@@ -114,10 +121,7 @@ fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) 
     if keys.is_empty() {
         return vec![];
     }
-    let mut natural: Vec<usize> = cols
-        .iter()
-        .map(|s| s.chars().count())
-        .collect();
+    let mut natural: Vec<usize> = cols.iter().map(|s| s.chars().count()).collect();
     for (_, v) in section
         .entries
         .iter()
@@ -157,12 +161,31 @@ pub fn contents_to_table_window(
     let natural = contents_natural_widths(section, start, end);
     let header_widths = contents_header_widths(section);
     let ncols = section.column_keys.len();
+    let use_size_optimization = ncols > SIZE_OPTIMIZATION_COLUMN_THRESHOLD;
+
     let mut column_widths = if natural.is_empty() {
-        let available = (table_width as usize).saturating_sub((ncols.saturating_sub(1)) * COLUMN_SPACING);
+        let available =
+            (table_width as usize).saturating_sub((ncols.saturating_sub(1)) * COLUMN_SPACING);
         let w = (available / ncols.max(1)).min(u16::MAX as usize) as u16;
         (0..ncols).map(|_| w.max(1)).collect::<Vec<u16>>()
-    } else {
+    } else if use_size_optimization {
         balanced_column_widths(&natural, table_width as usize, COLUMN_SPACING)
+    } else {
+        let gaps = (ncols.saturating_sub(1)) * COLUMN_SPACING;
+        let natural_with_header: Vec<usize> = natural
+            .iter()
+            .zip(header_widths.iter())
+            .map(|(n, &hw)| (*n).max(hw as usize))
+            .collect();
+        let total_compact = natural_with_header.iter().sum::<usize>() + gaps;
+        if total_compact <= table_width as usize {
+            natural_with_header
+                .into_iter()
+                .map(|w| w.min(u16::MAX as usize) as u16)
+                .collect()
+        } else {
+            balanced_column_widths(&natural_with_header, table_width as usize, COLUMN_SPACING)
+        }
     };
     for (j, &min_w) in header_widths.iter().enumerate() {
         if let Some(w) = column_widths.get_mut(j) {
@@ -199,6 +222,29 @@ pub fn contents_to_table_window(
         .collect();
     Table::new(data_rows, constraints)
         .header(header)
+        .column_spacing(1)
+        .style(style::text_style())
+}
+
+/// Build a single-column table with no header (e.g. common_pivots list). Only rows [start, end) are included.
+pub fn single_column_list_to_table(
+    section: &SingleColumnListSection,
+    row_offset: usize,
+    start: usize,
+    end: usize,
+) -> Table<'_> {
+    let data_rows: Vec<Row> = section
+        .values
+        .iter()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .enumerate()
+        .map(|(idx, s)| {
+            Row::new(vec![Cell::from(s.as_str())])
+                .style(style::table_row_style(row_offset + start + idx))
+        })
+        .collect();
+    Table::new(data_rows, [Constraint::Min(0)])
         .column_spacing(1)
         .style(style::text_style())
 }

@@ -35,9 +35,9 @@ fn file_content_for_viewer(path: &Path) -> Option<String> {
         Ok(m) => m,
         Err(_) => return Some("(file not found)".to_string()),
     };
-    if meta.is_dir() {
-        return Some("(directory)".to_string());
-    }
+    // if meta.is_dir() {
+    //     return Some("(directory)".to_string());
+    // }
     if meta.is_file() && is_likely_binary(path) {
         return Some("(binary file)".to_string());
     }
@@ -87,7 +87,7 @@ fn tree_for_path(state: &mut UblxState, path: &str, full_path: &Path) -> String 
 
 fn tree_content(tree_str: String) -> RightPaneContent {
     RightPaneContent {
-        templates: "no template found".to_string(),
+        templates: String::new(),
         metadata: None,
         writing: None,
         viewer: Some(tree_str),
@@ -107,7 +107,10 @@ pub fn resolve_right_pane_content(
     view: &ViewData,
     all_rows: Option<&[TuiRow]>,
 ) -> RightPaneContent {
-    let selected = state.content_state.selected().and_then(|i| view.row_at(i, all_rows));
+    let selected = state
+        .content_state
+        .selected()
+        .and_then(|i| view.row_at(i, all_rows));
     match selected {
         Some((path, category, size)) => {
             if *category == CATEGORY_DIRECTORY {
@@ -134,7 +137,7 @@ pub fn resolve_right_pane_content(
                     .unwrap_or_default();
                 if zahir_json.is_empty() {
                     RightPaneContent {
-                        templates: "no template found".to_string(),
+                        templates: String::new(),
                         metadata: None,
                         writing: None,
                         viewer: viewer_str,
@@ -157,7 +160,7 @@ pub fn resolve_right_pane_content(
                             }
                         }
                         _ => RightPaneContent {
-                            templates: "no template found".to_string(),
+                            templates: String::new(),
                             metadata: None,
                             writing: None,
                             viewer: viewer_str,
@@ -172,7 +175,7 @@ pub fn resolve_right_pane_content(
         None => {
             state.cached_tree = None;
             RightPaneContent {
-                templates: "(select an item)".to_string(),
+                templates: String::new(),
                 metadata: None,
                 writing: None,
                 viewer: None,
@@ -190,7 +193,7 @@ pub fn sectioned_preview_from_zahir(value: &serde_json::Value) -> SectionedPrevi
         .get("templates")
         .and_then(|t| serde_json::to_string_pretty(t).ok())
         .filter(|s| !s.is_empty() && s != "null" && s != "[]")
-        .unwrap_or_else(|| "no template found".to_string());
+        .unwrap_or_default();
 
     let metadata = value.as_object().and_then(|obj| {
         let parts: Vec<String> = obj

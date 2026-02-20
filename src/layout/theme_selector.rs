@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
 use crate::layout::{style, themes};
+use crate::ui::UI_STRINGS;
 use crate::utils::UI_GLYPHS;
 
 const POPUP_PADDING_W: u16 = 4;
@@ -41,7 +42,7 @@ fn popup_rect(area: Rect, opts: &[themes::ThemeOption]) -> Rect {
 fn theme_selector_block(t: &themes::Theme) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
-        .title(Line::from(" Theme ").centered())
+        .title(Line::from(UI_STRINGS.pad(UI_STRINGS.theme_title)).centered())
         .border_style(Style::default().fg(t.focused_border))
         .style(Style::default().bg(t.popup_bg))
 }

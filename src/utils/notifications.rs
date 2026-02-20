@@ -16,6 +16,7 @@ use std::time::Instant;
 
 use crate::config::TOAST_CONFIG;
 use crate::layout::themes;
+use crate::ui::UI_STRINGS;
 
 static BUMPER_FOR_LOG: OnceLock<BumperBuffer> = OnceLock::new();
 static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();
@@ -173,8 +174,6 @@ fn level_short(level: Level) -> &'static str {
     }
 }
 
-const NOT_TITLE_FALLBACK: &str = " Notification ";
-
 /// Draw one toast slot in the given rect (used for stacked toasts).
 pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
     f.render_widget(Clear, area);
@@ -185,8 +184,8 @@ pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
         .messages
         .last()
         .and_then(|m| m.operation.as_deref())
-        .map(|s| format!(" {} ", s))
-        .unwrap_or_else(|| NOT_TITLE_FALLBACK.to_string());
+        .map(|s| UI_STRINGS.pad(s))
+        .unwrap_or_else(|| UI_STRINGS.pad(UI_STRINGS.notification_title));
     let lines: Vec<Line<'_>> = slot
         .messages
         .iter()

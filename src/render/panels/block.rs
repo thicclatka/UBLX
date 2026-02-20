@@ -4,7 +4,7 @@ use ratatui::widgets::{Block, Borders};
 
 use crate::layout::style;
 
-pub(crate) fn panel_block<'a, T: Into<ratatui::text::Line<'a>>>(title: T, focused: bool) -> Block<'a> {
+pub fn panel_block<'a, T: Into<ratatui::text::Line<'a>>>(title: T, focused: bool) -> Block<'a> {
     Block::default()
         .borders(Borders::ALL)
         .border_style(if focused {

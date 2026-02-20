@@ -1,7 +1,7 @@
 //! Main app loop: one tick = prune toasts, snapshot handling, build view + right content, draw, input.
 
 use std::io;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
@@ -18,6 +18,7 @@ use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_d
 use super::params::RunUblxParams;
 use super::snapshot::load_snapshot_for_tui;
 use super::view_data::build_view_data;
+use crate::engine::db_ops::SnapshotReaderPreference;
 
 /// Runs until the user quits. Call from [crate::handlers::core::run_ublx] after terminal setup.
 ///
@@ -38,6 +39,8 @@ pub fn main_app_loop(
 }
 
 /// One tick: update toasts/snapshot, build view and right content, draw, handle input. Returns true if quit requested.
+const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 fn run_tick(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     state: &mut setup::UblxState,
@@ -48,6 +51,7 @@ fn run_tick(
     prune_toasts(state);
     handle_snapshot_request(state, params);
     handle_snapshot_done(state, categories, all_rows, params);
+    poll_snapshot_if_due(state, categories, all_rows, params);
     if params.dev {
         notifications::move_log_events();
     }
@@ -98,6 +102,7 @@ fn handle_snapshot_request(state: &mut setup::UblxState, params: &RunUblxParams<
         params.bumper,
     );
     state.snapshot_requested = false;
+    state.snapshot_done_received = false; // start polling .ublx_tmp for live progress
 }
 
 fn handle_snapshot_done(
@@ -113,15 +118,43 @@ fn handle_snapshot_done(
         return;
     };
 
-    let (c, r) = load_snapshot_for_tui(params.db_path);
+    let (c, r) = load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     *categories = c;
     *all_rows = r;
+    state.snapshot_poll_deadline = None;
+    state.snapshot_done_received = true;
 
     if let Some(b) = params.bumper {
         snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
         let op = OPERATION_NAME.snapshot();
         notifications::show_toast_slot(&mut state.toast_slots, b, Some(op.as_str()), params.dev);
     }
+}
+
+/// When a background snapshot is running, periodically reload from the DB (e.g. .ublx_tmp) so the TUI shows live progress.
+fn poll_snapshot_if_due(
+    state: &mut setup::UblxState,
+    categories: &mut Vec<String>,
+    all_rows: &mut Vec<setup::TuiRow>,
+    params: &RunUblxParams<'_>,
+) {
+    let Some(ref _rx) = params.snapshot_done_rx else {
+        return;
+    };
+    if state.snapshot_done_received {
+        return;
+    }
+    let now = Instant::now();
+    let due = state.snapshot_poll_deadline.is_none_or(|d| now >= d);
+    if !due {
+        return;
+    }
+    let (c, r) = load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferTmp);
+    if !c.is_empty() || !r.is_empty() {
+        *categories = c;
+        *all_rows = r;
+    }
+    state.snapshot_poll_deadline = Some(now + SNAPSHOT_POLL_INTERVAL);
 }
 
 /// Build view data and right-pane content for the current mode (Snapshot or Delta). Returns (view, right_content, delta_data for draw, rows slice for draw).

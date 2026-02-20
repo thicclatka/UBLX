@@ -43,6 +43,10 @@ pub struct UblxState {
     pub viewer_fullscreen: bool,
     /// For double-key detection (e.g. gg → ListTop). Cleared on any other key.
     pub last_key_for_double: Option<char>,
+    /// When set, we poll the snapshot DB (e.g. .ublx_tmp) at most when this time is reached.
+    pub snapshot_poll_deadline: Option<std::time::Instant>,
+    /// True after we've received a "snapshot done" message; reset when user triggers a new snapshot so we poll again.
+    pub snapshot_done_received: bool,
 }
 
 impl UblxState {
@@ -68,6 +72,8 @@ impl UblxState {
             toast_slots: Vec::new(),
             viewer_fullscreen: false,
             last_key_for_double: None,
+            snapshot_poll_deadline: None,
+            snapshot_done_received: false, // poll until we receive done; run_ublx sets true when initial load has data (already-done dir)
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));

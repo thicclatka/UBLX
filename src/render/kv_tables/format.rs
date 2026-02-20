@@ -8,6 +8,9 @@ const ALL_CAPS: &[&str] = &[
     "eng",
 ];
 
+const FLOAT_PRECISION: usize = 4;
+const EPSILON: f64 = 1e-9;
+
 pub fn format_key(key: &str) -> String {
     let words: Vec<String> = key
         .split('_')
@@ -31,7 +34,11 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::Null => "—".to_string(),
         serde_json::Value::Bool(b) => b.to_string(),
-        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Number(n) => n
+            .as_f64()
+            .filter(|f| f.fract().abs() >= EPSILON)
+            .map(|f| format!("{f:.FLOAT_PRECISION$}"))
+            .unwrap_or_else(|| n.to_string()),
         serde_json::Value::String(s) => s.clone(),
         serde_json::Value::Array(arr) => {
             if arr.is_empty() {

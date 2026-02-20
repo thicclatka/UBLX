@@ -16,8 +16,8 @@ pub struct UiStrings {
     pub all_categories: &'static str,
     pub no_contents: &'static str,
     pub no_matches: &'static str,
-    pub list_highlight: &'static str,
-    pub list_unfocused: &'static str,
+    /// Symbol before each list row (selection shown by title + highlight style).
+    pub list_symbol: &'static str,
     /// Status line: label before search query (e.g. "Search: ").
     pub status_search_label: &'static str,
     /// Status line: "Esc to clear" label next to search.
@@ -36,17 +36,41 @@ pub struct UiStrings {
     /// UBLX Settings config labels
     pub global_config: &'static str,
     pub local_config: &'static str,
+    // Status / delta / popups (raw; use [Self::pad] for block titles)
+    pub latest_snapshot_label: &'static str,
+    pub delta_block_title: &'static str,
+    pub delta_loading: &'static str,
+    pub delta_placeholder_dash: &'static str,
+    pub delta_type_label: &'static str,
+    pub paths_label: &'static str,
+    pub brand: &'static str,
+    pub fullscreen_suffix: &'static str,
+    pub table_header_key: &'static str,
+    pub table_header_value: &'static str,
+    pub help_title: &'static str,
+    pub theme_title: &'static str,
+    pub notification_title: &'static str,
+    pub first_table_title: &'static str,
+    pub contents_table_title: &'static str,
+    pub help_table_command: &'static str,
+    pub help_table_action: &'static str,
 }
 
 impl UiStrings {
+    /// Pads a label with spaces for block/popup titles, e.g. `pad("Delta")` → `" Delta "`.
+    #[must_use]
+    pub fn pad(&self, s: &str) -> String {
+        format!(" {} ", s)
+    }
+
     pub const fn new() -> Self {
         Self {
             categories: "Categories",
             contents: "Contents",
-            viewer: " Viewer ",
-            templates: " Templates ",
-            metadata: " Metadata ",
-            writing: " Writing ",
+            viewer: "Viewer",
+            templates: "Templates",
+            metadata: "Metadata",
+            writing: "Writing",
             tab_templates: "Templates",
             tab_viewer: "Viewer",
             tab_metadata: "Metadata",
@@ -54,8 +78,7 @@ impl UiStrings {
             all_categories: "All",
             no_contents: "(no contents)",
             no_matches: "(no matches)",
-            list_highlight: "▌ ",
-            list_unfocused: "  ",
+            list_symbol: "  ",
             status_search_label: "Search: ",
             status_esc_to_clear: "Esc to clear",
             not_available: "(not available for this item)",
@@ -65,9 +88,26 @@ impl UiStrings {
             delta_added: "Added",
             delta_mod: "Modified",
             delta_removed: "Removed",
-            delta_right_title: " Snapshot overview ",
+            delta_right_title: "Snapshot overview",
             global_config: "Global",
             local_config: "Local",
+            latest_snapshot_label: "Latest Snapshot",
+            delta_block_title: "Delta",
+            delta_loading: "Loading…",
+            delta_placeholder_dash: "—",
+            delta_type_label: "Delta type",
+            paths_label: "Paths",
+            brand: "UBLX",
+            fullscreen_suffix: "(Esc to exit fullscreen)",
+            table_header_key: "Key",
+            table_header_value: "Value",
+            help_title: "Help",
+            theme_title: "Theme",
+            notification_title: "Notification",
+            first_table_title: "General",
+            contents_table_title: "Contents",
+            help_table_command: "Command",
+            help_table_action: "Action",
         }
     }
 }
@@ -92,3 +132,28 @@ impl UiConstants {
 }
 
 pub const UI_CONSTANTS: UiConstants = UiConstants::new();
+
+/// Tree-drawing characters for directory-style trees (e.g. schema tree, file tree). Single place to tweak box-drawing.
+pub struct TreeChars {
+    /// Non-last sibling: "├─ "
+    pub branch: &'static str,
+    /// Last sibling: "└─ "
+    pub last_branch: &'static str,
+    /// Continuation (more siblings below): "│  "
+    pub vertical: &'static str,
+    /// No continuation (last branch): "   "
+    pub space: &'static str,
+}
+
+impl TreeChars {
+    pub const fn new() -> Self {
+        Self {
+            branch: "├─ ",
+            last_branch: "└─ ",
+            vertical: "│  ",
+            space: "   ",
+        }
+    }
+}
+
+pub const TREE_CHARS: TreeChars = TreeChars::new();

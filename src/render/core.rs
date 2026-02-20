@@ -209,7 +209,7 @@ fn draw_main_tabs(f: &mut Frame, state: &setup::UblxState, area: Rect) {
     f.render_widget(Paragraph::new(line), tabs_rect);
     f.render_widget(
         Paragraph::new(Line::from(ratatui::text::Span::styled(
-            "UBLX",
+            UI_STRINGS.brand,
             style::title_brand(),
         ))),
         brand_rect,
