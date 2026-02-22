@@ -33,10 +33,8 @@ pub fn layout_scrollable_content(
     bottom_pad: u16,
 ) -> ScrollableLayout {
     let content_with_pad = if area.height > bottom_pad {
-        let chunks = style::split_vertical(
-            area,
-            &[Constraint::Min(0), Constraint::Length(bottom_pad)],
-        );
+        let chunks =
+            style::split_vertical(area, &[Constraint::Min(0), Constraint::Length(bottom_pad)]);
         chunks[0]
     } else {
         area
@@ -70,11 +68,7 @@ pub fn layout_scrollable_content(
 
 /// Renders the vertical scrollbar in `layout.scrollbar_rect` when `layout.show_scrollbar` and rect has size.
 /// Uses the same style as the viewer scrollbar.
-pub fn draw_scrollbar(
-    f: &mut ratatui::Frame,
-    layout: &ScrollableLayout,
-    total_lines: usize,
-) {
+pub fn draw_scrollbar(f: &mut ratatui::Frame, layout: &ScrollableLayout, total_lines: usize) {
     if !layout.show_scrollbar
         || layout.scrollbar_rect.width == 0
         || layout.scrollbar_rect.height == 0
@@ -90,9 +84,5 @@ pub fn draw_scrollbar(
     let mut state = ScrollbarState::new(content_len)
         .position(layout.scroll_y as usize)
         .viewport_content_length(1);
-    f.render_stateful_widget(
-        style::viewer_scrollbar(),
-        layout.scrollbar_rect,
-        &mut state,
-    );
+    f.render_stateful_widget(style::viewer_scrollbar(), layout.scrollbar_rect, &mut state);
 }

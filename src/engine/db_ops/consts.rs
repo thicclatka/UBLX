@@ -120,7 +120,7 @@ impl UblxDbStatements {
 }
 
 /// Delta type for the delta_log table. Order (0 = Added, 1 = Mod, 2 = Removed) is used for TUI category index.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeltaType {
     Added,
     Mod,

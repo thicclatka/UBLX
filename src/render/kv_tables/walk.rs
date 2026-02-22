@@ -7,8 +7,8 @@ use crate::ui::UI_STRINGS;
 use super::consts::SectionKeys;
 use super::csv;
 use super::format;
-use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
 use super::schema;
+use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
 use super::xlsx;
 
 fn push_contents_from_entries(sections: &mut Vec<Section>, arr: Vec<Value>) {
@@ -80,7 +80,10 @@ pub fn push_root_parts(sections: &mut Vec<Section>, map: &Map<String, Value>) {
     }
 
     if !flat.is_empty() {
-        sections.push(Section::KeyValue(KvSection { title: None, rows: flat }));
+        sections.push(Section::KeyValue(KvSection {
+            title: None,
+            rows: flat,
+        }));
     }
     if let Some(v) = schema_val {
         schema::push_schema_section(sections, &v);
@@ -106,7 +109,11 @@ pub fn push_root_parts(sections: &mut Vec<Section>, map: &Map<String, Value>) {
 }
 
 /// Walk nested map once (only entries, schema, common_pivots are special; rest is flat KV). Push sections in order.
-pub fn process_nested_map(sections: &mut Vec<Section>, section_key: &str, map: &Map<String, Value>) {
+pub fn process_nested_map(
+    sections: &mut Vec<Section>,
+    section_key: &str,
+    map: &Map<String, Value>,
+) {
     let mut flat = Vec::new();
     let mut entries = None;
     let mut schema_val = None;

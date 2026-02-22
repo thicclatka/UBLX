@@ -52,7 +52,11 @@ fn schema_node_lines(
             }
         }
         if let Some(children_map) = children.filter(|c| !c.is_empty()) {
-            out.extend(walk_schema_children(children_map, continuation, schema_node_lines));
+            out.extend(walk_schema_children(
+                children_map,
+                continuation,
+                schema_node_lines,
+            ));
         }
         return out;
     }
@@ -63,7 +67,11 @@ fn schema_node_lines(
 }
 
 /// Shared child walk: enumerate entries, compute tree prefixes, call visitor for each. Used for XML children (object) and TOML children (full map).
-fn walk_schema_children<F>(map: &Map<String, Value>, continuation: &str, mut visit: F) -> Vec<String>
+fn walk_schema_children<F>(
+    map: &Map<String, Value>,
+    continuation: &str,
+    mut visit: F,
+) -> Vec<String>
 where
     F: FnMut(&Value, &str, &str, &str) -> Vec<String>,
 {

@@ -23,4 +23,3 @@ pub fn load_snapshot_for_tui(
     sort_categories_and_rows(&mut categories, &mut all_rows);
     (categories, all_rows)
 }
-

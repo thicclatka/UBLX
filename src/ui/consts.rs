@@ -62,7 +62,17 @@ pub struct UiStrings {
     pub help_table_action: &'static str,
 }
 
-impl StringObjTraits for UiStrings {}
+impl Default for UiStrings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StringObjTraits for UiStrings {
+    fn new() -> Self {
+        UiStrings::new()
+    }
+}
 
 impl UiStrings {
     pub const fn new() -> Self {
@@ -131,6 +141,12 @@ pub struct UiConstants {
     pub empty_space: &'static str,
 }
 
+impl Default for UiConstants {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UiConstants {
     pub const fn new() -> Self {
         Self {
@@ -186,7 +202,17 @@ pub struct UiGlyphs {
     pub swatch_block: char,
 }
 
-impl StringObjTraits for UiGlyphs {}
+impl Default for UiGlyphs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StringObjTraits for UiGlyphs {
+    fn new() -> Self {
+        UiGlyphs::new()
+    }
+}
 
 impl UiGlyphs {
     pub const fn new() -> Self {
@@ -210,6 +236,12 @@ pub struct TreeChars {
     pub vertical: &'static str,
     /// No continuation (last branch): "   "
     pub space: &'static str,
+}
+
+impl Default for TreeChars {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TreeChars {

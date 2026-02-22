@@ -29,10 +29,8 @@ pub fn build_view_data(
             .select(Some(clamp_selection(category_idx, category_list_len)));
     }
     let content_len = contents_indices.len();
-    if let Some(sel) = clamp_selection_opt(
-        state.content_state.selected().unwrap_or(0),
-        content_len,
-    ) {
+    if let Some(sel) = clamp_selection_opt(state.content_state.selected().unwrap_or(0), content_len)
+    {
         state.content_state.select(Some(sel));
     } else {
         state.content_state.select(None);

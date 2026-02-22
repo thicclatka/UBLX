@@ -8,9 +8,9 @@ use ratatui::widgets::ListState;
 
 use super::style;
 
+use crate::engine::db_ops::DeltaType;
 /// Row for TUI list: (path, category, size_bytes). Same as [crate::engine::db_ops::SnapshotTuiRow]; zahir_json is loaded on demand for the selected row.
 pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
-use crate::engine::db_ops::DeltaType;
 
 /// Category string for directories in the snapshot (matches [crate::engine::db_ops::UblxDbCategory]).
 pub const CATEGORY_DIRECTORY: &str = "Directory";
@@ -48,6 +48,12 @@ pub struct UblxState {
     pub snapshot_poll_deadline: Option<std::time::Instant>,
     /// True after we've received a "snapshot done" message; reset when user triggers a new snapshot so we poll again.
     pub snapshot_done_received: bool,
+}
+
+impl Default for UblxState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UblxState {

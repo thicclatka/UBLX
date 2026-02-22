@@ -19,7 +19,11 @@ pub(super) fn draw_status_line(
 ) {
     let mut spans: Vec<Span<'static>> = Vec::new();
     if let Some(ns) = latest_snapshot_ns {
-        let node_content = format!("{}: {}", UI_STRINGS.latest_snapshot_label, format_timestamp_ns(ns));
+        let node_content = format!(
+            "{}: {}",
+            UI_STRINGS.latest_snapshot_label,
+            format_timestamp_ns(ns)
+        );
         spans.extend(style::status_node_spans(&node_content));
     }
     if search_active || !search_query.is_empty() {

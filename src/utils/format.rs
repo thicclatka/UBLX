@@ -18,10 +18,12 @@ pub fn truncate_middle(s: &str, max_len: usize) -> String {
     if max_len <= ellipsis_len || s.chars().count() <= max_len {
         return s.to_string();
     }
-    let take_each = (max_len - ellipsis_len) / 2;
-    let start: String = s.chars().take(take_each).collect();
+    let total_take = max_len - ellipsis_len;
+    let take_start = total_take / 2;
+    let take_end = total_take - take_start;
+    let start: String = s.chars().take(take_start).collect();
     let n = s.chars().count();
-    let end: String = s.chars().skip(n.saturating_sub(take_each)).collect();
+    let end: String = s.chars().skip(n.saturating_sub(take_end)).collect();
     format!("{start}{ELLIPSIS}{end}")
 }
 
@@ -58,8 +60,12 @@ pub fn frame_string_with_spaces(s: &str) -> String {
     format!(" {} ", s)
 }
 
-/// Types that can pad a string for block/popup titles (e.g. `" Delta "`). Shared by [crate::ui::UiStrings] and [crate::utils::UiGlyphs].
+/// Types that can pad a string for block/popup titles (e.g. `" Delta "`). Shared by [crate::ui::consts::UiStrings] and [crate::ui::consts::UiGlyphs].
 pub trait StringObjTraits {
+    fn new() -> Self
+    where
+        Self: Sized;
+
     /// Pads a label with spaces for block/popup titles, e.g. `pad("Delta")` → `" Delta "`.
     fn pad(&self, s: &str) -> String {
         frame_string_with_spaces(s)

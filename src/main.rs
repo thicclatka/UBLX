@@ -1,17 +1,15 @@
-mod macros;
-mod_priv!(config, engine, handlers, layout, render, ui, utils);
-
 use std::path::PathBuf;
 use std::time::Instant;
 
 use clap::Parser;
 use log::debug;
 
-use config::{TOAST_CONFIG, UblxOpts, UblxPaths};
-use engine::db_ops;
-use handlers::{core, nefax_ops};
-use utils::notifications::{self, BumperBuffer};
-use utils::*;
+use ublx::config::{TOAST_CONFIG, UblxOpts, UblxPaths};
+use ublx::engine::db_ops;
+use ublx::fatal;
+use ublx::handlers::{core, nefax_ops};
+use ublx::utils::notifications::{self, BumperBuffer};
+use ublx::utils::*;
 
 #[derive(Parser)]
 #[command(name = "ublx")]

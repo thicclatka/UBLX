@@ -24,6 +24,12 @@ fn pick<T>(dev: bool, normal: T, dev_val: T) -> T {
     if dev { dev_val } else { normal }
 }
 
+impl Default for ToastConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToastConfig {
     pub const fn new() -> Self {
         Self {
@@ -84,6 +90,12 @@ pub const TOAST_CONFIG: ToastConfig = ToastConfig::new();
 /// Operation names for toasts: `{executable}-{op}` (e.g. "ublx-snapshot", "ublx-export").
 pub struct OperationName {
     executable: &'static str,
+}
+
+impl Default for OperationName {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OperationName {

@@ -128,7 +128,8 @@ impl<'a> UblxActionContext<'a> {
         match state.focus {
             PanelFocus::Categories => {
                 if self.view.category_list_len > 0 {
-                    let last = clamp_selection(self.view.category_list_len, self.view.category_list_len);
+                    let last =
+                        clamp_selection(self.view.category_list_len, self.view.category_list_len);
                     state.category_state.select(Some(last));
                 }
             }
@@ -169,19 +170,17 @@ impl<'a> UblxActionContext<'a> {
             PanelFocus::Categories => {
                 if self.view.category_list_len > 0 {
                     let i = state.category_state.selected().unwrap_or(0);
-                    state.category_state.select(Some(clamp_selection(
-                        i + 1,
-                        self.view.category_list_len,
-                    )));
+                    state
+                        .category_state
+                        .select(Some(clamp_selection(i + 1, self.view.category_list_len)));
                 }
             }
             PanelFocus::Contents => {
                 if self.view.content_len > 0 {
                     let i = state.content_state.selected().unwrap_or(0);
-                    state.content_state.select(Some(clamp_selection(
-                        i + 1,
-                        self.view.content_len,
-                    )));
+                    state
+                        .content_state
+                        .select(Some(clamp_selection(i + 1, self.view.content_len)));
                 }
             }
         }

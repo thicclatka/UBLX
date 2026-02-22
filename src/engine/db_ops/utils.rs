@@ -31,7 +31,11 @@ pub fn ensure_ublx_and_db(dir_to_ublx: &Path) -> Result<PathBuf, anyhow::Error> 
 fn file_type_from_zahir_json(json: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(json)
         .ok()
-        .and_then(|v| v.get("file_type").and_then(|v| v.as_str()).map(String::from))
+        .and_then(|v| {
+            v.get("file_type")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
 }
 
 pub fn prepare_results_for_snapshot_insertion(
@@ -49,8 +53,7 @@ pub fn prepare_results_for_snapshot_insertion(
     let zahir_file_type = zahir_output
         .and_then(|o| o.file_type.as_deref())
         .or(prior_ft.as_deref());
-    let category =
-        UblxDbCategory::get_category_for_path(&full_path, ublx_paths, zahir_file_type);
+    let category = UblxDbCategory::get_category_for_path(&full_path, ublx_paths, zahir_file_type);
     let zahir_json = zahir_output
         .map(|o| zahir_output_to_json(Some(o)))
         .unwrap_or_else(|| prior_zahir_json.get(&path_str).cloned().unwrap_or_default());
@@ -137,11 +140,8 @@ pub fn insert_nefax_only_into_snapshot(
         let prior_ft = prior_zahir_json
             .get(&path_str)
             .and_then(|j| file_type_from_zahir_json(j));
-        let category = UblxDbCategory::get_category_for_path(
-            &full_path,
-            ublx_paths,
-            prior_ft.as_deref(),
-        );
+        let category =
+            UblxDbCategory::get_category_for_path(&full_path, ublx_paths, prior_ft.as_deref());
         let zahir_json = prior_zahir_json.get(&path_str).cloned().unwrap_or_default();
         stmt.execute(rusqlite::params![
             path_str,

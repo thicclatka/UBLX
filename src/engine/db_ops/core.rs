@@ -306,7 +306,10 @@ pub fn load_snapshot_rows_for_tui(
 }
 
 /// Load zahir_json for a single path (for right-pane content). Returns None if path not found or zahir_json is null/empty.
-pub fn load_zahir_json_for_path(db_path: &Path, path: &str) -> Result<Option<String>, anyhow::Error> {
+pub fn load_zahir_json_for_path(
+    db_path: &Path,
+    path: &str,
+) -> Result<Option<String>, anyhow::Error> {
     if !db_path.exists() {
         return Ok(None);
     }
