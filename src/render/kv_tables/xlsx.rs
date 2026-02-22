@@ -12,11 +12,7 @@ pub fn sheet_stats_to_section(section_key: &str, obj: &Map<String, Value>) -> Se
     let data_keys: Vec<String> = obj
         .values()
         .find_map(|v| v.as_object())
-        .map(|o| {
-            let mut k: Vec<String> = o.keys().cloned().collect();
-            k.sort();
-            k
-        })
+        .map(|o| o.keys().cloned().collect())
         .unwrap_or_default();
     let column_keys: Vec<String> = std::iter::once(COL_NAME.to_string())
         .chain(data_keys.clone())
@@ -37,16 +33,12 @@ pub fn sheet_stats_to_section(section_key: &str, obj: &Map<String, Value>) -> Se
         }
         entries.push(Value::Object(row));
     }
-    entries.sort_by(|a, b| {
-        let na = a.get(COL_NAME).and_then(Value::as_str).unwrap_or("");
-        let nb = b.get(COL_NAME).and_then(Value::as_str).unwrap_or("");
-        na.cmp(nb)
-    });
     Section::Contents(ContentsSection {
         title: format::format_key(section_key),
         columns,
         column_keys,
         entries,
+        sub_title: false,
     })
 }
 

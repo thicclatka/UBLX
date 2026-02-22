@@ -13,6 +13,8 @@ impl SectionKeys {
     pub const SHEET_STATS: &'static str = "sheet_stats";
     pub const COMMON_PIVOTS: &'static str = "common_pivots";
     pub const CSV_METADATA: &'static str = "csv_metadata";
+    /// Array of table objects (e.g. sqlite_metadata.tables); each object becomes its own KV section with title from "name".
+    pub const TABLES: &'static str = "tables";
 }
 
 /// JSON keys that trigger special section handling (not treated as plain key/value or nested subsection).

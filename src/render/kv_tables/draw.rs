@@ -25,7 +25,7 @@ fn visible_section_window(
     Some((skip_lines, take_lines))
 }
 
-/// Draw a section title line when it falls in the visible window.
+/// Draw a section title line when it falls in the visible window. If `sub_title` is true, use subordinate style (e.g. for "TableName · Columns").
 fn draw_section_title(
     f: &mut ratatui::Frame,
     title: &str,
@@ -33,13 +33,19 @@ fn draw_section_title(
     visible_start: u16,
     visible_end: u16,
     section_start: u16,
+    sub_title: bool,
 ) {
     if section_start >= visible_start
         && section_start < visible_end
         && table_area.y + section_start.saturating_sub(visible_start)
             < table_area.y + table_area.height
     {
-        let line = ratatui::text::Line::from(title).style(style::table_section_title_style());
+        let title_style = if sub_title {
+            style::table_section_subtitle_style()
+        } else {
+            style::table_section_title_style()
+        };
+        let line = ratatui::text::Line::from(title).style(title_style);
         let ry = table_area.y + section_start.saturating_sub(visible_start);
         f.render_widget(
             ratatui::widgets::Paragraph::new(line),
@@ -116,6 +122,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                         visible_start,
                         visible_end,
                         section_start,
+                        kv.sub_title,
                     );
                 }
                 let table_start_line = section_start + if title_opt.is_some() { 1 } else { 0 };
@@ -126,6 +133,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                     let kv_visible = sections::KvSection {
                         title: None,
                         rows: kv.rows[skip..skip + take].to_vec(),
+                        sub_title: false,
                     };
                     let actual_y = table_start_line.saturating_sub(visible_start);
                     let rect = rect_in_viewport(table_area, actual_y, (1 + take) as u16, viewport);
@@ -144,6 +152,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                         visible_start,
                         visible_end,
                         section_start,
+                        c.sub_title,
                     );
                 }
                 let table_start = section_start + 1;
@@ -176,6 +185,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                         visible_start,
                         visible_end,
                         section_start,
+                        false,
                     );
                 }
                 let table_start = section_start + 1;

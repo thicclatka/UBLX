@@ -9,17 +9,22 @@ use super::csv;
 use super::walk;
 
 /// One key/value section: optional title and rows (key, value).
+/// When [sub_title](KvSection::sub_title) is true, the title uses the same subordinate style as Contents sub-sections.
 pub struct KvSection {
     pub title: Option<String>,
     pub rows: Vec<(String, String)>,
+    pub sub_title: bool,
 }
 
 /// Multi-column table section (e.g. zip entries "Contents"). Stores raw entries for virtualization; only visible rows are built when drawing.
+/// When [sub_title](ContentsSection::sub_title) is true, the title is drawn with a subordinate style (e.g. "TableName · Columns" under that table).
 pub struct ContentsSection {
     pub title: String,
     pub columns: Vec<String>,
     pub column_keys: Vec<String>,
     pub entries: Vec<Value>,
+    /// If true, title uses sub-section style (dimmer) to show it belongs under the previous section.
+    pub sub_title: bool,
 }
 
 /// Single-column list with no header (e.g. common_pivots, schema tree).

@@ -33,3 +33,9 @@ pub fn table_section_title_style() -> Style {
     let t = CurrentTheme::palette();
     Style::default().fg(t.tab_active_fg)
 }
+
+/// Style for a sub-section title (e.g. "departments · Columns" under "departments") so it reads as belonging to the previous section.
+pub fn table_section_subtitle_style() -> Style {
+    let t = CurrentTheme::palette();
+    Style::default().fg(t.hint)
+}
