@@ -113,10 +113,31 @@ fn csv_columns_display(column_keys: &[String]) -> Vec<String> {
     column_keys.iter().map(|k| csv_column_label(k)).collect()
 }
 
+fn contents_section(
+    title: String,
+    column_keys: Vec<String>,
+    entries: Vec<Value>,
+) -> Option<ContentsSection> {
+    if entries.is_empty() {
+        return None;
+    }
+    Some(ContentsSection {
+        title,
+        columns: csv_columns_display(&column_keys),
+        column_keys,
+        entries,
+        sub_title: false,
+    })
+}
+
 /// True if `obj` looks like csv_metadata (has column_names and column_types arrays of same length).
 pub fn is_csv_metadata(obj: &Map<String, Value>) -> bool {
-    let names = obj.get(MetadataArrayKey::ColumnNames.as_str()).and_then(Value::as_array);
-    let types = obj.get(MetadataArrayKey::ColumnTypes.as_str()).and_then(Value::as_array);
+    let names = obj
+        .get(MetadataArrayKey::ColumnNames.as_str())
+        .and_then(Value::as_array);
+    let types = obj
+        .get(MetadataArrayKey::ColumnTypes.as_str())
+        .and_then(Value::as_array);
     match (names, types) {
         (Some(n), Some(t)) => n.len() == t.len(),
         _ => false,
@@ -125,11 +146,17 @@ pub fn is_csv_metadata(obj: &Map<String, Value>) -> bool {
 
 /// Build one table per column type: "String columns", "Date columns", "Boolean columns", etc.
 pub fn csv_metadata_to_sections(map: &Map<String, Value>) -> Vec<Section> {
-    let names = match map.get(MetadataArrayKey::ColumnNames.as_str()).and_then(Value::as_array) {
+    let names = match map
+        .get(MetadataArrayKey::ColumnNames.as_str())
+        .and_then(Value::as_array)
+    {
         Some(a) => a,
         None => return vec![],
     };
-    let types = match map.get(MetadataArrayKey::ColumnTypes.as_str()).and_then(Value::as_array) {
+    let types = match map
+        .get(MetadataArrayKey::ColumnTypes.as_str())
+        .and_then(Value::as_array)
+    {
         Some(a) => a,
         None => return vec![],
     };
@@ -137,11 +164,21 @@ pub fn csv_metadata_to_sections(map: &Map<String, Value>) -> Vec<Section> {
     if n != types.len() {
         return vec![];
     }
-    let null_pct = map.get(MetadataArrayKey::NullPercentages.as_str()).and_then(Value::as_array);
-    let unique = map.get(MetadataArrayKey::UniqueCounts.as_str()).and_then(Value::as_array);
-    let date_stats = map.get(MetadataArrayKey::DateStats.as_str()).and_then(Value::as_array);
-    let bool_stats = map.get(MetadataArrayKey::BooleanStats.as_str()).and_then(Value::as_array);
-    let num_stats = map.get(MetadataArrayKey::NumericStats.as_str()).and_then(Value::as_array);
+    let null_pct = map
+        .get(MetadataArrayKey::NullPercentages.as_str())
+        .and_then(Value::as_array);
+    let unique = map
+        .get(MetadataArrayKey::UniqueCounts.as_str())
+        .and_then(Value::as_array);
+    let date_stats = map
+        .get(MetadataArrayKey::DateStats.as_str())
+        .and_then(Value::as_array);
+    let bool_stats = map
+        .get(MetadataArrayKey::BooleanStats.as_str())
+        .and_then(Value::as_array);
+    let num_stats = map
+        .get(MetadataArrayKey::NumericStats.as_str())
+        .and_then(Value::as_array);
 
     let mut by_type: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (i, t) in types.iter().enumerate() {
@@ -156,7 +193,9 @@ pub fn csv_metadata_to_sections(map: &Map<String, Value>) -> Vec<Section> {
             ColumnType::String => table_string(names, null_pct, unique, indices),
             ColumnType::Date => table_date(names, null_pct, unique, date_stats, indices),
             ColumnType::Boolean => table_boolean(names, null_pct, unique, bool_stats, indices),
-            ColumnType::Other => table_numeric_or_other(&type_name, names, null_pct, unique, num_stats, indices),
+            ColumnType::Other => {
+                table_numeric_or_other(&type_name, names, null_pct, unique, num_stats, indices)
+            }
         };
         if let Some(s) = section {
             out.push(Section::Contents(s));
@@ -198,21 +237,15 @@ fn table_string(
     indices: Vec<usize>,
 ) -> Option<ContentsSection> {
     let column_keys = common_column_keys();
-    let columns = csv_columns_display(&column_keys);
     let entries: Vec<Value> = indices
         .into_iter()
         .map(|i| Value::Object(row_common(names, null_pct, unique, i)))
         .collect();
-    if entries.is_empty() {
-        return None;
-    }
-    Some(ContentsSection {
-        title: ColumnType::String.section_title("string"),
-        columns,
+    contents_section(
+        ColumnType::String.section_title("string"),
         column_keys,
         entries,
-        sub_title: false,
-    })
+    )
 }
 
 fn common_column_keys() -> Vec<String> {
@@ -236,7 +269,6 @@ fn table_date(
         DateStatsKeys::MIN.to_string(),
         DateStatsKeys::MAX.to_string(),
     ]);
-    let columns = csv_columns_display(&column_keys);
     let entries: Vec<Value> = indices
         .into_iter()
         .map(|i| {
@@ -245,7 +277,9 @@ fn table_date(
             if let Some(s) = stats {
                 row.insert(
                     DateStatsKeys::SPAN_DAYS.to_string(),
-                    s.get(DateStatsKeys::SPAN_DAYS).cloned().unwrap_or(Value::Null),
+                    s.get(DateStatsKeys::SPAN_DAYS)
+                        .cloned()
+                        .unwrap_or(Value::Null),
                 );
                 row.insert(
                     DateStatsKeys::MIN.to_string(),
@@ -263,16 +297,7 @@ fn table_date(
             Value::Object(row)
         })
         .collect();
-    if entries.is_empty() {
-        return None;
-    }
-    Some(ContentsSection {
-        title: ColumnType::Date.section_title("date"),
-        columns,
-        column_keys,
-        entries,
-        sub_title: false,
-    })
+    contents_section(ColumnType::Date.section_title("date"), column_keys, entries)
 }
 
 fn table_boolean(
@@ -284,7 +309,6 @@ fn table_boolean(
 ) -> Option<ContentsSection> {
     let mut column_keys = common_column_keys();
     column_keys.push(BOOLEAN_STATS_TRUE_PCT.to_string());
-    let columns = csv_columns_display(&column_keys);
     let entries: Vec<Value> = indices
         .into_iter()
         .map(|i| {
@@ -293,20 +317,18 @@ fn table_boolean(
                 .and_then(|a| a.get(i))
                 .and_then(Value::as_object)
                 .and_then(|o| o.get(BOOLEAN_STATS_TRUE_PCT).cloned());
-            row.insert(BOOLEAN_STATS_TRUE_PCT.to_string(), pct.unwrap_or(Value::Null));
+            row.insert(
+                BOOLEAN_STATS_TRUE_PCT.to_string(),
+                pct.unwrap_or(Value::Null),
+            );
             Value::Object(row)
         })
         .collect();
-    if entries.is_empty() {
-        return None;
-    }
-    Some(ContentsSection {
-        title: ColumnType::Boolean.section_title("boolean"),
-        columns,
+    contents_section(
+        ColumnType::Boolean.section_title("boolean"),
         column_keys,
         entries,
-        sub_title: false,
-    })
+    )
 }
 
 /// Collect numeric_stats keys in JSON order: first object’s keys in order, then any keys from other objects not yet seen.
@@ -336,7 +358,6 @@ fn table_numeric_or_other(
     let stat_keys = numeric_stats_keys(num_stats);
     let mut column_keys = common_column_keys();
     column_keys.extend(stat_keys.clone());
-    let columns = csv_columns_display(&column_keys);
     let entries: Vec<Value> = indices
         .into_iter()
         .map(|i| {
@@ -349,16 +370,36 @@ fn table_numeric_or_other(
             Value::Object(row)
         })
         .collect();
-    if entries.is_empty() {
-        return None;
-    }
-    Some(ContentsSection {
-        title: ColumnType::Other.section_title(type_name),
-        columns,
+    contents_section(
+        ColumnType::Other.section_title(type_name),
         column_keys,
         entries,
-        sub_title: false,
-    })
+    )
+}
+
+fn csv_flat_kv(csv_map: &Map<String, Value>) -> Vec<(String, String)> {
+    csv_map
+        .iter()
+        .filter(|(key, _)| !MetadataArrayKey::all().contains_str(key))
+        .map(|(key, val)| (format::format_key(key), format::format_value(val, key)))
+        .collect()
+}
+
+/// Push flat KV section (if any) then all array-based tables. Shared by root CSV blob and nested csv_metadata.
+fn push_csv_flat_and_tables(
+    sections: &mut Vec<Section>,
+    title: Option<String>,
+    csv_map: &Map<String, Value>,
+) {
+    let flat_kv = csv_flat_kv(csv_map);
+    if !flat_kv.is_empty() {
+        sections.push(Section::KeyValue(KvSection {
+            title,
+            rows: flat_kv,
+            sub_title: false,
+        }));
+    }
+    sections.extend(csv_metadata_to_sections(csv_map));
 }
 
 /// Push flat KV section for csv_metadata scalars, then all array-based tables from `csv_metadata_to_sections`.
@@ -367,36 +408,16 @@ pub fn push_csv_metadata_sections(
     section_key: &str,
     csv_map: &Map<String, Value>,
 ) {
-    let flat_kv: Vec<(String, String)> = csv_map
-        .iter()
-        .filter(|(key, _)| !MetadataArrayKey::all().contains_str(key))
-        .map(|(key, val)| (format::format_key(key), format::format_value(val, key)))
-        .collect();
-    if !flat_kv.is_empty() {
-        sections.push(Section::KeyValue(KvSection {
-            title: Some(format::format_key(section_key)),
-            rows: flat_kv,
-            sub_title: false,
-        }));
-    }
-    sections.extend(csv_metadata_to_sections(csv_map));
+    push_csv_flat_and_tables(sections, Some(format::format_key(section_key)), csv_map);
 }
 
 /// Build sections when the root object is CSV metadata (one KV table + array tables).
 pub fn sections_from_csv_root(map: &Map<String, Value>) -> Vec<Section> {
     let mut out = Vec::new();
-    let flat: Vec<(String, String)> = map
-        .iter()
-        .filter(|(k, _)| !MetadataArrayKey::all().contains_str(k))
-        .map(|(k, v)| (format::format_key(k), format::format_value(v, k)))
-        .collect();
-    if !flat.is_empty() {
-        out.push(Section::KeyValue(KvSection {
-            title: Some(format::format_key(SectionKeys::CSV_METADATA)),
-            rows: flat,
-            sub_title: false,
-        }));
-    }
-    out.extend(csv_metadata_to_sections(map));
+    push_csv_flat_and_tables(
+        &mut out,
+        Some(format::format_key(SectionKeys::CSV_METADATA)),
+        map,
+    );
     out
 }

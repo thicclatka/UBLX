@@ -17,7 +17,7 @@ impl SectionKeys {
     pub const TABLES: &'static str = "tables";
 }
 
-/// JSON keys that trigger special section handling (not treated as plain key/value or nested subsection).
+/// Keys used inside schema tree values (attributes, children). Not top-level section keys.
 pub struct SchemaKeys;
 impl SchemaKeys {
     pub const ATTRIBUTES: &'static str = "attributes";

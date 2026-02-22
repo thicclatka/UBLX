@@ -11,6 +11,15 @@ const ALL_CAPS: &[&str] = &[
 
 const FLOAT_PRECISION: usize = 4;
 
+/// Join parts with middle dot: 2 parts → "a · b", 3 parts → "a · b · c".
+pub fn join_dot(parts: impl IntoIterator<Item = impl AsRef<str>>) -> String {
+    parts
+        .into_iter()
+        .map(|p| p.as_ref().to_string())
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
 /// Schema tree: prefix + label (e.g. tree branch + node name).
 pub fn prefixed_label(prefix: &str, label: &str) -> String {
     format!("{prefix}{label}")

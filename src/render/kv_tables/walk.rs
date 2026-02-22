@@ -1,6 +1,7 @@
 //! JSON map walk: root and nested object → sections (flat KV, schema, sheet_stats, common_pivots, csv_metadata, entries).
 
 use serde_json::{Map, Value};
+use std::collections::HashSet;
 
 use crate::ui::UI_STRINGS;
 
@@ -11,21 +12,36 @@ use super::schema;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
 use super::xlsx;
 
-fn push_contents_from_entries(sections: &mut Vec<Section>, arr: Vec<Value>) {
-    let objs: Vec<&Map<String, Value>> = arr.iter().filter_map(|v| v.as_object()).collect();
-    if let Some(first) = objs.first() {
-        let column_keys: Vec<String> = first.keys().cloned().collect();
-        let columns: Vec<String> = column_keys.iter().map(|k| format::format_key(k)).collect();
-        let entries: Vec<Value> = arr.iter().filter(|v| v.is_object()).cloned().collect();
-        if !entries.is_empty() {
-            sections.push(Section::Contents(ContentsSection {
-                title: UI_STRINGS.contents_table_title.to_string(),
-                columns,
-                column_keys,
-                entries,
-                sub_title: false,
-            }));
+/// From an array of JSON objects, get column keys (from all objects, first object's order then any extra keys), display column names, and entries. Returns None if empty or no objects.
+fn object_array_to_contents_data(arr: &[Value]) -> Option<(Vec<String>, Vec<String>, Vec<Value>)> {
+    let objs: Vec<&Map<String, Value>> = arr.iter().filter_map(Value::as_object).collect();
+    let first = objs.first()?;
+    let mut column_keys: Vec<String> = first.keys().cloned().collect();
+    let mut seen: HashSet<String> = column_keys.iter().cloned().collect();
+    for obj in objs.iter().skip(1) {
+        for k in obj.keys() {
+            if seen.insert(k.clone()) {
+                column_keys.push(k.clone());
+            }
         }
+    }
+    let columns: Vec<String> = column_keys.iter().map(|k| format::format_key(k)).collect();
+    let entries: Vec<Value> = arr.iter().filter(|v| v.is_object()).cloned().collect();
+    if entries.is_empty() {
+        return None;
+    }
+    Some((column_keys, columns, entries))
+}
+
+fn push_contents_from_entries(sections: &mut Vec<Section>, arr: Vec<Value>) {
+    if let Some((column_keys, columns, entries)) = object_array_to_contents_data(&arr) {
+        sections.push(Section::Contents(ContentsSection {
+            title: UI_STRINGS.contents_table_title.to_string(),
+            columns,
+            column_keys,
+            entries,
+            sub_title: false,
+        }));
     }
 }
 
@@ -143,29 +159,20 @@ fn push_tables_sections(sections: &mut Vec<Section>, arr: &[Value]) {
                 sub_title: false,
             }));
         }
-        if let Some(col_arr) = v.get(COLUMNS_KEY).and_then(Value::as_array) {
-            let objs: Vec<&Map<String, Value>> = col_arr.iter().filter_map(|v| v.as_object()).collect();
-            if let Some(first) = objs.first() {
-                let column_keys: Vec<String> = first.keys().cloned().collect();
-                let columns: Vec<String> = column_keys.iter().map(|k| format::format_key(k)).collect();
-                let entries: Vec<Value> = col_arr.iter().filter(|v| v.is_object()).cloned().collect();
-                if !entries.is_empty() {
-                    sections.push(Section::Contents(ContentsSection {
-                        title: format!("{} · Columns", table_name),
-                        columns,
-                        column_keys,
-                        entries: entries.clone(),
-                        sub_title: true,
-                    }));
-                    push_column_stats_sections(sections, &table_name, &entries);
-                }
-            }
+        if let Some(col_arr) = v.get(COLUMNS_KEY).and_then(Value::as_array)
+            && let Some((column_keys, columns, entries)) = object_array_to_contents_data(col_arr)
+        {
+            sections.push(Section::Contents(ContentsSection {
+                title: format::join_dot([&table_name, "Columns"]),
+                columns,
+                column_keys,
+                entries: entries.clone(),
+                sub_title: true,
+            }));
+            push_column_stats_sections(sections, &table_name, &entries);
         }
     }
 }
-
-/// Keys in a column object that hold stats (object → shown as "column_name · Stats type" KV sub-section).
-const COLUMN_STATS_KEYS: &[&str] = &["text_stats", "boolean_stats", "numeric_stats", "date_stats"];
 
 fn push_column_stats_sections(
     sections: &mut Vec<Section>,
@@ -178,20 +185,23 @@ fn push_column_stats_sections(
             .and_then(Value::as_str)
             .map(String::from)
             .unwrap_or_else(|| "column".to_string());
-        for &stats_key in COLUMN_STATS_KEYS {
-            if let Some(stats_obj) = col.get(stats_key).and_then(Value::as_object) {
+        for (stats_key, stats_val) in col.iter() {
+            if stats_key == "name" {
+                continue;
+            }
+            if let Some(stats_obj) = stats_val.as_object() {
                 let rows: Vec<(String, String)> = stats_obj
                     .iter()
                     .map(|(k, val)| (format::format_key(k), format::format_value(val, k)))
                     .collect();
                 if !rows.is_empty() {
+                    let stats_label = format::format_key(stats_key);
                     sections.push(Section::KeyValue(KvSection {
-                        title: Some(format!(
-                            "{} · {} · {}",
+                        title: Some(format::join_dot([
                             table_name,
-                            col_name,
-                            format::format_key(stats_key)
-                        )),
+                            col_name.as_str(),
+                            stats_label.as_str(),
+                        ])),
                         rows,
                         sub_title: true,
                     }));
