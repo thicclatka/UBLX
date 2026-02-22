@@ -1,10 +1,9 @@
 //! Delta-mode view data: overview, added/mod/removed rows, filtered display lines.
 
+use crate::engine::db_ops::{self, DeltaType, DELTA_CATEGORY_COUNT};
 use crate::layout::{filter, setup};
 use crate::ui::UI_STRINGS;
-use crate::utils::format::format_timestamp_ns;
-
-use crate::engine::db_ops;
+use crate::utils::format::{clamp_selection, clamp_selection_opt, format_timestamp_ns};
 
 /// Load delta_log data for Delta mode: overview text (snapshot count + timestamps) and paths per type.
 pub fn build_delta_view_data(db_path: &std::path::Path) -> setup::DeltaViewData {
@@ -51,28 +50,26 @@ fn build_delta_display_lines(rows: Vec<(i64, String)>) -> Vec<String> {
 
 /// Clamp list selection for Delta mode (category and content from view).
 pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
-    let cat_max = view.category_list_len.saturating_sub(1);
-    let cat_idx = state.category_state.selected().unwrap_or(0).min(cat_max);
+    let cat_idx = clamp_selection(
+        state.category_state.selected().unwrap_or(0),
+        view.category_list_len,
+    );
     state.category_state.select(Some(cat_idx));
     let len = view.content_len;
-    if len > 0 {
-        let sel = state
-            .content_state
-            .selected()
-            .unwrap_or(0)
-            .min(len.saturating_sub(1));
+    if let Some(sel) = clamp_selection_opt(state.content_state.selected().unwrap_or(0), len) {
         state.content_state.select(Some(sel));
     } else {
         state.content_state.select(None);
     }
 }
 
-/// Delta mode category names (order matches [setup::DeltaViewData::rows_by_index] 0, 1, 2).
-const DELTA_CATEGORIES: &[&str] = &[
-    UI_STRINGS.delta_added,
-    UI_STRINGS.delta_mod,
-    UI_STRINGS.delta_removed,
-];
+fn delta_category_label(t: DeltaType) -> &'static str {
+    match t {
+        DeltaType::Added => UI_STRINGS.delta_added,
+        DeltaType::Mod => UI_STRINGS.delta_mod,
+        DeltaType::Removed => UI_STRINGS.delta_removed,
+    }
+}
 
 /// ViewData for Delta mode. Search filters by path; display lines keep timestamp groupings (dates preserved).
 pub fn view_data_for_delta_mode(
@@ -80,11 +77,10 @@ pub fn view_data_for_delta_mode(
     delta: &setup::DeltaViewData,
 ) -> setup::ViewData {
     let search_query = state.search_query.trim();
-    let cat_idx = state
-        .category_state
-        .selected()
-        .unwrap_or(0)
-        .min(DELTA_CATEGORIES.len().saturating_sub(1));
+    let cat_idx = clamp_selection(
+        state.category_state.selected().unwrap_or(0),
+        DELTA_CATEGORY_COUNT,
+    );
     let raw_rows = delta.rows_by_index(cat_idx);
     let filtered_rows = filter::filter_delta_rows(raw_rows, search_query);
     let display_lines = build_delta_display_lines(filtered_rows);
@@ -94,9 +90,11 @@ pub fn view_data_for_delta_mode(
         .map(|line| (line, String::new(), 0u64))
         .collect();
     setup::ViewData {
-        filtered_categories: DELTA_CATEGORIES.iter().map(|s| (*s).to_string()).collect(),
+        filtered_categories: DeltaType::iter()
+            .map(|t| delta_category_label(t).to_string())
+            .collect(),
         contents: setup::ViewContents::DeltaRows(rows),
-        category_list_len: DELTA_CATEGORIES.len(),
+        category_list_len: DELTA_CATEGORY_COUNT,
         content_len,
     }
 }

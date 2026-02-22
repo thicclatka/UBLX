@@ -5,6 +5,14 @@ use std::path::Path;
 use crate::config::get_log_path;
 use crate::handlers::zahir_ops::ZahirResult;
 
+/// Exit code for error/failure. Used when validation fails, index fails, or a fatal error is logged. Shared so scripting and callers get consistent values.
+pub const EXIT_ERROR: i32 = 1;
+
+/// Exits the process with [EXIT_ERROR]. Use after logging a fatal error instead of calling `std::process::exit` directly.
+pub fn exit_error() -> ! {
+    std::process::exit(EXIT_ERROR)
+}
+
 /// Extension trait so we can call `.iter_failures()` / `.failures()` on [`ZahirResult`]
 pub trait ZahirResultExt {
     fn iter_failures(&self) -> impl Iterator<Item = (&String, &String)>;

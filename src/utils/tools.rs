@@ -4,21 +4,22 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::config::PKG_NAME;
+use crate::utils::exit_error;
 
 /// Validate that a path is a directory and return the canonicalized path.
 /// Symlinks are resolved (e.g. `~/Dropbox` → `~/Library/CloudStorage/...` on macOS).
 pub fn validate_dir(path: &std::path::Path) -> PathBuf {
     if path.exists() && !path.is_dir() {
         error!("'{}' is not a directory", path.display());
-        std::process::exit(1);
+        exit_error();
     }
     if !path.exists() {
         error!("'{}' no such file or directory", path.display());
-        std::process::exit(1);
+        exit_error();
     }
     path.canonicalize().unwrap_or_else(|e| {
         error!("cannot canonicalize '{}': {}", path.display(), e);
-        std::process::exit(1);
+        exit_error();
     })
 }
 

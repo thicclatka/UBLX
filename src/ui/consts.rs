@@ -1,3 +1,9 @@
+use ratatui::layout::Constraint;
+use ratatui::style::Style;
+use ratatui::text::Span;
+
+use crate::utils::format::StringObjTraits;
+
 /// All symbols and string literals used by the renderer. Single place to tweak UI copy/symbols.
 pub struct UiStrings {
     pub categories: &'static str,
@@ -56,13 +62,9 @@ pub struct UiStrings {
     pub help_table_action: &'static str,
 }
 
-impl UiStrings {
-    /// Pads a label with spaces for block/popup titles, e.g. `pad("Delta")` → `" Delta "`.
-    #[must_use]
-    pub fn pad(&self, s: &str) -> String {
-        format!(" {} ", s)
-    }
+impl StringObjTraits for UiStrings {}
 
+impl UiStrings {
     pub const fn new() -> Self {
         Self {
             categories: "Categories",
@@ -114,11 +116,19 @@ impl UiStrings {
 
 pub const UI_STRINGS: UiStrings = UiStrings::new();
 
-/// Shared UI layout constants (padding, etc.).
+/// Shared UI layout constants (padding, etc.). Constraint arrays are derived from the scalar values via the `*_constraints()` methods.
 pub struct UiConstants {
     pub h_pad: u16,
     pub v_pad: u16,
+    pub popup_padding_w: u16,
+    pub popup_padding_h: u16,
+    pub swatch_lighten: f32,
     pub table_stripe_lighten: f32,
+    pub input_poll_ms: u64,
+    pub status_line_height: u16,
+    pub tab_row_height: u16,
+    pub brand_block_width: u16,
+    pub empty_space: &'static str,
 }
 
 impl UiConstants {
@@ -126,12 +136,69 @@ impl UiConstants {
         Self {
             h_pad: 1,
             v_pad: 1,
+            popup_padding_w: 4,
+            popup_padding_h: 2,
+            swatch_lighten: 0.2,
             table_stripe_lighten: 0.06,
+            input_poll_ms: 100,
+            status_line_height: 1,
+            tab_row_height: 1,
+            brand_block_width: 4,
+            empty_space: " ",
         }
+    }
+
+    /// Main area (min 1 row) + status line. Derived from [Self::status_line_height].
+    pub fn status_line_constraints(&self) -> [Constraint; 2] {
+        [
+            Constraint::Min(1),
+            Constraint::Length(self.status_line_height),
+        ]
+    }
+
+    /// Tab row (Snapshot|Delta) + body. Derived from [Self::tab_row_height].
+    pub fn tab_row_constraints(&self) -> [Constraint; 2] {
+        [Constraint::Length(self.tab_row_height), Constraint::Min(1)]
+    }
+
+    /// Tabs (flex) + brand block. Derived from [Self::brand_block_width].
+    pub fn brand_block_constraints(&self) -> [Constraint; 2] {
+        [
+            Constraint::Min(0),
+            Constraint::Length(self.brand_block_width),
+        ]
+    }
+
+    pub fn get_empty_span(&self, style: Style) -> Span<'static> {
+        Span::styled(self.empty_space, style)
     }
 }
 
 pub const UI_CONSTANTS: UiConstants = UiConstants::new();
+
+/// Unicode symbols used in layout/render. Nerd Fonts or similar may be needed for powerline characters.
+pub struct UiGlyphs {
+    /// Powerline-style segment: round left (curve on right). Used for tab nodes and status nodes.
+    pub round_left: char,
+    /// Powerline-style segment: round right (curve on left). Used for tab nodes and status nodes.
+    pub round_right: char,
+    /// Full block (e.g. theme selector swatch). U+2588.
+    pub swatch_block: char,
+}
+
+impl StringObjTraits for UiGlyphs {}
+
+impl UiGlyphs {
+    pub const fn new() -> Self {
+        Self {
+            round_left: '\u{e0b6}',
+            round_right: '\u{e0b4}',
+            swatch_block: '\u{2588}',
+        }
+    }
+}
+
+pub const UI_GLYPHS: UiGlyphs = UiGlyphs::new();
 
 /// Tree-drawing characters for directory-style trees (e.g. schema tree, file tree). Single place to tweak box-drawing.
 pub struct TreeChars {

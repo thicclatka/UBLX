@@ -63,7 +63,7 @@ impl ToastConfig {
 
     /// Line count for the toast body: theme-selector uses 1 line only; others use display_lines_for(dev).
     pub fn display_lines_for_operation(&self, dev: bool, operation: Option<&str>) -> usize {
-        if operation == Some("theme-selector") {
+        if operation == Some(OPERATION_NAME.theme_selector()) {
             self.theme_selector_display_lines
         } else {
             self.display_lines_for(dev)
@@ -71,7 +71,7 @@ impl ToastConfig {
     }
 
     pub fn height_for_operation(&self, dev: bool, operation: Option<&str>) -> u16 {
-        if operation == Some("theme-selector") {
+        if operation == Some(OPERATION_NAME.theme_selector()) {
             self.theme_selector_height
         } else {
             self.height_for(dev)

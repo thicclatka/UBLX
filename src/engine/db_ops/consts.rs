@@ -119,7 +119,7 @@ impl UblxDbStatements {
     }
 }
 
-/// Delta type for the delta_log table.
+/// Delta type for the delta_log table. Order (0 = Added, 1 = Mod, 2 = Removed) is used for TUI category index.
 #[derive(Clone, Copy, Debug)]
 pub enum DeltaType {
     Added,
@@ -127,12 +127,34 @@ pub enum DeltaType {
     Removed,
 }
 
+/// Number of delta categories (Added, Mod, Removed). Use for TUI category list length.
+pub const DELTA_CATEGORY_COUNT: usize = 3;
+
 impl DeltaType {
     pub fn as_str(self) -> &'static str {
         match self {
             DeltaType::Added => "added",
             DeltaType::Mod => "mod",
             DeltaType::Removed => "removed",
+        }
+    }
+
+    /// Index for TUI left-pane category (0 = Added, 1 = Mod, 2 = Removed).
+    #[allow(dead_code)]
+    pub const fn as_index(self) -> usize {
+        match self {
+            DeltaType::Added => 0,
+            DeltaType::Mod => 1,
+            DeltaType::Removed => 2,
+        }
+    }
+
+    /// Delta type for the given TUI category index. Out-of-range maps to Removed.
+    pub const fn from_index(idx: usize) -> Self {
+        match idx {
+            0 => DeltaType::Added,
+            1 => DeltaType::Mod,
+            _ => DeltaType::Removed,
         }
     }
 

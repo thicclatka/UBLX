@@ -4,7 +4,7 @@ use ratatui::layout::HorizontalAlignment;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use crate::utils::UI_GLYPHS;
+use crate::ui::UI_GLYPHS;
 
 use super::{CurrentTheme, ThemeStyles, tab_active, tab_inactive};
 

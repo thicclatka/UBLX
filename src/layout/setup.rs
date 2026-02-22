@@ -10,6 +10,7 @@ use super::style;
 
 /// Row for TUI list: (path, category, size_bytes). Same as [crate::engine::db_ops::SnapshotTuiRow]; zahir_json is loaded on demand for the selected row.
 pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
+use crate::engine::db_ops::DeltaType;
 
 /// Category string for directories in the snapshot (matches [crate::engine::db_ops::UblxDbCategory]).
 pub const CATEGORY_DIRECTORY: &str = "Directory";
@@ -162,12 +163,12 @@ pub struct DeltaViewData {
 }
 
 impl DeltaViewData {
-    /// Raw rows for the given category index: 0 = added, 1 = mod, 2 = removed.
+    /// Raw rows for the given category index. Uses [DeltaType::from_index].
     pub fn rows_by_index(&self, idx: usize) -> &[DeltaRow] {
-        match idx {
-            0 => &self.added_rows,
-            1 => &self.mod_rows,
-            _ => &self.removed_rows,
+        match DeltaType::from_index(idx) {
+            DeltaType::Added => &self.added_rows,
+            DeltaType::Mod => &self.mod_rows,
+            DeltaType::Removed => &self.removed_rows,
         }
     }
 }

@@ -51,6 +51,25 @@ fn drive_type_to_string(d: NefaxDriveType) -> &'static str {
 /// At or above this many workers we set [UblxOpts::streaming] to true (callback path for nefax).
 pub const STREAMING_THRESHOLD: usize = 6;
 
+/// Layout pane percentages (0–100). Used for main 3-pane split: left (categories), middle (contents), right (preview). Not applied on the fly yet; config is read at startup.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct LayoutOverlay {
+    pub left_pct: u16,
+    pub middle_pct: u16,
+    pub right_pct: u16,
+}
+
+impl Default for LayoutOverlay {
+    fn default() -> Self {
+        Self {
+            left_pct: 20,
+            middle_pct: 30,
+            right_pct: 50,
+        }
+    }
+}
+
 /// Hot-reloadable options read from config files. Only present keys override; used for global + local overlay.
 /// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
 /// Reserved for future: theme and other visual elements (not used yet).
@@ -70,6 +89,9 @@ pub struct UblxOverlay {
     /// When true, do not paint app background; terminal default (or transparency) shows through.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transparent: Option<bool>,
+    /// Optional [layout] section: left/middle/right pane percentages (e.g. left_pct = 20, middle_pct = 30, right_pct = 50). Not applied on the fly yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layout: Option<LayoutOverlay>,
 }
 
 impl UblxOverlay {
@@ -89,6 +111,9 @@ impl UblxOverlay {
         }
         if other.transparent.is_some() {
             self.transparent = other.transparent;
+        }
+        if other.layout.is_some() {
+            self.layout = other.layout.clone();
         }
     }
 
@@ -131,6 +156,8 @@ pub struct UblxOpts {
     pub theme: Option<String>,
     /// When true, skip painting app background so terminal default/transparency shows.
     pub transparent: bool,
+    /// Left/middle/right pane percentages (0–100). From config [layout]; not applied on the fly yet. Default 20/30/50.
+    pub layout: LayoutOverlay,
 }
 
 impl UblxOpts {
@@ -202,6 +229,9 @@ impl UblxOpts {
         if overlay.transparent.is_some() {
             self.transparent = overlay.transparent.unwrap_or(false);
         }
+        if overlay.layout.is_some() {
+            self.layout = overlay.layout.clone().unwrap_or_default();
+        }
     }
 
     /// Build ublx options for indexing `dir`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [tuning_for_path](nefaxer::tuning_for_path).
@@ -232,6 +262,7 @@ impl UblxOpts {
             config_source,
             theme: None,
             transparent: false,
+            layout: LayoutOverlay::default(),
         };
         // Global then local: both accessible; local overrides global when both exist.
         let global = Self::load_ublx_toml(ublx_paths.global_config());
@@ -274,6 +305,7 @@ impl UblxOpts {
             config_source: None,
             theme: None,
             transparent: false,
+            layout: LayoutOverlay::default(),
         }
     }
 

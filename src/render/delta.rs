@@ -9,6 +9,7 @@ use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 use super::panels;
 use crate::layout::{setup, style};
 use crate::ui::UI_STRINGS;
+use crate::utils::format::StringObjTraits;
 
 pub(super) fn draw_delta_placeholder(f: &mut Frame, left: Rect, middle: Rect, right: Rect) {
     let block = Block::default()

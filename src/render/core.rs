@@ -12,7 +12,7 @@ use super::search;
 use super::snapshot_panels;
 use crate::config::TOAST_CONFIG;
 use crate::layout::{help, setup, style, theme_selector, themes};
-use crate::ui::UI_STRINGS;
+use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::notifications;
 
 /// Arguments for [draw_ublx_frame] that vary per frame (keeps arg count under clippy limit).
@@ -69,7 +69,7 @@ fn draw_background(f: &mut Frame, area: Rect, args: &DrawFrameArgs<'_>) {
 
 fn split_tabs_and_body(area: Rect) -> (Rect, Rect) {
     if area.height >= 2 {
-        let vs = style::split_vertical(area, &[Constraint::Length(1), Constraint::Min(1)]);
+        let vs = style::split_vertical(area, &UI_CONSTANTS.tab_row_constraints());
         (vs[0], vs[1])
     } else {
         (area, area)
@@ -191,7 +191,7 @@ fn draw_main_tabs(f: &mut Frame, state: &setup::UblxState, area: Rect) {
     let outer = style::tab_row_padded(area);
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(4)])
+        .constraints(UI_CONSTANTS.brand_block_constraints())
         .split(outer[1]);
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
     let line = Line::from(

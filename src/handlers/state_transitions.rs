@@ -4,6 +4,7 @@ use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
 };
 use crate::ui::keymap::UblxAction;
+use crate::utils::clamp_selection;
 
 /// Context (view + right-pane content) required to apply actions to state.
 pub struct UblxActionContext<'a> {
@@ -127,13 +128,13 @@ impl<'a> UblxActionContext<'a> {
         match state.focus {
             PanelFocus::Categories => {
                 if self.view.category_list_len > 0 {
-                    let last = self.view.category_list_len.saturating_sub(1);
+                    let last = clamp_selection(self.view.category_list_len, self.view.category_list_len);
                     state.category_state.select(Some(last));
                 }
             }
             PanelFocus::Contents => {
                 if self.view.content_len > 0 {
-                    let last = self.view.content_len.saturating_sub(1);
+                    let last = clamp_selection(self.view.content_len, self.view.content_len);
                     state.content_state.select(Some(last));
                 }
             }
@@ -145,19 +146,19 @@ impl<'a> UblxActionContext<'a> {
             PanelFocus::Categories => {
                 if self.view.category_list_len > 0 {
                     let i = state.category_state.selected().unwrap_or(0);
-                    let next = i
-                        .saturating_sub(1)
-                        .min(self.view.category_list_len.saturating_sub(1));
-                    state.category_state.select(Some(next));
+                    state.category_state.select(Some(clamp_selection(
+                        i.saturating_sub(1),
+                        self.view.category_list_len,
+                    )));
                 }
             }
             PanelFocus::Contents => {
                 if self.view.content_len > 0 {
                     let i = state.content_state.selected().unwrap_or(0);
-                    let next = i
-                        .saturating_sub(1)
-                        .min(self.view.content_len.saturating_sub(1));
-                    state.content_state.select(Some(next));
+                    state.content_state.select(Some(clamp_selection(
+                        i.saturating_sub(1),
+                        self.view.content_len,
+                    )));
                 }
             }
         }
@@ -168,15 +169,19 @@ impl<'a> UblxActionContext<'a> {
             PanelFocus::Categories => {
                 if self.view.category_list_len > 0 {
                     let i = state.category_state.selected().unwrap_or(0);
-                    let next = (i + 1).min(self.view.category_list_len.saturating_sub(1));
-                    state.category_state.select(Some(next));
+                    state.category_state.select(Some(clamp_selection(
+                        i + 1,
+                        self.view.category_list_len,
+                    )));
                 }
             }
             PanelFocus::Contents => {
                 if self.view.content_len > 0 {
                     let i = state.content_state.selected().unwrap_or(0);
-                    let next = (i + 1).min(self.view.content_len.saturating_sub(1));
-                    state.content_state.select(Some(next));
+                    state.content_state.select(Some(clamp_selection(
+                        i + 1,
+                        self.view.content_len,
+                    )));
                 }
             }
         }

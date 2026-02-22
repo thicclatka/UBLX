@@ -1,6 +1,7 @@
 //! Snapshot-mode view data: filtered categories and contents from search + selection.
 
 use crate::layout::{filter, setup};
+use crate::utils::{clamp_selection, clamp_selection_opt};
 
 /// Compute filtered categories and contents from search + category selection; clamp list
 /// selection and reset preview scroll when selection changes.
@@ -23,16 +24,15 @@ pub fn build_view_data(
         filter::content_indices_for_view(all_rows, selected_category, search_query);
     let category_list_len = 1 + filtered_categories.len();
     if category_list_len > 0 {
-        let idx = category_idx.min(category_list_len.saturating_sub(1));
-        state.category_state.select(Some(idx));
+        state
+            .category_state
+            .select(Some(clamp_selection(category_idx, category_list_len)));
     }
     let content_len = contents_indices.len();
-    if content_len > 0 {
-        let sel = state
-            .content_state
-            .selected()
-            .unwrap_or(0)
-            .min(content_len.saturating_sub(1));
+    if let Some(sel) = clamp_selection_opt(
+        state.content_state.selected().unwrap_or(0),
+        content_len,
+    ) {
         state.content_state.select(Some(sel));
     } else {
         state.content_state.select(None);

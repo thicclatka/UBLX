@@ -27,3 +27,9 @@ pub fn table_row_style(index: usize) -> Style {
     };
     Style::default().fg(t.text).bg(bg)
 }
+
+/// Style for a section title line in tables (e.g. "General", "Sheet Stats")
+pub fn table_section_title_style() -> Style {
+    let t = CurrentTheme::palette();
+    Style::default().fg(t.tab_active_fg)
+}

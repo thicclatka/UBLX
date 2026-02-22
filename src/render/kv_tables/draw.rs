@@ -5,7 +5,7 @@ use ratatui::layout::Rect;
 use super::consts::TABLE_GAP;
 use super::sections;
 use super::sections::Section;
-use crate::layout::{style, themes};
+use crate::layout::style;
 use crate::render::tables;
 use crate::ui::UI_STRINGS;
 
@@ -39,10 +39,7 @@ fn draw_section_title(
         && table_area.y + section_start.saturating_sub(visible_start)
             < table_area.y + table_area.height
     {
-        let line = ratatui::text::Line::from(title).style(
-            style::text_style()
-                .patch(ratatui::style::Style::default().fg(themes::current().tab_active_fg)),
-        );
+        let line = ratatui::text::Line::from(title).style(style::table_section_title_style());
         let ry = table_area.y + section_start.saturating_sub(visible_start);
         f.render_widget(
             ratatui::widgets::Paragraph::new(line),

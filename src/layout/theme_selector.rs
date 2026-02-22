@@ -7,12 +7,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
 use crate::layout::{style, themes};
-use crate::ui::UI_STRINGS;
-use crate::utils::UI_GLYPHS;
-
-const POPUP_PADDING_W: u16 = 4;
-const POPUP_PADDING_H: u16 = 2;
-const SWATCH_LIGHTEN: f32 = 0.2;
+use crate::ui::{UI_CONSTANTS, UI_GLYPHS, UI_STRINGS};
+use crate::utils::format::StringObjTraits;
 
 /// Draw centered popup with theme list; each row shows a small swatch (theme background lightened) then the name.
 pub fn render_theme_selector(f: &mut Frame, selected_index: usize) {
@@ -35,7 +31,13 @@ pub fn render_theme_selector(f: &mut Frame, selected_index: usize) {
 fn popup_rect(area: Rect, opts: &[themes::ThemeOption]) -> Rect {
     let content_w = 2 + opts.iter().map(|o| o.display_name.len()).max().unwrap_or(0);
     let content_h = opts.len();
-    style::centered_popup_rect(area, content_w, content_h, POPUP_PADDING_W, POPUP_PADDING_H)
+    style::centered_popup_rect(
+        area,
+        content_w,
+        content_h,
+        UI_CONSTANTS.popup_padding_w,
+        UI_CONSTANTS.popup_padding_h,
+    )
 }
 
 // Block for the theme selector popup: centered title, borders, and background.
@@ -55,12 +57,19 @@ fn theme_option_row(
     current_theme: &themes::Theme,
 ) -> ListItem<'static> {
     let swatch_style = Style::default()
-        .fg(themes::lighten_rgb(opt.theme.background, SWATCH_LIGHTEN))
-        .bg(themes::lighten_rgb(opt.theme.background, SWATCH_LIGHTEN));
+        .fg(themes::lighten_rgb(
+            opt.theme.background,
+            UI_CONSTANTS.swatch_lighten,
+        ))
+        .bg(themes::lighten_rgb(
+            opt.theme.background,
+            UI_CONSTANTS.swatch_lighten,
+        ));
     let (row_style, pad_style) = row_styles(index, opt, selected_index, current_theme);
     let line = Line::from(vec![
+        UI_CONSTANTS.get_empty_span(pad_style),
         Span::styled(UI_GLYPHS.swatch_block.to_string(), swatch_style),
-        Span::styled(" ", pad_style),
+        UI_CONSTANTS.get_empty_span(pad_style),
         Span::styled(opt.display_name, row_style),
     ]);
     ListItem::new(line)

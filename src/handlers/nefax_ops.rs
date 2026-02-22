@@ -73,7 +73,7 @@ pub fn load_prior_nefax_or_exit(dir_to_ublx: &Path, db_path: &Path) -> Option<Ne
         Ok(None) => None,
         Err(e) => {
             error!("failed to load snapshot: {}", e);
-            std::process::exit(1);
+            crate::utils::exit_error();
         }
     }
 }

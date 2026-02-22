@@ -5,7 +5,8 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 
 use crate::layout::{style, themes};
-use crate::ui::UI_STRINGS;
+use crate::ui::{UI_CONSTANTS, UI_STRINGS};
+use crate::utils::format::StringObjTraits;
 
 /// Build a static slice of (shortcut, action) pairs. Add lines like:
 /// `help_entries![ ("keys", "description"), ... ]`
@@ -56,7 +57,13 @@ pub fn render_help_box(f: &mut Frame) {
     let content_w = key_width as usize + 1 + desc_max;
     let content_h = 1 + HELP_ENTRIES.len();
     let area = f.area();
-    let rect = style::centered_popup_rect(area, content_w, content_h, 2, 2);
+    let rect = style::centered_popup_rect(
+        area,
+        content_w,
+        content_h,
+        UI_CONSTANTS.popup_padding_w,
+        UI_CONSTANTS.popup_padding_h,
+    );
     f.render_widget(Clear, rect);
 
     let t = themes::current();
@@ -67,9 +74,12 @@ pub fn render_help_box(f: &mut Frame) {
         .style(Style::default().bg(t.popup_bg));
     let inner = Style::default().fg(t.text).bg(t.popup_bg);
 
-    let header = Row::new(vec![UI_STRINGS.help_table_command, UI_STRINGS.help_table_action])
-        .style(style::table_header_style())
-        .bottom_margin(0);
+    let header = Row::new(vec![
+        UI_STRINGS.help_table_command,
+        UI_STRINGS.help_table_action,
+    ])
+    .style(style::table_header_style())
+    .bottom_margin(0);
     let data_rows: Vec<Row> = HELP_ENTRIES
         .iter()
         .enumerate()

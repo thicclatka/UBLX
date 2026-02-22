@@ -7,7 +7,7 @@ use crate::config::{RunMode, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
 use crate::handlers::nefax_ops;
 use crate::handlers::zahir_ops;
-use crate::utils::{canonicalize_dir_to_ublx, error_writer};
+use crate::utils::{canonicalize_dir_to_ublx, error_writer, exit_error};
 
 type PreRunSetup = (PathBuf, std::collections::HashMap<String, String>);
 
@@ -22,7 +22,7 @@ fn pre_run_setup(dir_to_ublx: &Path) -> PreRunSetup {
 fn on_nefax_error(dir_to_ublx: &Path, e: &impl std::fmt::Display) -> ! {
     let _ = error_writer::write_nefax_error_to_log(dir_to_ublx, e);
     error!("nefax failed: {}", e);
-    std::process::exit(1);
+    exit_error();
 }
 
 /// Run nefaxer; on success return `(nefax, diff)`, on error log and exit. Use when no cleanup is needed (e.g. sequential).
@@ -104,7 +104,7 @@ pub fn run_sequential(
             Ok(r) => r,
             Err(e) => {
                 error!("zahir (sequential) failed: {}", e);
-                std::process::exit(1);
+                exit_error();
             }
         };
         if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &r) {
@@ -121,7 +121,7 @@ pub fn run_sequential(
         &prior_zahir_json,
     ) {
         error!("failed to write snapshot: {}", e);
-        std::process::exit(1);
+        exit_error();
     }
     Ok((diff.added.len(), diff.modified.len(), diff.removed.len()))
 }
@@ -174,7 +174,7 @@ pub fn run_stream(
         &prior_zahir_json,
     ) {
         error!("failed to write snapshot: {}", e);
-        std::process::exit(1);
+        exit_error();
     }
 
     match zahir_handle.join() {
@@ -186,13 +186,13 @@ pub fn run_stream(
         Ok(Err(e)) => {
             if !e.to_string().contains("No file paths provided") {
                 error!("zahir (stream) failed: {}", e);
-                std::process::exit(1);
+                exit_error();
             }
             debug!("zahir (stream) skipped: {}", e);
         }
         Err(_) => {
             error!("zahir thread panicked");
-            std::process::exit(1);
+            exit_error();
         }
     }
     Ok((diff.added.len(), diff.modified.len(), diff.removed.len()))

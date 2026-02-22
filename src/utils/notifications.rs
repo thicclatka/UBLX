@@ -17,6 +17,7 @@ use std::time::Instant;
 use crate::config::TOAST_CONFIG;
 use crate::layout::themes;
 use crate::ui::UI_STRINGS;
+use crate::utils::format::StringObjTraits;
 
 static BUMPER_FOR_LOG: OnceLock<BumperBuffer> = OnceLock::new();
 static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();

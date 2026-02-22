@@ -38,3 +38,30 @@ pub fn format_timestamp_ns(ns: i64) -> String {
         None => format!("{} (invalid)", ns),
     }
 }
+
+/// Clamp a selection index to a list length. Returns `idx` if in range, or the last valid index (`len.saturating_sub(1)`), or 0 when `len == 0`.
+pub fn clamp_selection(idx: usize, len: usize) -> usize {
+    idx.min(len.saturating_sub(1))
+}
+
+/// Like [clamp_selection] but returns [None] when `len == 0` so callers can pass through to `select(None)`.
+pub fn clamp_selection_opt(idx: usize, len: usize) -> Option<usize> {
+    if len == 0 {
+        None
+    } else {
+        Some(clamp_selection(idx, len))
+    }
+}
+
+/// Pads a string with spaces for block/popup titles, e.g. `" Delta "`.
+pub fn frame_string_with_spaces(s: &str) -> String {
+    format!(" {} ", s)
+}
+
+/// Types that can pad a string for block/popup titles (e.g. `" Delta "`). Shared by [crate::ui::UiStrings] and [crate::utils::UiGlyphs].
+pub trait StringObjTraits {
+    /// Pads a label with spaces for block/popup titles, e.g. `pad("Delta")` → `" Delta "`.
+    fn pad(&self, s: &str) -> String {
+        frame_string_with_spaces(s)
+    }
+}

@@ -9,6 +9,7 @@ use crate::layout::style;
 use crate::render::viewers::markdown::is_markdown_path;
 use crate::render::{kv_tables, scrollable_content};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
+use crate::utils::format::StringObjTraits;
 use crate::utils::format_bytes;
 
 fn wrapped_line_count(text: &str, width: u16) -> u16 {

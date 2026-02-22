@@ -2,12 +2,20 @@ use crossterm::event::{self, Event};
 use std::io;
 use std::path::Path;
 
-use crate::config::{write_local_theme, UblxPaths, OPERATION_NAME};
+use crate::config::{OPERATION_NAME, UblxPaths, write_local_theme};
 use crate::handlers::state_transitions::UblxActionContext;
-use crate::layout::setup::{RightPaneContent, UblxState, ViewData};
-use crate::layout::themes;
-use crate::ui::keymap::{key_action_setup, search_consumes, UblxAction};
-use crate::utils::notifications::{show_toast_slot, BumperBuffer};
+use crate::layout::{
+    setup::{RightPaneContent, UblxState, ViewData},
+    themes,
+};
+use crate::ui::{
+    consts::UI_CONSTANTS,
+    keymap::{UblxAction, key_action_setup, search_consumes},
+};
+use crate::utils::{
+    format::clamp_selection,
+    notifications::{BumperBuffer, show_toast_slot},
+};
 
 /// Theme context for theme selector: (dir for local config, current theme name for preview/revert).
 pub type ThemeContext<'a> = Option<(&'a Path, Option<&'a str>)>;
@@ -20,7 +28,7 @@ pub fn handle_ublx_input(
     bumper: Option<&BumperBuffer>,
     dev: bool,
 ) -> io::Result<bool> {
-    if !event::poll(std::time::Duration::from_millis(100))? {
+    if !event::poll(std::time::Duration::from_millis(UI_CONSTANTS.input_poll_ms))? {
         return Ok(false);
     }
     let Event::Key(e) = event::read()? else {
@@ -45,11 +53,11 @@ pub fn handle_ublx_input(
                 state.theme_selector_visible = false;
             }
             UblxAction::MoveDown => {
-                state.theme_selector_index =
-                    (state.theme_selector_index + 1).min(n.saturating_sub(1));
+                state.theme_selector_index = clamp_selection(state.theme_selector_index + 1, n);
             }
             UblxAction::MoveUp => {
-                state.theme_selector_index = state.theme_selector_index.saturating_sub(1);
+                state.theme_selector_index =
+                    clamp_selection(state.theme_selector_index.saturating_sub(1), n);
             }
             UblxAction::SearchSubmit => {
                 let display_name = opts[state.theme_selector_index].display_name;
