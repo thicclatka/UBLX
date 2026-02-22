@@ -29,7 +29,15 @@ fn is_likely_binary(path: &Path) -> bool {
     buf.contains(&0) || std::str::from_utf8(buf).is_err()
 }
 
-/// Resolve viewer string for a file: (directory), (binary file), (file not found), or file contents (with size limit).
+/// Label for a binary file: "EXT file" if path has extension (e.g. "PNG file"), else "binary file".
+fn binary_file_label(path: &Path) -> String {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| format!("{} file", ext.to_uppercase()))
+        .unwrap_or_else(|| "binary file".to_string())
+}
+
+/// Resolve viewer string for a file: (directory), binary label, (file not found), or file contents (with size limit).
 fn file_content_for_viewer(path: &Path) -> Option<String> {
     let meta = match fs::metadata(path) {
         Ok(m) => m,
@@ -39,7 +47,7 @@ fn file_content_for_viewer(path: &Path) -> Option<String> {
     //     return Some("(directory)".to_string());
     // }
     if meta.is_file() && is_likely_binary(path) {
-        return Some("(binary file)".to_string());
+        return Some(binary_file_label(path));
     }
     let f = fs::File::open(path).ok()?;
     let cap = VIEWER_MAX_BYTES.min(meta.len() as usize);
