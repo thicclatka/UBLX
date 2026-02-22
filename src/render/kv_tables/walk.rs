@@ -12,6 +12,14 @@ use super::schema;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
 use super::xlsx;
 
+/// Format a map as KV rows (key/value pairs). Optionally exclude one key (e.g. "columns").
+fn map_to_kv_rows(map: &Map<String, Value>, exclude_key: Option<&str>) -> Vec<(String, String)> {
+    map.iter()
+        .filter(|(k, _)| exclude_key.map_or(true, |ex| k.as_str() != ex))
+        .map(|(k, val)| (format::format_key(k), format::format_value(val, k)))
+        .collect()
+}
+
 /// From an array of JSON objects, get column keys (from all objects, first object's order then any extra keys), display column names, and entries. Returns None if empty or no objects.
 fn object_array_to_contents_data(arr: &[Value]) -> Option<(Vec<String>, Vec<String>, Vec<Value>)> {
     let objs: Vec<&Map<String, Value>> = arr.iter().filter_map(Value::as_object).collect();
@@ -147,11 +155,7 @@ fn push_tables_sections(sections: &mut Vec<Section>, arr: &[Value]) {
             .and_then(Value::as_str)
             .map(String::from)
             .unwrap_or_else(|| "Table".to_string());
-        let rows: Vec<(String, String)> = v
-            .iter()
-            .filter(|(k, _)| k.as_str() != COLUMNS_KEY)
-            .map(|(k, val)| (format::format_key(k), format::format_value(val, k)))
-            .collect();
+        let rows = map_to_kv_rows(v, Some(COLUMNS_KEY));
         if !rows.is_empty() {
             sections.push(Section::KeyValue(KvSection {
                 title: Some(table_name.clone()),
@@ -163,7 +167,7 @@ fn push_tables_sections(sections: &mut Vec<Section>, arr: &[Value]) {
             && let Some((column_keys, columns, entries)) = object_array_to_contents_data(col_arr)
         {
             sections.push(Section::Contents(ContentsSection {
-                title: format::join_dot([&table_name, "Columns"]),
+                title: format::join_dot([&table_name, UI_STRINGS.columns_table_title]),
                 columns,
                 column_keys,
                 entries: entries.clone(),
@@ -190,10 +194,7 @@ fn push_column_stats_sections(
                 continue;
             }
             if let Some(stats_obj) = stats_val.as_object() {
-                let rows: Vec<(String, String)> = stats_obj
-                    .iter()
-                    .map(|(k, val)| (format::format_key(k), format::format_value(val, k)))
-                    .collect();
+                let rows = map_to_kv_rows(stats_obj, None);
                 if !rows.is_empty() {
                     let stats_label = format::format_key(stats_key);
                     sections.push(Section::KeyValue(KvSection {

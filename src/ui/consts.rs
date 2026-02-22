@@ -58,6 +58,7 @@ pub struct UiStrings {
     pub notification_title: &'static str,
     pub first_table_title: &'static str,
     pub contents_table_title: &'static str,
+    pub columns_table_title: &'static str,
     pub help_table_command: &'static str,
     pub help_table_action: &'static str,
 }
@@ -118,6 +119,7 @@ impl UiStrings {
             notification_title: "Notification",
             first_table_title: "General",
             contents_table_title: "Contents",
+            columns_table_title: "Columns",
             help_table_command: "Command",
             help_table_action: "Action",
         }

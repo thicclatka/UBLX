@@ -92,11 +92,8 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
         if i > 0 {
             line_index += TABLE_GAP;
         }
-        let (title_opt, header_lines, num_rows): (Option<&str>, u16, usize) = match section {
-            Section::KeyValue(kv) => (kv.title.as_deref(), 1, kv.rows.len()),
-            Section::Contents(c) => (Some(c.title.as_str()), 1, c.entries.len()),
-            Section::SingleColumnList(list) => (Some(list.title.as_str()), 0, list.values.len()),
-        };
+        let title_opt = section.title_str();
+        let (_has_title, header_lines, num_rows) = section.line_metrics();
         let section_start = line_index;
         if title_opt.is_some() {
             line_index += 1;
@@ -112,19 +109,19 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
             continue;
         };
 
+        if let Some(title) = title_opt {
+            draw_section_title(
+                f,
+                title,
+                table_area,
+                visible_start,
+                visible_end,
+                section_start,
+                section.sub_title_style(),
+            );
+        }
         match section {
             Section::KeyValue(kv) => {
-                if let Some(title) = title_opt {
-                    draw_section_title(
-                        f,
-                        title,
-                        table_area,
-                        visible_start,
-                        visible_end,
-                        section_start,
-                        kv.sub_title,
-                    );
-                }
                 let table_start_line = section_start + if title_opt.is_some() { 1 } else { 0 };
                 let skip =
                     (visible_start.saturating_sub(table_start_line)).min(num_rows as u16) as usize;
@@ -144,17 +141,6 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                 }
             }
             Section::Contents(c) => {
-                if title_opt.is_some() {
-                    draw_section_title(
-                        f,
-                        c.title.as_str(),
-                        table_area,
-                        visible_start,
-                        visible_end,
-                        section_start,
-                        c.sub_title,
-                    );
-                }
                 let table_start = section_start + 1;
                 let skip =
                     (visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
@@ -177,17 +163,6 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                 }
             }
             Section::SingleColumnList(list) => {
-                if title_opt.is_some() {
-                    draw_section_title(
-                        f,
-                        list.title.as_str(),
-                        table_area,
-                        visible_start,
-                        visible_end,
-                        section_start,
-                        false,
-                    );
-                }
                 let table_start = section_start + 1;
                 let skip =
                     (visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;

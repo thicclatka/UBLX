@@ -40,6 +40,35 @@ pub enum Section {
     SingleColumnList(SingleColumnListSection),
 }
 
+impl Section {
+    /// Title string for the section, if any (used for drawing).
+    pub fn title_str(&self) -> Option<&str> {
+        match self {
+            Section::KeyValue(kv) => kv.title.as_deref(),
+            Section::Contents(c) => Some(c.title.as_str()),
+            Section::SingleColumnList(list) => Some(list.title.as_str()),
+        }
+    }
+
+    /// (has_title, header_lines, num_rows) for line counting and viewport math.
+    pub fn line_metrics(&self) -> (bool, u16, usize) {
+        match self {
+            Section::KeyValue(kv) => (kv.title.is_some(), 1, kv.rows.len()),
+            Section::Contents(c) => (true, 1, c.entries.len()),
+            Section::SingleColumnList(list) => (true, 0, list.values.len()),
+        }
+    }
+
+    /// True if the section title should use subordinate (dimmer) style.
+    pub fn sub_title_style(&self) -> bool {
+        match self {
+            Section::KeyValue(kv) => kv.sub_title,
+            Section::Contents(c) => c.sub_title,
+            Section::SingleColumnList(_) => false,
+        }
+    }
+}
+
 /// Parse JSON string (one or more objects joined by "\n\n") into sections. First section is titled "General"; nested objects become separate sections; objects with "entries" get an extra "Contents" table. Special keys: schema (tree), sheet_stats, common_pivots, csv_metadata.
 pub fn parse_json_sections(json: &str) -> Vec<Section> {
     let mut sections = Vec::new();
@@ -83,13 +112,9 @@ pub fn content_height(json: &str) -> u16 {
         if i > 0 {
             lines += TABLE_GAP;
         }
-        let (has_title, header_lines, num_rows) = match section {
-            Section::KeyValue(kv) => (kv.title.is_some(), 1, kv.rows.len()),
-            Section::Contents(c) => (true, 1, c.entries.len()),
-            Section::SingleColumnList(list) => (true, 0, list.values.len()),
-        };
+        let (has_title, header_lines, num_rows) = section.line_metrics();
         lines += if has_title { 1 } else { 0 };
-        lines += header_lines as u16;
+        lines += header_lines;
         lines += num_rows as u16;
     }
     lines
