@@ -48,6 +48,8 @@ pub struct UblxState {
     pub snapshot_poll_deadline: Option<std::time::Instant>,
     /// True after we've received a "snapshot done" message; reset when user triggers a new snapshot so we poll again.
     pub snapshot_done_received: bool,
+    /// Set by Ctrl+D; event loop spawns duplicate detection and clears this.
+    pub duplicate_load_requested: bool,
 }
 
 impl Default for UblxState {
@@ -81,6 +83,7 @@ impl UblxState {
             last_key_for_double: None,
             snapshot_poll_deadline: None,
             snapshot_done_received: false, // poll until we receive done; run_ublx sets true when initial load has data (already-done dir)
+            duplicate_load_requested: false,
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));
@@ -88,12 +91,13 @@ impl UblxState {
     }
 }
 
-/// Top-level mode: Snapshot (categories/contents/preview) or Delta (added/mod/removed + overview).
+/// Top-level mode: Snapshot (categories/contents/preview), Delta (added/mod/removed), or Duplicates (only if any exist).
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum MainMode {
     #[default]
     Snapshot,
     Delta,
+    Duplicates,
 }
 
 /// Which panel has focus (Categories or Contents; Metadata is read-only).

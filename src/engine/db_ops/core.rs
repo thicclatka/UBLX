@@ -332,3 +332,30 @@ pub fn load_mtime_for_path(db_path: &Path, path: &str) -> Result<Option<i64>, an
         .optional()
         .map_err(Into::into)
 }
+
+/// Row for duplicate detection: path, size, optional hash (32 bytes). Directories excluded by query.
+pub type SnapshotPathSizeHash = (String, u64, Option<Vec<u8>>);
+
+/// Load path, size, hash for non-directory snapshot rows (for duplicate grouping).
+pub fn load_snapshot_path_size_hash(
+    db_path: &Path,
+) -> Result<Vec<SnapshotPathSizeHash>, anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(Vec::new());
+    }
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_PATH_SIZE_HASH)?;
+    let rows = stmt.query_map([], |row| {
+        let size: i64 = row.get(1)?;
+        Ok((
+            row.get::<_, String>(0)?,
+            size.max(0) as u64,
+            row.get::<_, Option<Vec<u8>>>(2)?,
+        ))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}

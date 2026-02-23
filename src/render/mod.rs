@@ -1,5 +1,6 @@
 pub mod core;
 pub mod delta;
+pub mod duplicates;
 pub mod kv_tables;
 pub mod panels;
 pub mod scrollable_content;

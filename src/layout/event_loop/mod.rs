@@ -2,6 +2,7 @@
 
 mod app_loop;
 mod delta;
+mod duplicates;
 mod params;
 mod snapshot;
 mod view_data;

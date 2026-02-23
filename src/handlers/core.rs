@@ -79,7 +79,7 @@ fn run_tui_mode(
         snapshot::run_snapshot_pipeline(&dir_clone, &opts_clone, &prior_clone, Some(tx), None);
     });
 
-    run_ublx(event_loop::RunUblxParams {
+    let mut params = event_loop::RunUblxParams {
         db_path,
         dir_to_ublx,
         snapshot_done_rx: Some(rx),
@@ -88,7 +88,10 @@ fn run_tui_mode(
         dev,
         theme: ublx_opts.theme.clone(),
         transparent: ublx_opts.transparent,
-    })?;
+        duplicate_groups: Vec::new(),
+        duplicate_groups_rx: None,
+    };
+    run_ublx(&mut params)?;
     if let Some(b) = bumper
         && dev
     {
@@ -106,7 +109,7 @@ fn restore_terminal() {
 
 /// Setup terminal, run [crate::layout::event_loop::main_app_loop], then teardown. Called by [run_tui_mode].
 /// A panic hook restores the terminal on panic so the shell stays usable.
-pub fn run_ublx(params: event_loop::RunUblxParams<'_>) -> io::Result<()> {
+pub fn run_ublx(params: &mut event_loop::RunUblxParams<'_>) -> io::Result<()> {
     let (mut categories, mut all_rows) =
         event_loop::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
@@ -132,7 +135,7 @@ pub fn run_ublx(params: event_loop::RunUblxParams<'_>) -> io::Result<()> {
         &mut state,
         &mut categories,
         &mut all_rows,
-        &params,
+        params,
     );
 
     restore_terminal();

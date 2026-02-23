@@ -1,7 +1,7 @@
 //! Load and fill right-pane content for the current selection (tree, file viewer, zahir JSON).
 //! Moved from layout so "get the data that goes into the view" lives with other handlers.
 
-use serde_json;
+use serde_json::{self, Value};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -154,7 +154,7 @@ pub fn resolve_right_pane_content(
                         viewer_mtime_ns,
                     }
                 } else {
-                    match serde_json::from_str::<serde_json::Value>(&zahir_json) {
+                    match serde_json::from_str::<Value>(&zahir_json) {
                         Ok(v) => {
                             let s = sectioned_preview_from_zahir(&v);
                             RightPaneContent {

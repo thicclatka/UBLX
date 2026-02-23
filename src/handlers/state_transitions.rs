@@ -19,7 +19,13 @@ impl<'a> UblxActionContext<'a> {
 
     /// Apply the key action to state (mutates focus, selection, panes, etc.).
     /// Returns true if the user requested quit (caller should exit the run loop).
-    pub fn apply_action_to_state(&self, state: &mut UblxState, action: UblxAction) -> bool {
+    /// `has_duplicates` is used for MainModeToggle (cycle Snapshot → Delta → Duplicates when available).
+    pub fn apply_action_to_state(
+        &self,
+        state: &mut UblxState,
+        action: UblxAction,
+        has_duplicates: bool,
+    ) -> bool {
         match action {
             UblxAction::Quit => {
                 if state.viewer_fullscreen {
@@ -31,10 +37,17 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::Help => state.help_visible = true,
             UblxAction::MainModeSnapshot => state.main_mode = MainMode::Snapshot,
             UblxAction::MainModeDelta => state.main_mode = MainMode::Delta,
+            UblxAction::MainModeDuplicates => state.main_mode = MainMode::Duplicates,
+            UblxAction::LoadDuplicates => {
+                state.duplicate_load_requested = true;
+                state.main_mode = MainMode::Duplicates;
+            }
             UblxAction::MainModeToggle => {
                 state.main_mode = match state.main_mode {
                     MainMode::Snapshot => MainMode::Delta,
+                    MainMode::Delta if has_duplicates => MainMode::Duplicates,
                     MainMode::Delta => MainMode::Snapshot,
+                    MainMode::Duplicates => MainMode::Snapshot,
                 };
             }
             UblxAction::SearchStart => state.search_active = true,

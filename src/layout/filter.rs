@@ -1,7 +1,12 @@
 //! Pure filtering for snapshot view: categories and content indices by search and category.
 //! No state mutation; used by the event loop to build [super::setup::ViewData].
 
+use rayon::prelude::*;
+
 use super::setup::TuiRow;
+
+/// Threshold above which we use parallel iteration for content indices (avoids rayon overhead on small lists).
+const PAR_CONTENT_INDICES_THRESHOLD: usize = 5000;
 
 /// Categories that have at least one row matching the search query.
 /// If `search_query` is empty, returns all categories.
@@ -28,6 +33,7 @@ pub fn categories_for_search(
 /// Indices into `all_rows` for the current category and search (no row copy).
 /// When `selected_category` is `None`, all rows are considered; otherwise only rows in that category.
 /// Search filter is applied when `search_query` is non-empty.
+/// Uses parallel iteration when `all_rows.len()` exceeds [PAR_CONTENT_INDICES_THRESHOLD].
 pub fn content_indices_for_view(
     all_rows: &[TuiRow],
     selected_category: Option<&str>,
@@ -36,21 +42,25 @@ pub fn content_indices_for_view(
     let q = search_query.trim();
     let match_search =
         |path: &str, category: &str| q.is_empty() || path.contains(q) || category.contains(q);
+    let match_row = |row: &TuiRow| {
+        let (path, category, _) = row;
+        selected_category.is_none_or(|c| category.as_str() == c) && match_search(path, category)
+    };
 
-    match selected_category {
-        None => all_rows
+    if all_rows.len() >= PAR_CONTENT_INDICES_THRESHOLD {
+        all_rows
+            .par_iter()
+            .enumerate()
+            .filter(|(_, row)| match_row(row))
+            .map(|(i, _)| i)
+            .collect()
+    } else {
+        all_rows
             .iter()
             .enumerate()
-            .filter(|(_, (path, category, _))| match_search(path, category))
+            .filter(|(_, row)| match_row(row))
             .map(|(i, _)| i)
-            .collect(),
-        Some(cat) => all_rows
-            .iter()
-            .enumerate()
-            .filter(|(_, (_, c, _))| c.as_str() == cat)
-            .filter(|(_, (path, category, _))| match_search(path, category))
-            .map(|(i, _)| i)
-            .collect(),
+            .collect()
     }
 }
 

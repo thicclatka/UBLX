@@ -109,6 +109,10 @@ impl UblxDbStatements {
     pub const SELECT_SNAPSHOT_MTIME_BY_PATH: &'static str =
         "SELECT mtime_ns FROM snapshot WHERE path = ?1";
 
+    /// (path, size, hash) for non-directory rows; used for duplicate detection (by hash or content).
+    pub const SELECT_SNAPSHOT_PATH_SIZE_HASH: &'static str =
+        "SELECT path, size, hash FROM snapshot WHERE category IS NULL OR category != 'Directory'";
+
     pub fn create_query_for_nefax_from_db(table_name: &str) -> String {
         format!("SELECT path, mtime_ns, size, hash FROM {}", table_name)
     }

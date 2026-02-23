@@ -11,8 +11,12 @@ pub enum UblxAction {
     MainModeSnapshot,
     /// Switch to Delta main tab.
     MainModeDelta,
-    /// Alternate between Snapshot and Delta (Shift+Tab).
+    /// Switch to Duplicates main tab (only when duplicates exist).
+    MainModeDuplicates,
+    /// Alternate between Snapshot, Delta, and Duplicates when available (Shift+Tab).
     MainModeToggle,
+    /// Run duplicate detection in background and show Duplicates tab (Ctrl+D).
+    LoadDuplicates,
     SearchStart,
     SearchChar(char),
     SearchBackspace,
@@ -59,11 +63,13 @@ pub struct KeyActionResult {
 /// Esc yields SearchClear when the search bar is open or when a filter is active (so Esc clears
 /// search instead of quitting). Only when not searching at all does Esc mean Quit.
 /// Pass `last_key_for_double` from state to detect gg (two g's) for ListTop.
+/// Pass `has_duplicates` so key 3 and MainModeToggle can switch to Duplicates only when the tab exists.
 pub fn key_action_setup(
     event: KeyEvent,
     search_active: bool,
     has_search_filter: bool,
     last_key_for_double: Option<char>,
+    has_duplicates: bool,
 ) -> KeyActionResult {
     if event.kind != KeyEventKind::Press {
         return KeyActionResult {
@@ -86,6 +92,7 @@ pub fn key_action_setup(
         KeyCode::Char('J') if shift => (UblxAction::ScrollPreviewDown, None),
         KeyCode::Char('K') if shift => (UblxAction::ScrollPreviewUp, None),
         KeyCode::Char('b' | 'B') if ctrl => (UblxAction::PreviewTop, None),
+        KeyCode::Char('d' | 'D') if ctrl => (UblxAction::LoadDuplicates, None),
         KeyCode::Char('e' | 'E') if ctrl => (UblxAction::PreviewBottom, None),
         KeyCode::Char('G') if shift => (UblxAction::ListBottom, None),
         KeyCode::Char('g') if !shift && !ctrl => {
@@ -100,6 +107,7 @@ pub fn key_action_setup(
             let a = match c {
                 '1' => UblxAction::MainModeSnapshot,
                 '2' => UblxAction::MainModeDelta,
+                '3' if has_duplicates => UblxAction::MainModeDuplicates,
                 'v' => UblxAction::RightPaneViewer,
                 't' => UblxAction::RightPaneTemplates,
                 'm' => UblxAction::RightPaneMetadata,

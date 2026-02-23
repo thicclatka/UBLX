@@ -15,7 +15,7 @@ use super::xlsx;
 /// Format a map as KV rows (key/value pairs). Optionally exclude one key (e.g. "columns").
 fn map_to_kv_rows(map: &Map<String, Value>, exclude_key: Option<&str>) -> Vec<(String, String)> {
     map.iter()
-        .filter(|(k, _)| exclude_key.map_or(true, |ex| k.as_str() != ex))
+        .filter(|(k, _)| exclude_key != Some(k.as_str()))
         .map(|(k, val)| (format::format_key(k), format::format_value(val, k)))
         .collect()
 }

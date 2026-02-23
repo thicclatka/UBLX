@@ -34,6 +34,7 @@ pub struct UiStrings {
     /// Main mode tabs
     pub main_tab_snapshot: &'static str,
     pub main_tab_delta: &'static str,
+    pub main_tab_duplicates: &'static str,
     /// Delta left-pane labels
     pub delta_added: &'static str,
     pub delta_mod: &'static str,
@@ -49,6 +50,7 @@ pub struct UiStrings {
     pub delta_placeholder_dash: &'static str,
     pub delta_type_label: &'static str,
     pub paths_label: &'static str,
+    pub duplicates_group_label: &'static str,
     pub brand: &'static str,
     pub fullscreen_suffix: &'static str,
     pub table_header_key: &'static str,
@@ -98,6 +100,7 @@ impl UiStrings {
             viewer_placeholder: "(viewer — file content will load here)",
             main_tab_snapshot: "Snapshot",
             main_tab_delta: "Delta",
+            main_tab_duplicates: "Duplicates",
             delta_added: "Added",
             delta_mod: "Modified",
             delta_removed: "Removed",
@@ -110,6 +113,7 @@ impl UiStrings {
             delta_placeholder_dash: "—",
             delta_type_label: "Delta type",
             paths_label: "Paths",
+            duplicates_group_label: "Duplicate",
             brand: "UBLX",
             fullscreen_suffix: "(Esc to exit fullscreen)",
             table_header_key: "Key",

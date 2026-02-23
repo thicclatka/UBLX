@@ -27,6 +27,7 @@ pub fn handle_ublx_input(
     theme_ctx: ThemeContext<'_>,
     bumper: Option<&BumperBuffer>,
     dev: bool,
+    has_duplicates: bool,
 ) -> io::Result<bool> {
     if !event::poll(std::time::Duration::from_millis(UI_CONSTANTS.input_poll_ms))? {
         return Ok(false);
@@ -40,6 +41,7 @@ pub fn handle_ublx_input(
         state.search_active,
         has_search_filter,
         state.last_key_for_double,
+        has_duplicates,
     );
     state.last_key_for_double = result.last_key_for_double;
     let action = result.action;
@@ -120,5 +122,5 @@ pub fn handle_ublx_input(
         }
     }
     let ctx = UblxActionContext::new(view, right);
-    Ok(ctx.apply_action_to_state(state, action))
+    Ok(ctx.apply_action_to_state(state, action, has_duplicates))
 }

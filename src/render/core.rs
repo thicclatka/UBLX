@@ -7,6 +7,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Paragraph};
 
 use super::delta;
+use super::duplicates;
 use super::panels;
 use super::search;
 use super::snapshot_panels;
@@ -18,7 +19,7 @@ use crate::utils::notifications;
 /// Arguments for [draw_ublx_frame] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
     pub delta_data: Option<&'a setup::DeltaViewData>,
-    /// For snapshot mode pass `Some(all_rows)` so contents panel resolves rows from indices; for delta pass `None`.
+    /// For snapshot mode pass `Some(all_rows)`; for delta/duplicates pass `None`.
     pub all_rows: Option<&'a [setup::TuiRow]>,
     /// Snapshot mode: indexed dir (for mapping UBLX Settings path to "Local"/"Global" display).
     pub dir_to_ublx: Option<&'a std::path::Path>,
@@ -30,6 +31,10 @@ pub struct DrawFrameArgs<'a> {
     pub latest_snapshot_ns: Option<i64>,
     /// When true, show dev-mode toast notifications.
     pub dev: bool,
+    /// When non-empty, Duplicates tab is shown and this slice is the duplicate groups.
+    pub duplicate_groups: Option<&'a [crate::engine::db_ops::DuplicateGroup]>,
+    /// True while duplicate groups are being loaded in the background (show tab + "Loading…").
+    pub duplicate_groups_loading: bool,
 }
 
 /// Main entry: layout and render main tabs, then Snapshot or Delta 3-pane content, search, help.
@@ -45,7 +50,13 @@ pub fn draw_ublx_frame(
 
     draw_background(f, area, args);
     let (tabs_area, body_area) = split_tabs_and_body(area);
-    draw_main_tabs(f, state, tabs_area);
+    draw_main_tabs(
+        f,
+        state,
+        tabs_area,
+        args.duplicate_groups,
+        args.duplicate_groups_loading,
+    );
 
     let body = compute_body_areas(body_area);
     draw_main_content(f, state, view, right, args, &body);
@@ -159,6 +170,24 @@ fn draw_main_content(
                 &state.search_query,
             );
         }
+        setup::MainMode::Duplicates => {
+            if state.viewer_fullscreen {
+                panels::draw_right_pane_fullscreen(f, state, right, body.main_area);
+            } else if let Some(groups) = args.duplicate_groups
+                && !groups.is_empty()
+            {
+                duplicates::draw_duplicates_panes(f, state, view, right, left, middle, right_rect);
+            } else {
+                delta::draw_delta_placeholder(f, left, middle, right_rect);
+            }
+            search::draw_status_line(
+                f,
+                body.status_area,
+                args.latest_snapshot_ns,
+                state.search_active,
+                &state.search_query,
+            );
+        }
     }
 }
 
@@ -187,25 +216,38 @@ fn draw_toast_if_visible(f: &mut Frame, state: &setup::UblxState, args: &DrawFra
     }
 }
 
-fn draw_main_tabs(f: &mut Frame, state: &setup::UblxState, area: Rect) {
+fn draw_main_tabs(
+    f: &mut Frame,
+    state: &setup::UblxState,
+    area: Rect,
+    duplicate_groups: Option<&[crate::engine::db_ops::DuplicateGroup]>,
+    duplicate_groups_loading: bool,
+) {
     let outer = style::tab_row_padded(area);
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(UI_CONSTANTS.brand_block_constraints())
         .split(outer[1]);
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
-    let line = Line::from(
-        style::tab_node_segment(
-            UI_STRINGS.main_tab_snapshot,
-            state.main_mode == setup::MainMode::Snapshot,
-        )
-        .into_iter()
-        .chain(style::tab_node_segment(
-            UI_STRINGS.main_tab_delta,
-            state.main_mode == setup::MainMode::Delta,
-        ))
-        .collect::<Vec<_>>(),
-    );
+    let has_duplicates =
+        duplicate_groups.is_some_and(|g| !g.is_empty()) || duplicate_groups_loading;
+    let mut segments: Vec<_> = style::tab_node_segment(
+        UI_STRINGS.main_tab_snapshot,
+        state.main_mode == setup::MainMode::Snapshot,
+    )
+    .into_iter()
+    .chain(style::tab_node_segment(
+        UI_STRINGS.main_tab_delta,
+        state.main_mode == setup::MainMode::Delta,
+    ))
+    .collect();
+    if has_duplicates {
+        segments.extend(style::tab_node_segment(
+            UI_STRINGS.main_tab_duplicates,
+            state.main_mode == setup::MainMode::Duplicates,
+        ));
+    }
+    let line = Line::from(segments);
     f.render_widget(Paragraph::new(line), tabs_rect);
     f.render_widget(
         Paragraph::new(Line::from(ratatui::text::Span::styled(

@@ -20,6 +20,7 @@ macro_rules! help_entries {
 const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("1 | 2", "Main tabs: Snapshot / Delta"),
     ("Shift+Tab", "Alternate between Main tabs"),
+    ("Ctrl+d", "Run duplicate detection, show Duplicates tab"),
     ("/", "Search (strict substring search)"),
     ("Shift+S", "Take snapshot"),
     ("h | l", "Focus on Left or Middle panes"),
