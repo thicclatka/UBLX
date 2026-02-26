@@ -8,6 +8,7 @@ use ublx::config::{TOAST_CONFIG, UblxOpts, UblxPaths};
 use ublx::engine::db_ops;
 use ublx::fatal;
 use ublx::handlers::{core, nefax_ops};
+use ublx::layout::themes;
 use ublx::utils::notifications::{self, BumperBuffer};
 use ublx::utils::*;
 
@@ -57,6 +58,11 @@ fn main() {
     }
 
     let paths = UblxPaths::new(&dir_to_ublx);
+    let valid_themes: Vec<&str> = themes::theme_options().iter().map(|o| o.display_name).collect();
+    let for_dir_config = ublx::config::ForDirConfig {
+        valid_theme_names: &valid_themes,
+        bumper: bumper.as_ref(),
+    };
     let mut ublx_opts = UblxOpts::for_dir(
         &dir_to_ublx,
         &paths,
@@ -64,6 +70,7 @@ fn main() {
         None,
         None,
         cached_settings.as_ref(),
+        &for_dir_config,
     );
     debug!("UBLX CONFIG: {:#?}", ublx_opts);
 

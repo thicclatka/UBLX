@@ -64,13 +64,12 @@ fn file_content_for_viewer(path: &Path) -> Option<String> {
 
 /// Run `tree` on `full_path`; use cached result if keyed by `path`. Updates state.cached_tree.
 fn tree_for_path(state: &mut UblxState, path: &str, full_path: &Path) -> String {
-    let use_cache = state
-        .cached_tree
-        .as_ref()
-        .is_some_and(|(cached_path, _)| cached_path == path);
-    if use_cache {
-        state.cached_tree.as_ref().unwrap().1.clone()
-    } else {
+    if let Some((cached_path, text)) = state.cached_tree.as_ref()
+        && cached_path == path
+    {
+        return text.clone();
+    }
+    {
         match Command::new("tree").arg(full_path).output() {
             Ok(out) if out.status.success() => {
                 let text = String::from_utf8_lossy(&out.stdout).into_owned();

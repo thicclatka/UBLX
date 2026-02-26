@@ -42,10 +42,13 @@ fn contents_display_label(
     category: &str,
     dir_to_ublx: Option<&std::path::Path>,
 ) -> String {
-    if category != "UBLX Settings" || dir_to_ublx.is_none() {
+    if category != "UBLX Settings" {
         return path.to_string();
     }
-    let paths = UblxPaths::new(dir_to_ublx.unwrap());
+    let Some(dir) = dir_to_ublx else {
+        return path.to_string();
+    };
+    let paths = UblxPaths::new(dir);
     let local = paths
         .toml_path()
         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));

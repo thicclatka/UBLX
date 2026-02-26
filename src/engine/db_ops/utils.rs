@@ -8,8 +8,10 @@ use rusqlite::{Connection, Statement};
 
 use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
 use crate::config::{NEFAX_DB, UblxPaths};
-use crate::handlers::nefax_ops::{NefaxDiff, NefaxPathMeta, NefaxResult};
-use crate::handlers::zahir_ops::{ZahirOutput, zahir_output_to_json};
+use crate::handlers::{
+    nefax_ops::{NefaxDiff, NefaxPathMeta, NefaxResult},
+    zahir_ops::{ZahirOutput, zahir_output_to_json},
+};
 
 /// Get the full path and the path string for a given path.
 pub fn get_full_path_and_path_str(dir_to_ublx: &Path, path_ref: &Path) -> (PathBuf, String) {
@@ -179,6 +181,7 @@ pub fn insert_results_into_delta_log_by_type(
         let path_str = path.to_string_lossy().into_owned();
         let (mtime_ns, size, hash) = match delta_type {
             DeltaType::Added | DeltaType::Mod => {
+                // Paths in diff.added/diff.modified come from the current nefax run, so they are always present.
                 let meta = nefax.get(path).expect(expect_str);
                 (
                     Some(meta.mtime_ns),

@@ -17,7 +17,19 @@ use serde::{Deserialize, Serialize};
 use zahirscan::{OutputMode, RuntimeConfig};
 
 use super::paths::UblxPaths;
+use super::toast::OPERATION_NAME;
+use super::validation::{
+    HotReloadValidationError, ReloadResult, first_validation_error_message,
+    validate_hot_reload_overlay,
+};
 use crate::handlers::nefax_ops::{NefaxDriveType, pre_opts_for_nefaxer};
+use crate::utils::notifications::BumperBuffer;
+
+/// Parameters for config validation and optional bumper when loading opts in [UblxOpts::for_dir].
+pub struct ForDirConfig<'a> {
+    pub valid_theme_names: &'a [&'a str],
+    pub bumper: Option<&'a BumperBuffer>,
+}
 
 /// Cached disk/tuning settings stored in the ublx DB so we can skip disk check when .ublx exists.
 #[derive(Clone, Debug)]
@@ -256,21 +268,54 @@ impl UblxOpts {
     }
 
     /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
-    /// Returns `true` if an overlay was applied (from disk or cache), `false` if both were empty.
-    pub fn reload_hot_config(&mut self, ublx_paths: &UblxPaths) -> bool {
+    /// Validates before applying; on validation failure the overlay is not applied and errors are returned.
+    /// `valid_theme_names`: allowed theme values (e.g. from [crate::layout::themes::theme_options] display names).
+    pub fn reload_hot_config(
+        &mut self,
+        ublx_paths: &UblxPaths,
+        valid_theme_names: &[&str],
+    ) -> ReloadResult {
         let from_disk = Self::load_merged_overlay(ublx_paths);
         let to_apply = if from_disk != UblxOverlay::default() {
             from_disk
         } else {
             Self::load_overlay_from_cache(ublx_paths).unwrap_or_default()
         };
-        self.apply_hot_reload_overlay(&to_apply);
-        to_apply != UblxOverlay::default()
+        if to_apply == UblxOverlay::default() {
+            return ReloadResult::default();
+        }
+        match validate_hot_reload_overlay(&to_apply, valid_theme_names) {
+            Ok(()) => {
+                self.apply_hot_reload_overlay(&to_apply);
+                ReloadResult {
+                    applied: true,
+                    validation_errors: Vec::new(),
+                }
+            }
+            Err(validation_errors) => {
+                let cached = Self::load_overlay_from_cache(ublx_paths).unwrap_or_default();
+                self.apply_hot_reload_overlay(&cached);
+                ReloadResult {
+                    applied: false,
+                    validation_errors,
+                }
+            }
+        }
+    }
+
+    /// Message for bumper when startup config is invalid and we fall back to cache.
+    fn startup_validation_fallback_message(errors: &[HotReloadValidationError]) -> String {
+        format!(
+            "Config invalid at startup, using cache: {}",
+            first_validation_error_message(errors)
+        )
     }
 
     /// Build ublx options for indexing `dir`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [tuning_for_path](nefaxer::tuning_for_path).
     /// Zahir config is loaded with [RuntimeConfig::new]. [Self::streaming] is set true when workers >= [STREAMING_THRESHOLD].
     /// If a config file exists (`paths.toml_path()`: `.ublx.toml` or `ublx.toml`), only keys present in it overlay these opts.
+    /// Merged overlay is validated; if invalid, cache (or default) is applied and not saved.
+    /// When validation fails, if `config.bumper` is provided, pushes a warning so the user sees "using cache" (e.g. toast in TUI).
     pub fn for_dir(
         dir_to_ublx: &Path,
         ublx_paths: &UblxPaths,
@@ -278,6 +323,7 @@ impl UblxOpts {
         zahir_workers_override: Option<usize>,
         ublx_workers_override: Option<usize>,
         cached_settings: Option<&UblxSettings>,
+        config: &ForDirConfig<'_>,
     ) -> Self {
         let exclude = ublx_paths.exclude();
         let nefax = pre_opts_for_nefaxer(dir_to_ublx, &exclude, cached_settings);
@@ -298,12 +344,26 @@ impl UblxOpts {
             transparent: false,
             layout: LayoutOverlay::default(),
         };
-        // Global then local: both accessible; local overrides global when both exist.
         let global = Self::load_ublx_toml(ublx_paths.global_config());
         let local = Self::load_ublx_toml(ublx_paths.toml_path());
         let merged = UblxOverlay::merge(global, local);
-        opts.apply_overlay(merged.clone());
-        Self::save_overlay_to_cache(ublx_paths, &merged);
+        match validate_hot_reload_overlay(&merged, config.valid_theme_names) {
+            Ok(()) => {
+                opts.apply_overlay(merged.clone());
+                Self::save_overlay_to_cache(ublx_paths, &merged);
+            }
+            Err(validation_errors) => {
+                let cached = Self::load_overlay_from_cache(ublx_paths).unwrap_or_default();
+                opts.apply_overlay(cached);
+                if let Some(b) = config.bumper {
+                    b.push_with_operation(
+                        log::Level::Warn,
+                        Self::startup_validation_fallback_message(&validation_errors),
+                        Some(OPERATION_NAME.ublx_settings()),
+                    );
+                }
+            }
+        }
         opts
     }
 

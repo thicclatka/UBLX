@@ -11,7 +11,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::Instant;
 
 use crate::config::TOAST_CONFIG;
@@ -32,6 +32,7 @@ pub struct BumperMessage {
 }
 
 /// Thread-safe ring buffer of recent log messages for the bumper.
+/// Uses a [`Mutex`]; if the lock is poisoned (a thread panicked while holding it), we still acquire the guard via [`PoisonError::into_inner`] so the buffer remains usable.
 #[derive(Clone)]
 pub struct BumperBuffer {
     inner: std::sync::Arc<Mutex<VecDeque<BumperMessage>>>,
@@ -51,13 +52,16 @@ impl BumperBuffer {
     }
 
     /// Push a message with an operation name; the toast title uses the most recent message's operation.
+    /// Text is word-wrapped to toast content width so toasts display cleanly.
     pub fn push_with_operation(
         &self,
         level: Level,
         text: String,
         operation: Option<impl Into<String>>,
     ) {
-        let mut g = self.inner.lock().expect("bumper lock");
+        let content_width = TOAST_CONFIG.content_width_for(false);
+        let text = wrap_text_to_width(&text, content_width);
+        let mut g = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if g.len() >= self.cap {
             g.pop_front();
         }
@@ -70,7 +74,7 @@ impl BumperBuffer {
 
     /// Last N messages (newest last). Returns up to `n` messages.
     pub fn last_n(&self, n: usize) -> Vec<BumperMessage> {
-        let g = self.inner.lock().expect("bumper lock");
+        let g = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let len = g.len();
         let start = len.saturating_sub(n);
         g.range(start..).cloned().collect()
@@ -78,7 +82,7 @@ impl BumperBuffer {
 
     /// Last N messages that match the given operation (newest last), in chronological order.
     pub fn last_n_for_operation(&self, n: usize, operation: Option<&str>) -> Vec<BumperMessage> {
-        let g = self.inner.lock().expect("bumper lock");
+        let g = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let mut out: Vec<BumperMessage> = g
             .iter()
             .rev()
@@ -92,7 +96,7 @@ impl BumperBuffer {
 
     /// Number of messages in the contiguous tail for this operation (from the end of the buffer).
     fn count_contiguous_for_operation(&self, operation: Option<&str>) -> usize {
-        let g = self.inner.lock().expect("bumper lock");
+        let g = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         g.iter()
             .rev()
             .take_while(|m| m.operation.as_deref() == operation)
@@ -106,6 +110,58 @@ pub struct ToastSlot {
     pub visible_until: Instant,
     pub operation: Option<String>,
     pub messages: Vec<BumperMessage>,
+}
+
+/// Word-wrap `text` so no line exceeds `max_width` chars. Inserts `\n` at word boundaries; words longer than `max_width` are broken. Existing newlines are preserved (each line is wrapped separately).
+pub fn wrap_text_to_width(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push_str(&wrap_single_line(line, max_width));
+    }
+    out
+}
+
+fn wrap_single_line(line: &str, max_width: usize) -> String {
+    let line = line.trim_end();
+    if line.len() <= max_width {
+        return line.to_string();
+    }
+    let mut result = String::new();
+    let mut current_len = 0usize;
+    for word in line.split_whitespace() {
+        let need = if current_len == 0 {
+            word.len()
+        } else {
+            1 + word.len()
+        };
+        if current_len > 0 && current_len + need > max_width {
+            result.push('\n');
+            current_len = 0;
+        }
+        if current_len > 0 {
+            result.push(' ');
+        }
+        if word.len() > max_width {
+            for ch in word.chars() {
+                if current_len >= max_width {
+                    result.push('\n');
+                    current_len = 0;
+                }
+                result.push(ch);
+                current_len += 1;
+            }
+        } else {
+            result.push_str(word);
+            current_len += need;
+        }
+    }
+    result
 }
 
 /// Number of content lines in a toast (one per message plus newlines within each message).
@@ -235,11 +291,18 @@ pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
     let lines: Vec<Line<'_>> = slot
         .messages
         .iter()
-        .map(|m| {
-            Line::from(Span::styled(
-                format!(" [{}] {}", level_short(m.level), m.text),
-                level_style(m.level).add_modifier(Modifier::BOLD),
-            ))
+        .flat_map(|m| {
+            let prefix = format!(" [{}] ", level_short(m.level));
+            let indent = " ".repeat(prefix.len());
+            let style = level_style(m.level).add_modifier(Modifier::BOLD);
+            m.text
+                .split('\n')
+                .enumerate()
+                .map(|(i, seg)| {
+                    let p = if i == 0 { prefix.as_str() } else { &indent };
+                    Line::from(Span::styled(format!("{}{}", p, seg), style))
+                })
+                .collect::<Vec<_>>()
         })
         .collect();
     let t = themes::current();

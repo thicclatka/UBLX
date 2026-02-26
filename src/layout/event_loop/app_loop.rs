@@ -42,6 +42,8 @@ pub fn main_app_loop(
 
 /// One tick: update toasts/snapshot, build view and right content, draw, handle input. Returns true if quit requested.
 const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
+/// Window (ms) after we write config ourselves (e.g. theme selector) during which a file-watcher reload is treated as self-caused
+const CONFIG_SELF_WRITE_WINDOW_MS: u64 = 800;
 
 fn run_tick(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
@@ -51,6 +53,18 @@ fn run_tick(
     params: &mut RunUblxParams<'_>,
     ublx_opts: &mut UblxOpts,
 ) -> io::Result<bool> {
+    if state.first_tick {
+        state.first_tick = false;
+        if let Some(b) = params.bumper {
+            notifications::show_toast_slot(
+                &mut state.toast_slots,
+                b,
+                Some(OPERATION_NAME.ublx_settings().as_str()),
+                &mut state.toast_consumed_per_operation,
+            );
+        }
+    }
+
     // Drain completed duplicate load from background thread (non-blocking).
     if let Some(rx) = params.duplicate_groups_rx.as_ref()
         && let Ok(groups) = rx.try_recv()
@@ -66,7 +80,7 @@ fn run_tick(
         let from_external_save = state
             .config_written_by_us_at
             .as_ref()
-            .is_none_or(|t| t.elapsed() >= Duration::from_millis(800));
+            .is_none_or(|t| t.elapsed() >= Duration::from_millis(CONFIG_SELF_WRITE_WINDOW_MS));
         if from_external_save {
             state.theme_override = None;
         }

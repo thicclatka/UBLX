@@ -94,10 +94,10 @@ mod tests {
             let popup = lighten_rgb(bg, 0.05);
             let node = lighten_rgb(bg, 0.10);
             let Color::Rgb(pr, pg, pb) = popup else {
-                panic!()
+                unreachable!("lighten_rgb preserves Rgb for Rgb input")
             };
             let Color::Rgb(nr, ng, nb) = node else {
-                panic!()
+                unreachable!("lighten_rgb preserves Rgb for Rgb input")
             };
             println!(
                 "{}: popup/notif Color::Rgb({}, {}, {}), node_bg Color::Rgb({}, {}, {})",

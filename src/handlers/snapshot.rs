@@ -7,6 +7,7 @@ use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths};
 use crate::engine::{db_ops, orchestrator};
 use crate::fatal;
 use crate::handlers::nefax_ops;
+use crate::layout::themes;
 use crate::utils::notifications::BumperBuffer;
 
 /// Run snapshot pipeline in test mode (no TUI).
@@ -25,7 +26,9 @@ pub fn run_test_mode(
         db_ops::UblxCleanup::new(dir_to_ublx).post_run_cleanup(),
         "failed to cleanup: {}"
     );
-    let duration = start_time.unwrap().elapsed();
+    let duration = start_time
+        .expect("test mode has start_time")
+        .elapsed();
     debug!(
         "UBLX test completed in {:.4?} seconds",
         duration.as_secs_f64()
@@ -75,7 +78,20 @@ pub fn run_snapshot_pipeline_from_dir_db(
     let prior_nefax = db_ops::load_nefax_from_db(dir, db_path).ok().flatten();
     let cached = db_ops::load_settings_from_db(db_path).ok().flatten();
     let paths = UblxPaths::new(dir);
-    let ublx_opts = UblxOpts::for_dir(dir, &paths, None, None, None, cached.as_ref());
+    let valid_themes: Vec<&str> = themes::theme_options().iter().map(|o| o.display_name).collect();
+    let for_dir_config = crate::config::ForDirConfig {
+        valid_theme_names: &valid_themes,
+        bumper: bumper.as_ref(),
+    };
+    let ublx_opts = UblxOpts::for_dir(
+        dir,
+        &paths,
+        None,
+        None,
+        None,
+        cached.as_ref(),
+        &for_dir_config,
+    );
     run_snapshot_pipeline(dir, &ublx_opts, &prior_nefax, done_tx, bumper);
 }
 

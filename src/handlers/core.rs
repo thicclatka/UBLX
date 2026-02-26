@@ -155,6 +155,8 @@ pub fn run_ublx(
 
 /// Debounce window: only send at most one reload signal per this many ms (avoids triplicate from multiple notify events per save).
 const CONFIG_WATCH_DEBOUNCE_MS: u64 = 600;
+/// Watcher thread parks for this many seconds when idle (long sleep so the thread stays alive without busy-looping).
+const CONFIG_WATCHER_PARK_SECS: u64 = 86400;
 
 /// Spawns a thread that watches global and local config paths; sends `()` when a config file changes so the main loop can trigger hot reload. Debounced so one save yields one signal. Returns `None` if the watcher could not be created.
 fn spawn_config_watcher(dir_to_ublx: &Path) -> Option<mpsc::Receiver<()>> {
@@ -199,7 +201,7 @@ fn spawn_config_watcher(dir_to_ublx: &Path) -> Option<mpsc::Receiver<()>> {
             let _ = watcher.watch(g, RecursiveMode::NonRecursive);
         }
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(86400));
+            std::thread::sleep(std::time::Duration::from_secs(CONFIG_WATCHER_PARK_SECS));
         }
     });
 

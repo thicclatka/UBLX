@@ -1,3 +1,6 @@
+/// Chars to subtract from toast width for borders + level prefix (e.g. " [W] ") when word-wrapping bumper messages.
+pub const TOAST_CONTENT_WIDTH_OFFSET: usize = 7;
+
 pub struct ToastConfig {
     pub width: u16,
     /// Default max height (rows). Toast height is derived from content (\\n breaks + message count), clamped to this.
@@ -33,7 +36,7 @@ impl ToastConfig {
     pub const fn new() -> Self {
         Self {
             width: 44,
-            height: 4,
+            height: 10,
             hz_padding: 1,
             vt_padding: 2,
             duration: std::time::Duration::from_secs(4),
@@ -67,6 +70,11 @@ impl ToastConfig {
     /// Number of bumper messages to show in a toast. Height is derived from content (see [crate::utils::notifications::toast_content_line_count]).
     pub fn display_lines_for_operation(&self, dev: bool, _operation: Option<&str>) -> usize {
         self.display_lines_for(dev)
+    }
+
+    /// Width available for message text when wrapping (width minus [TOAST_CONTENT_WIDTH_OFFSET]).
+    pub fn content_width_for(&self, dev: bool) -> usize {
+        (self.width_for(dev) as usize).saturating_sub(TOAST_CONTENT_WIDTH_OFFSET)
     }
 }
 

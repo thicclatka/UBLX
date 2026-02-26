@@ -56,6 +56,8 @@ pub struct UblxState {
     pub duplicate_load_requested: bool,
     /// When set, we recently wrote the config ourselves (e.g. theme selector). Used to avoid showing "Config reload (triggered by save)" for our own write.
     pub config_written_by_us_at: Option<std::time::Instant>,
+    /// True on first tick only; used to show any ublx-settings bumper messages (e.g. "config invalid at startup, using cache") as a toast.
+    pub first_tick: bool,
 }
 
 impl Default for UblxState {
@@ -92,6 +94,7 @@ impl UblxState {
             snapshot_done_received: false, // poll until we receive done; run_ublx sets true when initial load has data (already-done dir)
             duplicate_load_requested: false,
             config_written_by_us_at: None,
+            first_tick: true,
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));
