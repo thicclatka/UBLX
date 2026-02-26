@@ -63,6 +63,8 @@ pub struct UiStrings {
     pub columns_table_title: &'static str,
     pub help_table_command: &'static str,
     pub help_table_action: &'static str,
+    /// Toast when config is reloaded manually (e.g. Ctrl+R).
+    pub config_reloaded: &'static str,
 }
 
 impl Default for UiStrings {
@@ -126,7 +128,13 @@ impl UiStrings {
             columns_table_title: "Columns",
             help_table_command: "Command",
             help_table_action: "Action",
+            config_reloaded: "Config reloaded",
         }
+    }
+
+    /// Toast when config is reloaded by file watcher (save).
+    pub fn config_reload_triggered_by_save(&self) -> String {
+        format!("{} (triggered by save)", self.config_reloaded)
     }
 }
 

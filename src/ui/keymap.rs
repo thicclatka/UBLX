@@ -49,6 +49,8 @@ pub enum UblxAction {
     TakeSnapshot,
     /// Open theme selector popup (j/k to preview, Enter to pick and save to local .ublx.toml, Esc to revert).
     ThemeSelector,
+    /// Reload hot-reloadable config (theme, transparent, layout, hash, show_hidden) from disk. Ctrl+R.
+    ReloadConfig,
     Noop,
 }
 
@@ -88,12 +90,13 @@ pub fn key_action_setup(
         KeyCode::Char('s' | 'S') if shift => (UblxAction::TakeSnapshot, None),
         KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
         KeyCode::Char('v' | 'V') if shift => (UblxAction::CycleRightPane, None),
-        KeyCode::Char('t' | 'T') if shift => (UblxAction::ThemeSelector, None),
+        KeyCode::Char('t' | 'T') if ctrl => (UblxAction::ThemeSelector, None),
         KeyCode::Char('J') if shift => (UblxAction::ScrollPreviewDown, None),
         KeyCode::Char('K') if shift => (UblxAction::ScrollPreviewUp, None),
         KeyCode::Char('b' | 'B') if ctrl => (UblxAction::PreviewTop, None),
         KeyCode::Char('d' | 'D') if ctrl => (UblxAction::LoadDuplicates, None),
         KeyCode::Char('e' | 'E') if ctrl => (UblxAction::PreviewBottom, None),
+        KeyCode::Char('r' | 'R') if ctrl => (UblxAction::ReloadConfig, None),
         KeyCode::Char('G') if shift => (UblxAction::ListBottom, None),
         KeyCode::Char('g') if !shift && !ctrl => {
             if last_key_for_double == Some('g') {

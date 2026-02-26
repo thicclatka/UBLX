@@ -57,7 +57,7 @@ fn main() {
     }
 
     let paths = UblxPaths::new(&dir_to_ublx);
-    let ublx_opts = UblxOpts::for_dir(
+    let mut ublx_opts = UblxOpts::for_dir(
         &dir_to_ublx,
         &paths,
         None,
@@ -72,7 +72,7 @@ fn main() {
             test_mode,
             dir_to_ublx: &dir_to_ublx,
             db_path: &db_path,
-            ublx_opts: &ublx_opts,
+            ublx_opts: &mut ublx_opts,
             prior_nefax: &prior_nefax,
             bumper: bumper.as_ref(),
             dev: args.dev,

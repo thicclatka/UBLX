@@ -2,20 +2,18 @@ use crossterm::event::{self, Event};
 use std::io;
 use std::path::Path;
 
-use crate::config::{OPERATION_NAME, UblxPaths, write_local_theme};
-use crate::handlers::state_transitions::UblxActionContext;
+use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths, write_local_theme};
+use crate::handlers::{reload, state_transitions::UblxActionContext};
 use crate::layout::{
+    event_loop::RunUblxParams,
     setup::{RightPaneContent, UblxState, ViewData},
     themes,
 };
 use crate::ui::{
-    consts::UI_CONSTANTS,
+    consts::{UI_CONSTANTS, UI_STRINGS},
     keymap::{UblxAction, key_action_setup, search_consumes},
 };
-use crate::utils::{
-    format::clamp_selection,
-    notifications::{BumperBuffer, show_toast_slot},
-};
+use crate::utils::{format::clamp_selection, notifications::show_toast_slot};
 
 /// Theme context for theme selector: (dir for local config, current theme name for preview/revert).
 pub type ThemeContext<'a> = Option<(&'a Path, Option<&'a str>)>;
@@ -25,9 +23,9 @@ pub fn handle_ublx_input(
     view: &ViewData,
     right: &RightPaneContent,
     theme_ctx: ThemeContext<'_>,
-    bumper: Option<&BumperBuffer>,
-    dev: bool,
     has_duplicates: bool,
+    params: &mut RunUblxParams<'_>,
+    ublx_opts: &mut UblxOpts,
 ) -> io::Result<bool> {
     if !event::poll(std::time::Duration::from_millis(UI_CONSTANTS.input_poll_ms))? {
         return Ok(false);
@@ -65,8 +63,9 @@ pub fn handle_ublx_input(
                 let display_name = opts[state.theme_selector_index].display_name;
                 if let Some((dir, _)) = theme_ctx {
                     write_local_theme(&UblxPaths::new(dir), display_name);
+                    state.config_written_by_us_at = Some(std::time::Instant::now());
                 }
-                if let Some(b) = bumper {
+                if let Some(b) = params.bumper {
                     b.push_with_operation(
                         log::Level::Info,
                         format!("Changed theme to {}", display_name),
@@ -76,7 +75,7 @@ pub fn handle_ublx_input(
                         &mut state.toast_slots,
                         b,
                         Some(OPERATION_NAME.theme_selector()),
-                        dev,
+                        &mut state.toast_consumed_per_operation,
                     );
                 }
                 state.theme_override = Some(display_name.to_string());
@@ -101,6 +100,10 @@ pub fn handle_ublx_input(
             .position(|o| current == Some(o.display_name))
             .unwrap_or(0);
         state.theme_selector_visible = true;
+        return Ok(false);
+    }
+    if matches!(action, UblxAction::ReloadConfig) {
+        reload::apply_config_reload(params, ublx_opts, state, Some(UI_STRINGS.config_reloaded));
         return Ok(false);
     }
     if matches!(action, UblxAction::SearchClear) {

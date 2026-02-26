@@ -1,12 +1,11 @@
 pub struct ToastConfig {
     pub width: u16,
+    /// Default max height (rows). Toast height is derived from content (\\n breaks + message count), clamped to this.
     pub height: u16,
     pub hz_padding: u16,
     pub vt_padding: u16,
     pub duration: std::time::Duration,
     pub display_lines: usize,
-    pub theme_selector_height: u16,
-    pub theme_selector_display_lines: usize,
     pub bumper_cap: usize,
     /// Dev mode: larger toast and more lines.
     pub dev_width: u16,
@@ -39,8 +38,6 @@ impl ToastConfig {
             vt_padding: 2,
             duration: std::time::Duration::from_secs(4),
             display_lines: 2,
-            theme_selector_height: 3,
-            theme_selector_display_lines: 1,
             bumper_cap: 100,
             dev_width: 100,
             dev_height: 20,
@@ -67,21 +64,9 @@ impl ToastConfig {
         pick(dev, self.display_lines, self.dev_display_lines)
     }
 
-    /// Line count for the toast body: theme-selector uses 1 line only; others use display_lines_for(dev).
-    pub fn display_lines_for_operation(&self, dev: bool, operation: Option<&str>) -> usize {
-        if operation == Some(OPERATION_NAME.theme_selector()) {
-            self.theme_selector_display_lines
-        } else {
-            self.display_lines_for(dev)
-        }
-    }
-
-    pub fn height_for_operation(&self, dev: bool, operation: Option<&str>) -> u16 {
-        if operation == Some(OPERATION_NAME.theme_selector()) {
-            self.theme_selector_height
-        } else {
-            self.height_for(dev)
-        }
+    /// Number of bumper messages to show in a toast. Height is derived from content (see [crate::utils::notifications::toast_content_line_count]).
+    pub fn display_lines_for_operation(&self, dev: bool, _operation: Option<&str>) -> usize {
+        self.display_lines_for(dev)
     }
 }
 
@@ -107,6 +92,11 @@ impl OperationName {
 
     pub fn snapshot(&self) -> String {
         format!("{}-snapshot", self.executable)
+    }
+
+    /// Hot-reload config toast: e.g. "ublx-settings".
+    pub fn ublx_settings(&self) -> String {
+        format!("{}-settings", self.executable)
     }
 
     /// Theme selector toast: operation name is just "theme-selector" (no executable prefix).

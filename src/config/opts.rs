@@ -51,8 +51,8 @@ fn drive_type_to_string(d: NefaxDriveType) -> &'static str {
 /// At or above this many workers we set [UblxOpts::streaming] to true (callback path for nefax).
 pub const STREAMING_THRESHOLD: usize = 6;
 
-/// Layout pane percentages (0–100). Used for main 3-pane split: left (categories), middle (contents), right (preview). Not applied on the fly yet; config is read at startup.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// Layout pane percentages (0–100). Used for main 3-pane split: left (categories), middle (contents), right (preview).
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct LayoutOverlay {
     pub left_pct: u16,
@@ -70,26 +70,26 @@ impl Default for LayoutOverlay {
     }
 }
 
-/// Hot-reloadable options read from config files. Only present keys override; used for global + local overlay.
+/// Config overlay read from config files. Only present keys override; used for global + local overlay.
 /// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
-/// Reserved for future: theme and other visual elements (not used yet).
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+/// [theme], [transparent], [layout], [hash], and [show_hidden_files] are hot-reloadable; [exclude] is applied only at startup.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UblxOverlay {
-    /// Extra paths/patterns to exclude from indexing (appended to nefax [NefaxOpts::exclude]).
+    /// Extra paths/patterns to exclude from indexing (appended to nefax [NefaxOpts::exclude]). Startup-only; not hot-reloadable.
     pub exclude: Option<Vec<String>>,
-    /// When true, show hidden files; when false, exclude ".*" and zahir skips hidden.
+    /// When true, show hidden files; when false, exclude ".*" and zahir skips hidden. Hot-reloadable.
     #[serde(rename = "show_hidden_files")]
     pub show_hidden_files: Option<bool>,
-    /// When true, nefaxer computes blake3 hash for files (slower, more accurate change detection).
+    /// When true, nefaxer computes blake3 hash for files (slower, more accurate change detection). Hot-reloadable.
     pub hash: Option<bool>,
-    /// Reserved for theme selection (e.g. "dark", "light"). Not applied yet.
+    /// Theme selection (e.g. "default"). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
-    /// When true, do not paint app background; terminal default (or transparency) shows through.
+    /// When true, do not paint app background; terminal default (or transparency) shows through. Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transparent: Option<bool>,
-    /// Optional [layout] section: left/middle/right pane percentages (e.g. left_pct = 20, middle_pct = 30, right_pct = 50). Not applied on the fly yet.
+    /// Optional [layout] section: left/middle/right pane percentages. Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<LayoutOverlay>,
 }
@@ -156,7 +156,7 @@ pub struct UblxOpts {
     pub theme: Option<String>,
     /// When true, skip painting app background so terminal default/transparency shows.
     pub transparent: bool,
-    /// Left/middle/right pane percentages (0–100). From config [layout]; not applied on the fly yet. Default 20/30/50.
+    /// Left/middle/right pane percentages (0–100). From config [layout]. Hot-reloadable.
     pub layout: LayoutOverlay,
 }
 
@@ -176,10 +176,16 @@ impl UblxOpts {
         }
     }
 
-    /// Load the last applied overlay from cache (`cache_dir()/last_config.toml`). Use as fallback when hot reload gets invalid config.
-    #[allow(dead_code)]
+    /// Load the last applied overlay from cache (`cache_dir()/configs/[path_hex].toml`). Fallback when hot reload gets invalid config.
     pub fn load_overlay_from_cache(ublx_paths: &UblxPaths) -> Option<UblxOverlay> {
         Self::load_ublx_toml(ublx_paths.last_applied_config_path())
+    }
+
+    /// Load merged overlay (global then local). Same merge as [Self::for_dir]; used for hot reload.
+    pub fn load_merged_overlay(ublx_paths: &UblxPaths) -> UblxOverlay {
+        let global = Self::load_ublx_toml(ublx_paths.global_config());
+        let local = Self::load_ublx_toml(ublx_paths.toml_path());
+        UblxOverlay::merge(global, local)
     }
 
     /// Load overlay from a single toml file path. Returns default if path is None, file missing, or parse error.
@@ -208,15 +214,30 @@ impl UblxOpts {
         }
     }
 
+    /// Apply full overlay at startup (exclude + hot-reloadable fields). [exclude] is only applied here.
     fn apply_overlay(&mut self, overlay: UblxOverlay) {
-        if let Some(extra) = overlay.exclude {
-            self.nefax.exclude.extend(extra);
+        if let Some(ref extra) = overlay.exclude {
+            self.nefax.exclude.extend(extra.iter().cloned());
         }
+        self.apply_hot_reload_overlay(&overlay);
+    }
+
+    /// Apply only hot-reloadable fields: theme, transparent, layout, hash, show_hidden_files. Used when reloading config without restart.
+    /// On invalid config from disk, caller should fall back to [Self::load_overlay_from_cache] and pass that overlay here.
+    pub fn apply_hot_reload_overlay(&mut self, overlay: &UblxOverlay) {
         if let Some(show_hidden) = overlay.show_hidden_files {
             if show_hidden {
+                self.nefax.exclude.retain(|p| p != HIDDEN_EXCLUDE_PATTERN);
                 self.zahir.ignore_hidden_files = false;
             } else {
-                self.nefax.exclude.push(HIDDEN_EXCLUDE_PATTERN.to_string());
+                if !self
+                    .nefax
+                    .exclude
+                    .iter()
+                    .any(|p| p == HIDDEN_EXCLUDE_PATTERN)
+                {
+                    self.nefax.exclude.push(HIDDEN_EXCLUDE_PATTERN.to_string());
+                }
                 self.zahir.ignore_hidden_files = true;
             }
         }
@@ -224,7 +245,7 @@ impl UblxOpts {
             self.nefax.with_hash = hash;
         }
         if overlay.theme.is_some() {
-            self.theme = overlay.theme;
+            self.theme = overlay.theme.clone();
         }
         if overlay.transparent.is_some() {
             self.transparent = overlay.transparent.unwrap_or(false);
@@ -232,6 +253,19 @@ impl UblxOpts {
         if overlay.layout.is_some() {
             self.layout = overlay.layout.clone().unwrap_or_default();
         }
+    }
+
+    /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
+    /// Returns `true` if an overlay was applied (from disk or cache), `false` if both were empty.
+    pub fn reload_hot_config(&mut self, ublx_paths: &UblxPaths) -> bool {
+        let from_disk = Self::load_merged_overlay(ublx_paths);
+        let to_apply = if from_disk != UblxOverlay::default() {
+            from_disk
+        } else {
+            Self::load_overlay_from_cache(ublx_paths).unwrap_or_default()
+        };
+        self.apply_hot_reload_overlay(&to_apply);
+        to_apply != UblxOverlay::default()
     }
 
     /// Build ublx options for indexing `dir`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [tuning_for_path](nefaxer::tuning_for_path).

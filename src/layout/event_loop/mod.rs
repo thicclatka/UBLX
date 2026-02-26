@@ -8,5 +8,5 @@ mod snapshot;
 mod view_data;
 
 pub use app_loop::main_app_loop;
-pub use params::RunUblxParams;
+pub use params::*;
 pub use snapshot::load_snapshot_for_tui;

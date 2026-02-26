@@ -3,6 +3,8 @@
 //! `run_ublx` is split into four phases per tick (see classification below).
 //! Action application (key → state changes) lives in [crate::handlers::state_transitions].
 
+use std::collections::HashMap;
+
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
 
@@ -40,6 +42,8 @@ pub struct UblxState {
     pub snapshot_requested: bool,
     /// Stack of toasts (each has its own timer); oldest first, newest last.
     pub toast_slots: Vec<crate::utils::notifications::ToastSlot>,
+    /// Per-operation count of messages we've already shown in a toast (so the next toast only shows new ones).
+    pub toast_consumed_per_operation: HashMap<String, usize>,
     /// Viewer takes full screen (hide categories and contents).
     pub viewer_fullscreen: bool,
     /// For double-key detection (e.g. gg → ListTop). Cleared on any other key.
@@ -50,6 +54,8 @@ pub struct UblxState {
     pub snapshot_done_received: bool,
     /// Set by Ctrl+D; event loop spawns duplicate detection and clears this.
     pub duplicate_load_requested: bool,
+    /// When set, we recently wrote the config ourselves (e.g. theme selector). Used to avoid showing "Config reload (triggered by save)" for our own write.
+    pub config_written_by_us_at: Option<std::time::Instant>,
 }
 
 impl Default for UblxState {
@@ -79,11 +85,13 @@ impl UblxState {
             highlight_style: style::list_highlight(),
             snapshot_requested: false,
             toast_slots: Vec::new(),
+            toast_consumed_per_operation: HashMap::new(),
             viewer_fullscreen: false,
             last_key_for_double: None,
             snapshot_poll_deadline: None,
             snapshot_done_received: false, // poll until we receive done; run_ublx sets true when initial load has data (already-done dir)
             duplicate_load_requested: false,
+            config_written_by_us_at: None,
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));

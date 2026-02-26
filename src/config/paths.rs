@@ -5,17 +5,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Package name from Cargo; used as stem for all index files.
+pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+/// Name of the Nefaxer DB file.
+pub const NEFAX_DB: &str = ".nefaxer";
+
 /// Stable hex string for a path (for cache filenames). Same path => same string.
 fn path_to_hex(path: &Path) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     path.to_string_lossy().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
-
-/// Package name from Cargo; used as stem for all index files.
-pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
-/// Name of the Nefaxer DB file.
-pub const NEFAX_DB: &str = ".nefaxer";
 
 /// User config directory for ublx. Global config lives here (e.g. `ublx.toml`).
 /// - **Unix (macOS, Linux):** `~/.config/ublx`

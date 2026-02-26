@@ -9,7 +9,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
@@ -75,6 +75,29 @@ impl BumperBuffer {
         let start = len.saturating_sub(n);
         g.range(start..).cloned().collect()
     }
+
+    /// Last N messages that match the given operation (newest last), in chronological order.
+    pub fn last_n_for_operation(&self, n: usize, operation: Option<&str>) -> Vec<BumperMessage> {
+        let g = self.inner.lock().expect("bumper lock");
+        let mut out: Vec<BumperMessage> = g
+            .iter()
+            .rev()
+            .filter(|m| m.operation.as_deref() == operation)
+            .take(n)
+            .cloned()
+            .collect();
+        out.reverse();
+        out
+    }
+
+    /// Number of messages in the contiguous tail for this operation (from the end of the buffer).
+    fn count_contiguous_for_operation(&self, operation: Option<&str>) -> usize {
+        let g = self.inner.lock().expect("bumper lock");
+        g.iter()
+            .rev()
+            .take_while(|m| m.operation.as_deref() == operation)
+            .count()
+    }
 }
 
 /// One stacked toast: snapshot of messages and its own timer.
@@ -85,25 +108,47 @@ pub struct ToastSlot {
     pub messages: Vec<BumperMessage>,
 }
 
-/// Push a new toast onto the stack (snapshot from bumper, trim to max_toast_stack). Call after pushing to bumper.
+/// Number of content lines in a toast (one per message plus newlines within each message).
+pub fn toast_content_line_count(slot: &ToastSlot) -> usize {
+    slot.messages
+        .iter()
+        .map(|m| 1 + m.text.matches('\n').count())
+        .sum()
+}
+
+/// Push a new toast onto the stack. Call after pushing to bumper. Only takes messages we haven't shown yet for this operation (tracked in `consumed`).
 pub fn show_toast_slot(
     slots: &mut Vec<ToastSlot>,
     bumper: &BumperBuffer,
     operation: Option<&str>,
-    dev: bool,
+    consumed: &mut HashMap<String, usize>,
 ) {
-    let line_count = TOAST_CONFIG.display_lines_for_operation(dev, operation);
-    let messages = bumper.last_n(line_count);
+    let key = operation.unwrap_or("").to_string();
+    let total = bumper.count_contiguous_for_operation(operation);
+    let already = consumed.get(&key).copied().unwrap_or(0);
+    let take = total.saturating_sub(already);
+
+    // How many messages to show: new ones, or (after switching ops) current block, or fallback 1 when tail was overwritten by another op's message.
+    let n = match (take > 0, total > 0) {
+        (true, _) => take,
+        (false, true) => total,
+        (false, false) => 1,
+    };
+    consumed.insert(key, total);
+
+    let messages = bumper.last_n_for_operation(n, operation);
     if messages.is_empty() {
         return;
     }
+
     slots.push(ToastSlot {
         visible_until: Instant::now() + TOAST_CONFIG.duration,
         operation: operation.map(String::from),
         messages,
     });
-    while slots.len() > TOAST_CONFIG.max_toast_stack {
-        slots.remove(0);
+    let excess = slots.len().saturating_sub(TOAST_CONFIG.max_toast_stack);
+    if excess > 0 {
+        slots.drain(..excess);
     }
 }
 

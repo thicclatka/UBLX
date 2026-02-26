@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::sync::mpsc;
 
+use crate::config::LayoutOverlay;
 use crate::engine::db_ops::DuplicateGroup;
 use crate::utils::notifications;
 
@@ -16,8 +17,12 @@ pub struct RunUblxParams<'a> {
     pub dev: bool,
     pub theme: Option<String>,
     pub transparent: bool,
+    /// Left/middle/right pane percentages (0–100). Hot-reloadable from config [layout].
+    pub layout: LayoutOverlay,
     /// Duplicate groups (lazy-loaded when user switches to Duplicates tab). Empty until load completes.
     pub duplicate_groups: Vec<DuplicateGroup>,
     /// When some, a background thread is loading duplicate groups; main loop receives via try_recv.
     pub duplicate_groups_rx: Option<mpsc::Receiver<Vec<DuplicateGroup>>>,
+    /// When some, a file watcher sends () on global/local config save; main loop triggers hot reload.
+    pub config_reload_rx: Option<mpsc::Receiver<()>>,
 }

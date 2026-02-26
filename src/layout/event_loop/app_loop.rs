@@ -6,12 +6,12 @@ use std::time::{Duration, Instant};
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
-use crate::config::OPERATION_NAME;
+use crate::config::{OPERATION_NAME, UblxOpts};
 use crate::engine::db_ops;
-use crate::handlers::{snapshot, viewing};
+use crate::handlers::{reload, snapshot, viewing};
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
-use crate::ui::input::handle_ublx_input;
+use crate::ui::{consts::UI_STRINGS, input::handle_ublx_input};
 use crate::utils::notifications;
 
 use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_delta_mode};
@@ -30,9 +30,10 @@ pub fn main_app_loop(
     categories: &mut Vec<String>,
     all_rows: &mut Vec<setup::TuiRow>,
     params: &mut RunUblxParams<'_>,
+    ublx_opts: &mut UblxOpts,
 ) -> io::Result<()> {
     loop {
-        if run_tick(terminal, state, categories, all_rows, params)? {
+        if run_tick(terminal, state, categories, all_rows, params, ublx_opts)? {
             break;
         }
     }
@@ -48,6 +49,7 @@ fn run_tick(
     categories: &mut Vec<String>,
     all_rows: &mut Vec<setup::TuiRow>,
     params: &mut RunUblxParams<'_>,
+    ublx_opts: &mut UblxOpts,
 ) -> io::Result<bool> {
     // Drain completed duplicate load from background thread (non-blocking).
     if let Some(rx) = params.duplicate_groups_rx.as_ref()
@@ -55,6 +57,25 @@ fn run_tick(
     {
         params.duplicate_groups = groups;
         params.duplicate_groups_rx = None;
+    }
+
+    // Config file watcher: trigger hot reload and toast on save (unless we just wrote the config ourselves, e.g. theme selector).
+    if let Some(rx) = params.config_reload_rx.as_ref()
+        && rx.try_recv().is_ok()
+    {
+        let from_external_save = state
+            .config_written_by_us_at
+            .as_ref()
+            .is_none_or(|t| t.elapsed() >= Duration::from_millis(800));
+        if from_external_save {
+            state.theme_override = None;
+        }
+        let reload_msg = if from_external_save {
+            Some(UI_STRINGS.config_reload_triggered_by_save())
+        } else {
+            None
+        };
+        reload::apply_config_reload(params, ublx_opts, state, reload_msg);
     }
 
     if state.duplicate_load_requested
@@ -88,6 +109,7 @@ fn run_tick(
         dir_to_ublx: Some(params.dir_to_ublx),
         theme_name,
         transparent: params.transparent,
+        layout: &params.layout,
         latest_snapshot_ns,
         dev: params.dev,
         duplicate_groups: if params.duplicate_groups.is_empty() {
@@ -106,9 +128,9 @@ fn run_tick(
         &view,
         &right_content,
         Some((params.dir_to_ublx, theme_name)),
-        params.bumper,
-        params.dev,
         has_duplicates,
+        params,
+        ublx_opts,
     )
 }
 
@@ -166,7 +188,12 @@ fn handle_snapshot_done(
     if let Some(b) = params.bumper {
         snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
         let op = OPERATION_NAME.snapshot();
-        notifications::show_toast_slot(&mut state.toast_slots, b, Some(op.as_str()), params.dev);
+        notifications::show_toast_slot(
+            &mut state.toast_slots,
+            b,
+            Some(op.as_str()),
+            &mut state.toast_consumed_per_operation,
+        );
     }
 }
 

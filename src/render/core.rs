@@ -11,7 +11,7 @@ use super::duplicates;
 use super::panels;
 use super::search;
 use super::snapshot_panels;
-use crate::config::TOAST_CONFIG;
+use crate::config::{LayoutOverlay, TOAST_CONFIG};
 use crate::layout::{help, setup, style, theme_selector, themes};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::notifications;
@@ -27,6 +27,8 @@ pub struct DrawFrameArgs<'a> {
     pub theme_name: Option<&'a str>,
     /// When true, skip painting app background so terminal default/transparency shows.
     pub transparent: bool,
+    /// Left/middle/right pane percentages (0–100). Hot-reloadable from config [layout].
+    pub layout: &'a LayoutOverlay,
     /// Latest snapshot timestamp from delta_log (for categories panel footer). Set in Snapshot mode.
     pub latest_snapshot_ns: Option<i64>,
     /// When true, show dev-mode toast notifications.
@@ -58,7 +60,7 @@ pub fn draw_ublx_frame(
         args.duplicate_groups_loading,
     );
 
-    let body = compute_body_areas(body_area);
+    let body = compute_body_areas(body_area, args.layout);
     draw_main_content(f, state, view, right, args, &body);
 
     draw_toast_if_visible(f, state, args);
@@ -93,14 +95,14 @@ struct BodyAreas {
     chunks: Vec<Rect>,
 }
 
-fn compute_body_areas(body_area: Rect) -> BodyAreas {
+fn compute_body_areas(body_area: Rect, layout: &LayoutOverlay) -> BodyAreas {
     let (main_area, status_area) = panels::split_main_and_status(body_area);
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(20),
-            Constraint::Percentage(30),
-            Constraint::Percentage(50),
+            Constraint::Percentage(layout.left_pct),
+            Constraint::Percentage(layout.middle_pct),
+            Constraint::Percentage(layout.right_pct),
         ])
         .split(main_area)
         .to_vec();
@@ -205,9 +207,11 @@ fn draw_toast_if_visible(f: &mut Frame, state: &setup::UblxState, args: &DrawFra
     let gap = TOAST_CONFIG.toast_stack_gap;
     let mut bottom = area.y + area.height.saturating_sub(TOAST_CONFIG.vt_padding);
     for slot in state.toast_slots.iter().rev() {
-        let h = TOAST_CONFIG
-            .height_for_operation(args.dev, slot.operation.as_deref())
-            .min(area.height);
+        let content_lines = notifications::toast_content_line_count(slot);
+        let max_h = TOAST_CONFIG.height_for(args.dev) as usize;
+        // 1 row top border+title, content_lines, 1 row bottom border
+        let h = (2 + content_lines).clamp(3, max_h) as u16;
+        let h = h.min(area.height);
         let top = bottom.saturating_sub(h);
         if top >= area.y && h > 0 {
             notifications::render_toast_slot(f, Rect::new(x, top, w, h), slot);

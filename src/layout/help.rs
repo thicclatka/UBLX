@@ -40,7 +40,7 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("w", "Focus on Writing tab in right pane (if tab exists)"),
     ("Shift+V", "Cycle right pane tab"),
     (
-        "Shift+T",
+        "Ctrl+t",
         "Theme selector (j/k preview, Enter save to .ublx.toml, Esc cancel)"
     ),
     ("q | Esc", "Quit"),
