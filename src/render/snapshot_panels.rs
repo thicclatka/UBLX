@@ -64,7 +64,13 @@ fn contents_display_label(
     }
 }
 
-pub(super) fn draw_contents_panel(
+const MAX_SELECTION_INDEX: usize = 99_999;
+
+fn format_selection_counter(current: usize, total: usize) -> String {
+    format!("{:>5}/{:>5}", current, total)
+}
+
+pub fn draw_contents_panel(
     f: &mut Frame,
     state: &mut setup::UblxState,
     view: &setup::ViewData,
@@ -79,9 +85,9 @@ pub(super) fn draw_contents_panel(
         .selected()
         .map(|i| i + 1)
         .unwrap_or(0)
-        .min(99_999);
-    let total = view.content_len.min(99_999);
-    let counter_str = format!("{:>5}/{:>5}", current, total);
+        .min(MAX_SELECTION_INDEX);
+    let total = view.content_len.min(MAX_SELECTION_INDEX);
+    let counter_str = format_selection_counter(current, total);
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(if focused {

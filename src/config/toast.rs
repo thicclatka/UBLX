@@ -5,6 +5,10 @@ pub struct ToastConfig {
     pub width: u16,
     /// Default max height (rows). Toast height is derived from content (\\n breaks + message count), clamped to this.
     pub height: u16,
+    /// Fixed rows (e.g. top border+title, bottom border) added to content lines when computing toast height.
+    pub toast_height_offset: u16,
+    /// Minimum toast height in rows (content + offset is clamped to at least this).
+    pub toast_height_min: u16,
     pub hz_padding: u16,
     pub vt_padding: u16,
     pub duration: std::time::Duration,
@@ -37,6 +41,8 @@ impl ToastConfig {
         Self {
             width: 44,
             height: 10,
+            toast_height_offset: 2,
+            toast_height_min: 3,
             hz_padding: 1,
             vt_padding: 2,
             duration: std::time::Duration::from_secs(4),

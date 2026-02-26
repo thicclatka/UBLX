@@ -15,6 +15,9 @@ use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;
 
 const COLUMN_SPACING: usize = 1;
+const KEY_WIDTH_FALLBACK: usize = 4;
+const KEY_WIDTH_MIN: usize = 35;
+const VALUE_WIDTH_MIN: usize = 10;
 
 /// When a table has more than this many columns, we balance widths to fill the pane; otherwise we use natural (compact) widths so few-column tables (e.g. sheet stats) don’t look over-spaced.
 const SIZE_OPTIMIZATION_COLUMN_THRESHOLD: usize = 3;
@@ -85,12 +88,18 @@ pub fn section_to_table(section: &KvSection, row_offset: usize) -> Table<'_> {
         .iter()
         .map(|(k, _)| k.chars().count())
         .max()
-        .unwrap_or(4)
-        .min(35) as u16;
-    Table::new(data_rows, [Constraint::Length(key_w), Constraint::Min(10)])
-        .header(header)
-        .column_spacing(1)
-        .style(style::text_style())
+        .unwrap_or(KEY_WIDTH_FALLBACK)
+        .min(KEY_WIDTH_MIN) as u16;
+    Table::new(
+        data_rows,
+        [
+            Constraint::Length(key_w),
+            Constraint::Min(VALUE_WIDTH_MIN as u16),
+        ],
+    )
+    .header(header)
+    .column_spacing(1)
+    .style(style::text_style())
 }
 
 /// Build one display row; string values are truncated to fit column width (chars).

@@ -209,8 +209,8 @@ fn draw_toast_if_visible(f: &mut Frame, state: &setup::UblxState, args: &DrawFra
     for slot in state.toast_slots.iter().rev() {
         let content_lines = notifications::toast_content_line_count(slot);
         let max_h = TOAST_CONFIG.height_for(args.dev) as usize;
-        // 1 row top border+title, content_lines, 1 row bottom border
-        let h = (2 + content_lines).clamp(3, max_h) as u16;
+        let h = (TOAST_CONFIG.toast_height_offset as usize + content_lines)
+            .clamp(TOAST_CONFIG.toast_height_min as usize, max_h) as u16;
         let h = h.min(area.height);
         let top = bottom.saturating_sub(h);
         if top >= area.y && h > 0 {

@@ -16,6 +16,9 @@ macro_rules! help_entries {
     };
 }
 
+const WIDTH_LIMIT: usize = 24;
+const DESC_MIN_WIDTH: usize = WIDTH_LIMIT - 4;
+
 /// All help rows: (shortcut, action). Edit this list to change the help popup.
 const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("1 | 2", "Main tabs: Snapshot / Delta"),
@@ -53,7 +56,7 @@ pub fn render_help_box(f: &mut Frame) {
         .map(|(k, _)| k.len())
         .max()
         .unwrap_or(0)
-        .min(24) as u16;
+        .min(WIDTH_LIMIT) as u16;
     let desc_max = HELP_ENTRIES.iter().map(|(_, d)| d.len()).max().unwrap_or(0);
     let content_w = key_width as usize + 1 + desc_max;
     let content_h = 1 + HELP_ENTRIES.len();
@@ -91,7 +94,10 @@ pub fn render_help_box(f: &mut Frame) {
     let table_rect = style::rect_with_h_pad(block.inner(rect));
     let table = Table::new(
         data_rows,
-        [Constraint::Length(key_width), Constraint::Min(20)],
+        [
+            Constraint::Length(key_width),
+            Constraint::Min(DESC_MIN_WIDTH as u16),
+        ],
     )
     .header(header)
     .column_spacing(1)
