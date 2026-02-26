@@ -100,6 +100,17 @@ pub enum MainMode {
     Duplicates,
 }
 
+impl MainMode {
+    /// Cycle Snapshot → Delta → Duplicates (when available) → Snapshot. Used for MainModeToggle (Shift+Tab).
+    pub fn next(self, has_duplicates: bool) -> MainMode {
+        match self {
+            MainMode::Snapshot => MainMode::Delta,
+            MainMode::Delta if has_duplicates => MainMode::Duplicates,
+            MainMode::Delta | MainMode::Duplicates => MainMode::Snapshot,
+        }
+    }
+}
+
 /// Which panel has focus (Categories or Contents; Metadata is read-only).
 #[derive(Clone, Copy, Default)]
 pub enum PanelFocus {

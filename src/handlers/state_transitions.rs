@@ -43,12 +43,7 @@ impl<'a> UblxActionContext<'a> {
                 state.main_mode = MainMode::Duplicates;
             }
             UblxAction::MainModeToggle => {
-                state.main_mode = match state.main_mode {
-                    MainMode::Snapshot => MainMode::Delta,
-                    MainMode::Delta if has_duplicates => MainMode::Duplicates,
-                    MainMode::Delta => MainMode::Snapshot,
-                    MainMode::Duplicates => MainMode::Snapshot,
-                };
+                state.main_mode = state.main_mode.next(has_duplicates);
             }
             UblxAction::SearchStart => state.search_active = true,
             UblxAction::CycleRightPane => self.apply_cycle_right_pane(state),
