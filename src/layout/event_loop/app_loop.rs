@@ -7,12 +7,16 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::config::{OPERATION_NAME, UblxOpts};
+use crate::utils::notifications;
 use crate::engine::db_ops;
-use crate::handlers::{core::reapply_terminal_after_editor, reload, snapshot, viewing};
+use crate::handlers::{
+    applets::{dupe_finder, settings},
+    core::reapply_terminal_after_editor,
+    snapshot, viewing,
+};
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
-use crate::ui::{consts::UI_STRINGS, input::handle_ublx_input};
-use crate::utils::notifications;
+use crate::ui::input::handle_ublx_input;
 
 use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_delta_mode};
 use super::duplicates::{clamp_duplicates_selection, view_data_for_duplicates_mode};
@@ -41,8 +45,6 @@ pub fn main_app_loop(
 
 /// One tick: update toasts/snapshot, build view and right content, draw, handle input. Returns true if quit requested.
 const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
-/// Window (ms) after we write config ourselves (e.g. theme selector) during which a file-watcher reload is treated as self-caused
-const CONFIG_SELF_WRITE_WINDOW_MS: u64 = 800;
 
 fn run_tick(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
@@ -52,52 +54,23 @@ fn run_tick(
     params: &mut RunUblxParams<'_>,
     ublx_opts: &mut UblxOpts,
 ) -> io::Result<bool> {
-    if state.first_tick {
-        state.first_tick = false;
-        if let Some(b) = params.bumper {
-            notifications::show_toast_slot(
-                &mut state.toast_slots,
-                b,
-                Some(OPERATION_NAME.ublx_settings().as_str()),
-                &mut state.toast_consumed_per_operation,
-            );
-        }
-    }
+    settings::on_first_tick(state, params);
 
     // Drain completed duplicate load from background thread (non-blocking).
     if let Some(rx) = params.duplicate_groups_rx.as_ref()
         && let Ok(groups) = rx.try_recv()
     {
-        params.duplicate_groups = groups;
         params.duplicate_groups_rx = None;
+        dupe_finder::on_groups_received(state, params, groups);
     }
 
-    // Config file watcher: trigger hot reload and toast on save (unless we just wrote the config ourselves, e.g. theme selector).
     if let Some(rx) = params.config_reload_rx.as_ref()
         && rx.try_recv().is_ok()
     {
-        let from_external_save = state
-            .config_written_by_us_at
-            .as_ref()
-            .is_none_or(|t| t.elapsed() >= Duration::from_millis(CONFIG_SELF_WRITE_WINDOW_MS));
-        if from_external_save {
-            state.theme_override = None;
-        }
-        let reload_msg = if from_external_save {
-            Some(UI_STRINGS.config_reload_triggered_by_save())
-        } else {
-            None
-        };
-        reload::apply_config_reload(params, ublx_opts, state, reload_msg);
+        settings::on_config_reload(state, params, ublx_opts);
     }
 
-    if state.duplicate_load_requested
-        && params.duplicate_groups.is_empty()
-        && params.duplicate_groups_rx.is_none()
-    {
-        spawn_duplicate_load(params);
-        state.duplicate_load_requested = false;
-    }
+    dupe_finder::spawn_if_requested(state, params);
 
     prune_toasts(state);
     handle_snapshot_request(state, params);
@@ -209,19 +182,7 @@ fn build_draw_args<'a>(
         } else {
             Some(params.duplicate_groups.as_slice())
         },
-        duplicate_groups_loading: params.duplicate_groups_rx.is_some(),
     }
-}
-
-fn spawn_duplicate_load(params: &mut RunUblxParams<'_>) {
-    let db_path = params.db_path.to_path_buf();
-    let dir_to_ublx = params.dir_to_ublx.to_path_buf();
-    let (tx, rx) = std::sync::mpsc::channel();
-    params.duplicate_groups_rx = Some(rx);
-    std::thread::spawn(move || {
-        let groups = db_ops::load_duplicate_groups(&db_path, &dir_to_ublx).unwrap_or_default();
-        let _ = tx.send(groups);
-    });
 }
 
 fn prune_toasts(state: &mut setup::UblxState) {

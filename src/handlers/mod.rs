@@ -1,3 +1,4 @@
+pub mod applets;
 pub mod core;
 pub mod nefax_ops;
 pub mod open;

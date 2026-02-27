@@ -65,6 +65,8 @@ pub struct UiStrings {
     pub help_table_action: &'static str,
     /// Toast when config is reloaded manually (e.g. Ctrl+R).
     pub config_reloaded: &'static str,
+    /// Toast when no duplicates are found.
+    pub no_duplicates: &'static str,
 }
 
 impl Default for UiStrings {
@@ -129,6 +131,7 @@ impl UiStrings {
             help_table_command: "Command",
             help_table_action: "Action",
             config_reloaded: "Config reloaded",
+            no_duplicates: "No duplicates found",
         }
     }
 

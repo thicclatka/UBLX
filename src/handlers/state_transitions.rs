@@ -40,7 +40,6 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::MainModeDuplicates => state.main_mode = MainMode::Duplicates,
             UblxAction::LoadDuplicates => {
                 state.duplicate_load_requested = true;
-                state.main_mode = MainMode::Duplicates;
             }
             UblxAction::MainModeToggle => {
                 state.main_mode = state.main_mode.next(has_duplicates);

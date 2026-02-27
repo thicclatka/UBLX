@@ -35,8 +35,6 @@ pub struct DrawFrameArgs<'a> {
     pub dev: bool,
     /// When non-empty, Duplicates tab is shown and this slice is the duplicate groups.
     pub duplicate_groups: Option<&'a [crate::engine::db_ops::DuplicateGroup]>,
-    /// True while duplicate groups are being loaded in the background (show tab + "Loading…").
-    pub duplicate_groups_loading: bool,
 }
 
 /// Main entry: layout and render main tabs, then Snapshot or Delta 3-pane content, search, help.
@@ -54,13 +52,7 @@ pub fn draw_ublx_frame(
 
     draw_background(f, area, args);
     let (tabs_area, body_area) = split_tabs_and_body(area);
-    draw_main_tabs(
-        f,
-        state,
-        tabs_area,
-        args.duplicate_groups,
-        args.duplicate_groups_loading,
-    );
+    draw_main_tabs(f, state, tabs_area, args.duplicate_groups);
 
     let body = compute_body_areas(body_area, args.layout);
     draw_main_content(f, state, view, right, args, &body);
@@ -236,7 +228,6 @@ fn draw_main_tabs(
     state: &layout::setup::UblxState,
     area: Rect,
     duplicate_groups: Option<&[crate::engine::db_ops::DuplicateGroup]>,
-    duplicate_groups_loading: bool,
 ) {
     let outer = layout::style::tab_row_padded(area);
     let chunks = Layout::default()
@@ -244,8 +235,7 @@ fn draw_main_tabs(
         .constraints(UI_CONSTANTS.brand_block_constraints())
         .split(outer[1]);
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
-    let has_duplicates =
-        duplicate_groups.is_some_and(|g| !g.is_empty()) || duplicate_groups_loading;
+    let has_duplicates = duplicate_groups.is_some_and(|g| !g.is_empty());
     let mut segments: Vec<_> = layout::style::tab_node_segment(
         UI_STRINGS.main_tab_snapshot,
         state.main_mode == layout::setup::MainMode::Snapshot,
