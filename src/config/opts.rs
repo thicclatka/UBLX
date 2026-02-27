@@ -104,6 +104,9 @@ pub struct UblxOverlay {
     /// Optional [layout] section: left/middle/right pane percentages. Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<LayoutOverlay>,
+    /// Editor for Open (Terminal) (e.g. "vim", "nvim"). When unset, uses $EDITOR.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_path: Option<String>,
 }
 
 impl UblxOverlay {
@@ -126,6 +129,9 @@ impl UblxOverlay {
         }
         if other.layout.is_some() {
             self.layout = other.layout.clone();
+        }
+        if other.editor_path.is_some() {
+            self.editor_path = other.editor_path.clone();
         }
     }
 
@@ -170,6 +176,8 @@ pub struct UblxOpts {
     pub transparent: bool,
     /// Left/middle/right pane percentages (0–100). From config [layout]. Hot-reloadable.
     pub layout: LayoutOverlay,
+    /// Editor for Open (Terminal). When None, use $EDITOR.
+    pub editor_path: Option<String>,
 }
 
 impl UblxOpts {
@@ -265,6 +273,9 @@ impl UblxOpts {
         if overlay.layout.is_some() {
             self.layout = overlay.layout.clone().unwrap_or_default();
         }
+        if overlay.editor_path.is_some() {
+            self.editor_path = overlay.editor_path.clone();
+        }
     }
 
     /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
@@ -343,6 +354,7 @@ impl UblxOpts {
             theme: None,
             transparent: false,
             layout: LayoutOverlay::default(),
+            editor_path: None,
         };
         let global = Self::load_ublx_toml(ublx_paths.global_config());
         let local = Self::load_ublx_toml(ublx_paths.toml_path());
@@ -400,6 +412,7 @@ impl UblxOpts {
             theme: None,
             transparent: false,
             layout: LayoutOverlay::default(),
+            editor_path: None,
         }
     }
 

@@ -4,7 +4,7 @@
 use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crossterm::cursor::Show as ShowCursor;
@@ -111,6 +111,22 @@ fn restore_terminal() {
     let _ = disable_raw_mode();
     let mut out = io::stdout();
     let _ = crossterm::execute!(out, LeaveAlternateScreen, ShowCursor);
+}
+
+/// Leave alternate screen and raw mode so an external editor runs on the main screen; call before spawning the editor.
+pub fn leave_terminal_for_editor() -> io::Result<()> {
+    disable_raw_mode()?;
+    let mut out = io::stdout();
+    crossterm::execute!(out, LeaveAlternateScreen, ShowCursor)?;
+    Ok(())
+}
+
+/// Re-enter alternate screen and raw mode after the editor exits, so the TUI can redraw.
+pub fn reapply_terminal_after_editor() -> io::Result<()> {
+    enable_raw_mode()?;
+    let mut out = io::stdout();
+    crossterm::execute!(out, EnterAlternateScreen)?;
+    Ok(())
 }
 
 /// Setup terminal, run [crate::layout::event_loop::main_app_loop], then teardown. Called by [run_tui_mode].

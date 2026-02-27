@@ -58,6 +58,14 @@ pub struct UblxState {
     pub config_written_by_us_at: Option<std::time::Instant>,
     /// True on first tick only; used to show any ublx-settings bumper messages (e.g. "config invalid at startup, using cache") as a toast.
     pub first_tick: bool,
+    /// When true, show Open (Terminal) / Open (GUI) popup below selection. Path is relative to indexed dir.
+    pub open_menu_visible: bool,
+    /// Path of file to open (relative) when open_menu_visible. None when menu closed.
+    pub open_menu_path: Option<String>,
+    /// Selected index in open menu: 0 = Open (Terminal), 1 = Open (GUI).
+    pub open_menu_selected_index: usize,
+    /// When true, the next tick should re-apply terminal state and redraw (set after Open (Terminal) returns so the TUI repaints correctly).
+    pub refresh_terminal_after_editor: bool,
 }
 
 impl Default for UblxState {
@@ -95,6 +103,10 @@ impl UblxState {
             duplicate_load_requested: false,
             config_written_by_us_at: None,
             first_tick: true,
+            open_menu_visible: false,
+            open_menu_path: None,
+            open_menu_selected_index: 0,
+            refresh_terminal_after_editor: false,
         };
         state.category_state.select(Some(0));
         state.content_state.select(Some(0));
@@ -216,6 +228,10 @@ pub struct RightPaneContent {
     pub viewer_byte_size: Option<u64>,
     /// When viewer shows file content, mtime in ns from snapshot (for footer last-modified).
     pub viewer_mtime_ns: Option<i64>,
+    /// When true, the viewed file is non-binary and can be opened (Shift+O: Open Terminal / Open GUI).
+    pub viewer_can_open: bool,
+    /// Label for the open hint node in the footer (e.g. "↗", "↗ (Terminal)", "↗ (GUI)"). Set by caller when viewer_can_open.
+    pub open_hint_label: Option<String>,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]

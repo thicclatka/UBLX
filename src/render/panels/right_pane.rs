@@ -96,10 +96,10 @@ pub fn draw_right_pane(
     area: Rect,
 ) {
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
-        && (right.viewer_byte_size.is_some() || right.viewer_mtime_ns.is_some());
+        && (right.open_hint_label.is_some() || right.viewer_byte_size.is_some() || right.viewer_mtime_ns.is_some());
     let size_str = right.viewer_byte_size.map(format_bytes);
     let footer_line = show_footer
-        .then(|| style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns))
+        .then(|| style::viewer_footer_line(right.open_hint_label.as_deref(), size_str.as_deref(), right.viewer_mtime_ns))
         .flatten();
     let block_title = title(state);
     let right_block = if let Some(ref line) = footer_line {
@@ -179,10 +179,10 @@ pub fn draw_right_pane_fullscreen(
     area: Rect,
 ) {
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
-        && (right.viewer_byte_size.is_some() || right.viewer_mtime_ns.is_some());
+        && (right.open_hint_label.is_some() || right.viewer_byte_size.is_some() || right.viewer_mtime_ns.is_some());
     let size_str = right.viewer_byte_size.map(format_bytes);
     let footer_line = show_footer
-        .then(|| style::viewer_footer_line(size_str.as_deref(), right.viewer_mtime_ns))
+        .then(|| style::viewer_footer_line(right.open_hint_label.as_deref(), size_str.as_deref(), right.viewer_mtime_ns))
         .flatten();
     let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.fullscreen_suffix);
     let block = if let Some(ref line) = footer_line {

@@ -56,26 +56,39 @@ pub fn status_node_spans(content: &str) -> Vec<Span<'static>> {
     node_spans(content, circle_style, node_style)
 }
 
-/// Footer line with optional size and optional mtime (viewer: byte size + last-modified).
-pub fn viewer_footer_line(size_str: Option<&str>, mtime_ns: Option<i64>) -> Option<Line<'static>> {
+/// Footer line with optional open hint (↗ or ↗ (Terminal)/(GUI)), optional size, and optional mtime.
+pub fn viewer_footer_line(
+    open_hint_label: Option<&str>,
+    size_str: Option<&str>,
+    mtime_ns: Option<i64>,
+) -> Option<Line<'static>> {
     use crate::utils::format_timestamp_ns;
-    match (size_str, mtime_ns) {
-        (Some(s), None) => Some(node_line(s, HorizontalAlignment::Right)),
-        (None, Some(ns)) => Some(node_line(
-            &format_timestamp_ns(ns),
-            HorizontalAlignment::Right,
-        )),
-        (Some(s), Some(ns)) => {
-            let (_, circle_style, node_style) = node_color();
-            let spans: Vec<Span<'static>> = [
-                node_spans(s, circle_style, node_style),
-                node_spans(&format_timestamp_ns(ns), circle_style, node_style),
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-            Some(Line::from(spans).right_aligned())
-        }
-        (None, None) => None,
+    let (_, circle_style, node_style) = node_color();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    if let Some(label) = open_hint_label {
+        spans.extend(node_spans(label, circle_style, node_style));
     }
+    match (size_str, mtime_ns) {
+        (Some(s), None) => {
+            spans.extend(node_spans(s, circle_style, node_style));
+        }
+        (None, Some(ns)) => {
+            spans.extend(node_spans(
+                &format_timestamp_ns(ns),
+                circle_style,
+                node_style,
+            ));
+        }
+        (Some(s), Some(ns)) => {
+            spans.extend(node_spans(s, circle_style, node_style));
+            spans.extend(node_spans(
+                &format_timestamp_ns(ns),
+                circle_style,
+                node_style,
+            ));
+        }
+        (None, None) if open_hint_label.is_none() => return None,
+        (None, None) => {}
+    }
+    Some(Line::from(spans).right_aligned())
 }

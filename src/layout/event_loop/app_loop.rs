@@ -8,7 +8,7 @@ use ratatui::prelude::CrosstermBackend;
 
 use crate::config::{OPERATION_NAME, UblxOpts};
 use crate::engine::db_ops;
-use crate::handlers::{reload, snapshot, viewing};
+use crate::handlers::{core::reapply_terminal_after_editor, reload, snapshot, viewing};
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
 use crate::ui::{consts::UI_STRINGS, input::handle_ublx_input};
@@ -19,7 +19,6 @@ use super::duplicates::{clamp_duplicates_selection, view_data_for_duplicates_mod
 use super::params::RunUblxParams;
 use super::snapshot::load_snapshot_for_tui;
 use super::view_data::build_view_data;
-use crate::engine::db_ops::SnapshotReaderPreference;
 
 /// Runs until the user quits. Call from [crate::handlers::core::run_ublx] after terminal setup.
 ///
@@ -109,16 +108,95 @@ fn run_tick(
         notifications::move_log_events();
     }
 
-    let (view, right_content, delta_data, rows_for_draw) =
+    let (view, mut right_content, delta_data, rows_for_draw) =
         build_view_and_right_content(state, categories.as_slice(), all_rows.as_slice(), params);
+    if right_content.viewer_can_open {
+        right_content.open_hint_label =
+            crate::handlers::open::open_hint_label(ublx_opts.editor_path.as_deref())
+                .map(String::from);
+    }
 
     let latest_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(params.db_path)
         .ok()
         .and_then(|v| v.into_iter().next());
     let theme_name_owned = theme_name_for_tick(state, params);
     let theme_name = theme_name_owned.as_deref();
-    let draw_args = DrawFrameArgs {
-        delta_data: delta_data.as_ref(),
+    let has_duplicates =
+        !params.duplicate_groups.is_empty() || params.duplicate_groups_rx.is_some();
+    {
+        let draw_inputs = DrawInputs {
+            params,
+            delta_data: delta_data.as_ref(),
+            rows_for_draw,
+            theme_name,
+            latest_snapshot_ns,
+        };
+        draw_one_frame(terminal, state, &view, &right_content, &draw_inputs)?;
+    }
+    let quit = handle_ublx_input(
+        state,
+        &view,
+        &right_content,
+        Some((params.dir_to_ublx, theme_name)),
+        has_duplicates,
+        params,
+        ublx_opts,
+    )?;
+    if state.refresh_terminal_after_editor {
+        state.refresh_terminal_after_editor = false;
+        reapply_terminal_after_editor()?;
+        terminal.clear()?;
+        let draw_inputs = DrawInputs {
+            params,
+            delta_data: delta_data.as_ref(),
+            rows_for_draw,
+            theme_name,
+            latest_snapshot_ns,
+        };
+        draw_one_frame(terminal, state, &view, &right_content, &draw_inputs)?;
+    }
+    Ok(quit)
+}
+
+/// Inputs for building draw args and drawing one frame. Built once per tick and reused for the normal draw and optional post-editor refresh.
+struct DrawInputs<'a> {
+    params: &'a RunUblxParams<'a>,
+    delta_data: Option<&'a setup::DeltaViewData>,
+    rows_for_draw: Option<&'a [setup::TuiRow]>,
+    theme_name: Option<&'a str>,
+    latest_snapshot_ns: Option<i64>,
+}
+
+/// Draw one frame using current view and right content. Used for the normal tick draw and for the post-editor refresh.
+fn draw_one_frame<'a>(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    state: &mut setup::UblxState,
+    view: &setup::ViewData,
+    right_content: &setup::RightPaneContent,
+    draw_inputs: &DrawInputs<'a>,
+) -> io::Result<()> {
+    let draw_args = build_draw_args(
+        draw_inputs.params,
+        draw_inputs.delta_data,
+        draw_inputs.rows_for_draw,
+        draw_inputs.theme_name,
+        draw_inputs.latest_snapshot_ns,
+    );
+    terminal
+        .draw(|f| draw_ublx_frame(f, state, view, right_content, &draw_args))
+        .map(|_| ())
+}
+
+/// Build [DrawFrameArgs] from params and per-tick values.
+fn build_draw_args<'a>(
+    params: &'a RunUblxParams<'_>,
+    delta_data: Option<&'a setup::DeltaViewData>,
+    rows_for_draw: Option<&'a [setup::TuiRow]>,
+    theme_name: Option<&'a str>,
+    latest_snapshot_ns: Option<i64>,
+) -> DrawFrameArgs<'a> {
+    DrawFrameArgs {
+        delta_data,
         all_rows: rows_for_draw,
         dir_to_ublx: Some(params.dir_to_ublx),
         theme_name,
@@ -132,20 +210,7 @@ fn run_tick(
             Some(params.duplicate_groups.as_slice())
         },
         duplicate_groups_loading: params.duplicate_groups_rx.is_some(),
-    };
-
-    terminal.draw(|f| draw_ublx_frame(f, state, &view, &right_content, &draw_args))?;
-    let has_duplicates =
-        !params.duplicate_groups.is_empty() || params.duplicate_groups_rx.is_some();
-    handle_ublx_input(
-        state,
-        &view,
-        &right_content,
-        Some((params.dir_to_ublx, theme_name)),
-        has_duplicates,
-        params,
-        ublx_opts,
-    )
+    }
 }
 
 fn spawn_duplicate_load(params: &mut RunUblxParams<'_>) {
@@ -192,7 +257,8 @@ fn handle_snapshot_done(
         return;
     };
 
-    let (c, r) = load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
+    let (c, r) =
+        load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
     *categories = c;
     *all_rows = r;
     state.snapshot_poll_deadline = None;
@@ -229,7 +295,7 @@ fn poll_snapshot_if_due(
     if !due {
         return;
     }
-    let (c, r) = load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferTmp);
+    let (c, r) = load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferTmp);
     if !c.is_empty() || !r.is_empty() {
         *categories = c;
         *all_rows = r;
@@ -261,6 +327,8 @@ fn build_view_and_right_content<'a>(
             viewer_path: None,
             viewer_byte_size: None,
             viewer_mtime_ns: None,
+            viewer_can_open: false,
+            open_hint_label: None,
         };
         (view, right_content, Some(d), None)
     } else if state.main_mode == setup::MainMode::Duplicates {

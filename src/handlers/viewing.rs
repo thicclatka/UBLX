@@ -101,6 +101,8 @@ fn tree_content(tree_str: String) -> RightPaneContent {
         viewer_path: None,
         viewer_byte_size: None,
         viewer_mtime_ns: None,
+        viewer_can_open: false,
+        open_hint_label: None,
     }
 }
 
@@ -138,6 +140,7 @@ pub fn resolve_right_pane_content(
                 let viewer_str = file_content_for_viewer(&full_path);
                 let viewer_byte_size = viewer_str.as_ref().map(|_| *size);
                 let viewer_mtime_ns = db_ops::load_mtime_for_path(db_path, path).ok().flatten();
+                let viewer_can_open = !is_likely_binary(&full_path);
                 let zahir_json: String = db_ops::load_zahir_json_for_path(db_path, path)
                     .ok()
                     .flatten()
@@ -151,6 +154,8 @@ pub fn resolve_right_pane_content(
                         viewer_path: Some(path.clone()),
                         viewer_byte_size,
                         viewer_mtime_ns,
+                        viewer_can_open,
+                        open_hint_label: None,
                     }
                 } else {
                     match serde_json::from_str::<Value>(&zahir_json) {
@@ -164,6 +169,8 @@ pub fn resolve_right_pane_content(
                                 viewer_path: Some(path.clone()),
                                 viewer_byte_size,
                                 viewer_mtime_ns,
+                                viewer_can_open,
+                                open_hint_label: None,
                             }
                         }
                         _ => RightPaneContent {
@@ -174,6 +181,8 @@ pub fn resolve_right_pane_content(
                             viewer_path: Some(path.clone()),
                             viewer_byte_size,
                             viewer_mtime_ns,
+                            viewer_can_open,
+                            open_hint_label: None,
                         },
                     }
                 }
@@ -189,6 +198,8 @@ pub fn resolve_right_pane_content(
                 viewer_path: None,
                 viewer_byte_size: None,
                 viewer_mtime_ns: None,
+                viewer_can_open: false,
+                open_hint_label: None,
             }
         }
     }

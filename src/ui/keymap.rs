@@ -51,6 +51,8 @@ pub enum UblxAction {
     ThemeSelector,
     /// Reload hot-reloadable config (theme, transparent, layout, hash, show_hidden) from disk. Ctrl+R.
     ReloadConfig,
+    /// Open menu (Shift+O): Open (Terminal) or Open (GUI). Only when selection is a non-binary file.
+    OpenMenu,
     Noop,
 }
 
@@ -89,6 +91,7 @@ pub fn key_action_setup(
         KeyCode::Char(c) if search_active => (UblxAction::SearchChar(c), None),
         KeyCode::Char('s' | 'S') if shift => (UblxAction::TakeSnapshot, None),
         KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
+        KeyCode::Char('o' | 'O') if shift => (UblxAction::OpenMenu, None),
         KeyCode::Char('v' | 'V') if shift => (UblxAction::CycleRightPane, None),
         KeyCode::Char('t' | 'T') if ctrl => (UblxAction::ThemeSelector, None),
         KeyCode::Char('J') if shift => (UblxAction::ScrollPreviewDown, None),

@@ -12,15 +12,15 @@ use super::panels;
 use super::search;
 use super::snapshot_panels;
 use crate::config::{LayoutOverlay, TOAST_CONFIG};
-use crate::layout::{help, setup, style, theme_selector, themes};
+use crate::layout;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::notifications;
 
 /// Arguments for [draw_ublx_frame] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
-    pub delta_data: Option<&'a setup::DeltaViewData>,
+    pub delta_data: Option<&'a layout::setup::DeltaViewData>,
     /// For snapshot mode pass `Some(all_rows)`; for delta/duplicates pass `None`.
-    pub all_rows: Option<&'a [setup::TuiRow]>,
+    pub all_rows: Option<&'a [layout::setup::TuiRow]>,
     /// Snapshot mode: indexed dir (for mapping UBLX Settings path to "Local"/"Global" display).
     pub dir_to_ublx: Option<&'a std::path::Path>,
     /// Theme name (from opts); style functions use [crate::layout::themes::current].
@@ -42,12 +42,14 @@ pub struct DrawFrameArgs<'a> {
 /// Main entry: layout and render main tabs, then Snapshot or Delta 3-pane content, search, help.
 pub fn draw_ublx_frame(
     f: &mut Frame,
-    state: &mut setup::UblxState,
-    view: &setup::ViewData,
-    right: &setup::RightPaneContent,
+    state: &mut layout::setup::UblxState,
+    view: &layout::setup::ViewData,
+    right: &layout::setup::RightPaneContent,
     args: &DrawFrameArgs<'_>,
 ) {
-    themes::set_current(Some(themes::theme_name_from_config(args.theme_name)));
+    layout::themes::set_current(Some(layout::themes::theme_name_from_config(
+        args.theme_name,
+    )));
     let area = f.area();
 
     draw_background(f, area, args);
@@ -65,10 +67,15 @@ pub fn draw_ublx_frame(
 
     draw_toast_if_visible(f, state, args);
     if state.help_visible {
-        help::render_help_box(f);
+        layout::help::render_help_box(f);
     }
     if state.theme_selector_visible {
-        theme_selector::render_theme_selector(f, state.theme_selector_index);
+        layout::theme_selector::render_theme_selector(f, state.theme_selector_index);
+    }
+    if state.open_menu_visible && state.main_mode == layout::setup::MainMode::Snapshot {
+        let middle = body.chunks[1];
+        let content_sel = state.content_state.selected().unwrap_or(0);
+        layout::open_menu::render_open_menu(f, state.open_menu_selected_index, middle, content_sel);
     }
 }
 
@@ -76,13 +83,13 @@ fn draw_background(f: &mut Frame, area: Rect, args: &DrawFrameArgs<'_>) {
     if args.transparent {
         return;
     }
-    let bg = themes::current().background;
+    let bg = layout::themes::current().background;
     f.render_widget(Block::default().style(Style::default().bg(bg)), area);
 }
 
 fn split_tabs_and_body(area: Rect) -> (Rect, Rect) {
     if area.height >= 2 {
-        let vs = style::split_vertical(area, &UI_CONSTANTS.tab_row_constraints());
+        let vs = layout::style::split_vertical(area, &UI_CONSTANTS.tab_row_constraints());
         (vs[0], vs[1])
     } else {
         (area, area)
@@ -115,9 +122,9 @@ fn compute_body_areas(body_area: Rect, layout: &LayoutOverlay) -> BodyAreas {
 
 fn draw_main_content(
     f: &mut Frame,
-    state: &mut setup::UblxState,
-    view: &setup::ViewData,
-    right: &setup::RightPaneContent,
+    state: &mut layout::setup::UblxState,
+    view: &layout::setup::ViewData,
+    right: &layout::setup::RightPaneContent,
     args: &DrawFrameArgs<'_>,
     body: &BodyAreas,
 ) {
@@ -125,7 +132,7 @@ fn draw_main_content(
     let middle = body.chunks[1];
     let right_rect = body.chunks[2];
     match state.main_mode {
-        setup::MainMode::Snapshot => {
+        layout::setup::MainMode::Snapshot => {
             if state.viewer_fullscreen {
                 panels::draw_right_pane_fullscreen(f, state, right, body.main_area);
             } else {
@@ -148,7 +155,7 @@ fn draw_main_content(
                 &state.search_query,
             );
         }
-        setup::MainMode::Delta => {
+        layout::setup::MainMode::Delta => {
             if let Some(delta) = args.delta_data {
                 delta::draw_delta_panes(
                     f,
@@ -172,7 +179,7 @@ fn draw_main_content(
                 &state.search_query,
             );
         }
-        setup::MainMode::Duplicates => {
+        layout::setup::MainMode::Duplicates => {
             if state.viewer_fullscreen {
                 panels::draw_right_pane_fullscreen(f, state, right, body.main_area);
             } else if let Some(groups) = args.duplicate_groups
@@ -193,7 +200,11 @@ fn draw_main_content(
     }
 }
 
-fn draw_toast_if_visible(f: &mut Frame, state: &setup::UblxState, args: &DrawFrameArgs<'_>) {
+fn draw_toast_if_visible(
+    f: &mut Frame,
+    state: &layout::setup::UblxState,
+    args: &DrawFrameArgs<'_>,
+) {
     if state.toast_slots.is_empty() {
         return;
     }
@@ -222,12 +233,12 @@ fn draw_toast_if_visible(f: &mut Frame, state: &setup::UblxState, args: &DrawFra
 
 fn draw_main_tabs(
     f: &mut Frame,
-    state: &setup::UblxState,
+    state: &layout::setup::UblxState,
     area: Rect,
     duplicate_groups: Option<&[crate::engine::db_ops::DuplicateGroup]>,
     duplicate_groups_loading: bool,
 ) {
-    let outer = style::tab_row_padded(area);
+    let outer = layout::style::tab_row_padded(area);
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(UI_CONSTANTS.brand_block_constraints())
@@ -235,20 +246,20 @@ fn draw_main_tabs(
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
     let has_duplicates =
         duplicate_groups.is_some_and(|g| !g.is_empty()) || duplicate_groups_loading;
-    let mut segments: Vec<_> = style::tab_node_segment(
+    let mut segments: Vec<_> = layout::style::tab_node_segment(
         UI_STRINGS.main_tab_snapshot,
-        state.main_mode == setup::MainMode::Snapshot,
+        state.main_mode == layout::setup::MainMode::Snapshot,
     )
     .into_iter()
-    .chain(style::tab_node_segment(
+    .chain(layout::style::tab_node_segment(
         UI_STRINGS.main_tab_delta,
-        state.main_mode == setup::MainMode::Delta,
+        state.main_mode == layout::setup::MainMode::Delta,
     ))
     .collect();
     if has_duplicates {
-        segments.extend(style::tab_node_segment(
+        segments.extend(layout::style::tab_node_segment(
             UI_STRINGS.main_tab_duplicates,
-            state.main_mode == setup::MainMode::Duplicates,
+            state.main_mode == layout::setup::MainMode::Duplicates,
         ));
     }
     let line = Line::from(segments);
@@ -256,7 +267,7 @@ fn draw_main_tabs(
     f.render_widget(
         Paragraph::new(Line::from(ratatui::text::Span::styled(
             UI_STRINGS.brand,
-            style::title_brand(),
+            layout::style::title_brand(),
         ))),
         brand_rect,
     );

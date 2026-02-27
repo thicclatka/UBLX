@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 
 use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths, write_local_theme};
-use crate::handlers::{reload, state_transitions::UblxActionContext};
+use crate::handlers::{core, open, reload, state_transitions::UblxActionContext};
 use crate::layout::{
     event_loop::RunUblxParams,
     setup::{RightPaneContent, UblxState, ViewData},
@@ -88,6 +88,50 @@ pub fn handle_ublx_input(
 
     if state.help_visible {
         state.help_visible = false;
+        return Ok(false);
+    }
+    if state.open_menu_visible {
+        match action {
+            UblxAction::Quit | UblxAction::SearchClear => {
+                state.open_menu_visible = false;
+                state.open_menu_path = None;
+            }
+            UblxAction::MoveDown => {
+                state.open_menu_selected_index =
+                    (state.open_menu_selected_index + 1).min(1);
+            }
+            UblxAction::MoveUp => {
+                state.open_menu_selected_index =
+                    state.open_menu_selected_index.saturating_sub(1);
+            }
+            UblxAction::SearchSubmit => {
+                if let Some(ref rel_path) = state.open_menu_path {
+                    let full_path = params.dir_to_ublx.join(rel_path);
+                    if state.open_menu_selected_index == 0 {
+                        if let Some(ed) = open::editor_for_open(ublx_opts.editor_path.as_deref())
+                        {
+                            let _ = core::leave_terminal_for_editor();
+                            let _ = open::open_in_editor(&ed, &full_path);
+                            state.refresh_terminal_after_editor = true;
+                        }
+                    } else {
+                        let _ = open::open_in_gui(&full_path);
+                    }
+                }
+                state.open_menu_visible = false;
+                state.open_menu_path = None;
+            }
+            _ => {}
+        }
+        return Ok(false);
+    }
+    if matches!(action, UblxAction::OpenMenu)
+        && right.viewer_can_open
+        && right.viewer_path.is_some()
+    {
+        state.open_menu_visible = true;
+        state.open_menu_path = right.viewer_path.clone();
+        state.open_menu_selected_index = 0;
         return Ok(false);
     }
     if matches!(action, UblxAction::ThemeSelector) {
