@@ -7,7 +7,6 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::config::{OPERATION_NAME, UblxOpts};
-use crate::utils::notifications;
 use crate::engine::db_ops;
 use crate::handlers::{
     applets::{dupe_finder, settings},
@@ -17,6 +16,7 @@ use crate::handlers::{
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
 use crate::ui::input::handle_ublx_input;
+use crate::utils::notifications;
 
 use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_delta_mode};
 use super::duplicates::{clamp_duplicates_selection, view_data_for_duplicates_mode};

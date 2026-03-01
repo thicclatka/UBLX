@@ -58,7 +58,10 @@ fn main() {
     }
 
     let paths = UblxPaths::new(&dir_to_ublx);
-    let valid_themes: Vec<&str> = themes::theme_options().iter().map(|o| o.display_name).collect();
+    let valid_themes: Vec<&str> = themes::theme_options()
+        .iter()
+        .map(|o| o.display_name)
+        .collect();
     let for_dir_config = ublx::config::ForDirConfig {
         valid_theme_names: &valid_themes,
         bumper: bumper.as_ref(),

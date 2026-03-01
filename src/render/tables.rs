@@ -79,7 +79,11 @@ pub fn section_to_table(section: &KvSection, row_offset: usize) -> Table<'_> {
         .iter()
         .enumerate()
         .map(|(i, (k, v))| {
-            Row::new(vec![Cell::from(k.as_str()), Cell::from(v.as_str())])
+            let value_cell = match format::value_cell_style(v.as_str()) {
+                Some(s) => Cell::from(ratatui::text::Line::from(v.as_str()).style(s)),
+                None => Cell::from(v.as_str()),
+            };
+            Row::new(vec![Cell::from(k.as_str()), value_cell])
                 .style(style::table_row_style(row_offset + i))
         })
         .collect();

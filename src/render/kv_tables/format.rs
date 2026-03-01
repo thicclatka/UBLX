@@ -1,5 +1,8 @@
 //! Key/value and value display formatting for metadata and contents tables.
 
+use ratatui::style::Style;
+
+use crate::layout::themes::DEFAULT_COLORS;
 use crate::utils::format::Epsilon;
 use crate::utils::format_bytes;
 
@@ -10,6 +13,27 @@ const ALL_CAPS: &[&str] = &[
 ];
 
 const FLOAT_PRECISION: usize = 4;
+
+#[inline]
+pub fn is_byte_key(key: &str) -> bool {
+    key.to_lowercase().contains("size")
+        || key.to_lowercase().contains("compressed")
+        || key.to_lowercase().contains("uncompressed")
+        || key.to_lowercase().contains("byte")
+}
+
+pub fn is_bool(value: &serde_json::Value) -> bool {
+    matches!(value, serde_json::Value::Bool(_))
+}
+
+/// Optional style for a value cell (e.g. TRUE = green, FALSE = red). Returns `None` for non-bool values.
+pub fn value_cell_style(formatted_value: &str) -> Option<Style> {
+    match formatted_value {
+        "TRUE" => Some(Style::default().fg(DEFAULT_COLORS.green)),
+        "FALSE" => Some(Style::default().fg(DEFAULT_COLORS.red)),
+        _ => None,
+    }
+}
 
 /// Join parts with middle dot: 2 parts → "a · b", 3 parts → "a · b · c".
 pub fn join_dot(parts: impl IntoIterator<Item = impl AsRef<str>>) -> String {
@@ -52,7 +76,7 @@ pub fn format_key(key: &str) -> String {
 pub fn value_to_string(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::Null => "—".to_string(),
-        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Bool(b) => b.to_string().to_uppercase(),
         serde_json::Value::Number(n) => n
             .as_f64()
             .filter(|f| f.fract().abs() >= Epsilon::FORMAT)
@@ -78,15 +102,15 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
 /// Format value for display: byte format when key contains "size", "compressed", or "uncompressed" (and value is numeric); "%" when key contains "percent" (case-insensitive).
 pub fn format_value(v: &serde_json::Value, key: &str) -> String {
     let key_lower = key.to_lowercase();
-    let is_byte_key = key_lower.contains("size")
-        || key_lower.contains("compressed")
-        || key_lower.contains("uncompressed");
-    if is_byte_key {
+    if is_byte_key(&key_lower) {
         if let Some(n) = v.as_u64() {
             return format_bytes(n);
         }
         if let Some(n) = v.as_i64().filter(|&x| x >= 0) {
             return format_bytes(n as u64);
+        }
+        if let Some(f) = v.as_f64().filter(|&x| x >= 0.0 && x.is_finite()) {
+            return format_bytes(f as u64);
         }
     }
     let s = value_to_string(v);
