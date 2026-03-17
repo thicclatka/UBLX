@@ -45,13 +45,43 @@ CREATE TABLE IF NOT EXISTS delta_log (
 );
 ";
 
-    /// SQL to create all ublx tables (snapshot, settings, delta_log). Use when opening or creating the DB.
+    /// Normalized path strings for lens membership (one row per distinct path).
+    pub const CREATE_PATH: &'static str = "
+CREATE TABLE IF NOT EXISTS path (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE
+);
+";
+
+    /// Lenses (playlists): one row per lens, id + name.
+    pub const CREATE_LENS: &'static str = "
+CREATE TABLE IF NOT EXISTS lens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+";
+
+    /// Which paths are in which lens, and in what order (lens_id, path_id, position).
+    pub const CREATE_LENS_PATH: &'static str = "
+CREATE TABLE IF NOT EXISTS lens_path (
+    lens_id INTEGER NOT NULL REFERENCES lens(id) ON DELETE CASCADE,
+    path_id INTEGER NOT NULL REFERENCES path(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (lens_id, path_id)
+);
+CREATE INDEX IF NOT EXISTS idx_lens_path_lens_position ON lens_path (lens_id, position);
+";
+
+    /// SQL to create all ublx tables (snapshot, settings, delta_log, path, lens, lens_path). Use when opening or creating the DB.
     pub fn create_ublx_db_sql() -> String {
         format!(
-            "{}{}{}",
+            "{}{}{}{}{}{}",
             Self::CREATE_SNAPSHOT,
             Self::CREATE_SETTINGS,
             Self::CREATE_DELTA_LOG,
+            Self::CREATE_PATH,
+            Self::CREATE_LENS,
+            Self::CREATE_LENS_PATH,
         )
     }
 }
@@ -78,6 +108,18 @@ impl UblxDbStatements {
 
     pub const SELECT_COUNT_DELTA_LOG_ROWS: &'static str =
         "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='delta_log'";
+
+    /// Check if old DB has lens table (so we can copy path/lens/lens_path).
+    pub const SELECT_LENS_TABLE_EXISTS: &'static str =
+        "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='lens'";
+    /// Copy path strings from old DB; new path ids are assigned in main.
+    pub const COPY_PREVIOUS_PATH: &'static str =
+        "INSERT INTO main.path(path) SELECT path FROM old.path";
+    /// Copy lens names from old DB; new lens ids are assigned in main.
+    pub const COPY_PREVIOUS_LENS: &'static str =
+        "INSERT INTO main.lens(name) SELECT name FROM old.lens";
+    /// Copy lens_path rows, mapping old lens_id/path_id to new ids by matching name/path.
+    pub const COPY_PREVIOUS_LENS_PATH: &'static str = "INSERT INTO main.lens_path(lens_id, path_id, position) SELECT (SELECT id FROM main.lens WHERE name = (SELECT name FROM old.lens WHERE id = old.lens_path.lens_id)), (SELECT id FROM main.path WHERE path = (SELECT path FROM old.path WHERE id = old.lens_path.path_id)), position FROM old.lens_path WHERE (SELECT id FROM main.lens WHERE name = (SELECT name FROM old.lens WHERE id = old.lens_path.lens_id)) IS NOT NULL AND (SELECT id FROM main.path WHERE path = (SELECT path FROM old.path WHERE id = old.lens_path.path_id)) IS NOT NULL";
 
     /// (path, zahir_json) for paths that have non-empty zahir_json. Used for prior-zahir reuse.
     pub const SELECT_SNAPSHOT_PATH_ZAHIR_JSON: &'static str =
@@ -112,6 +154,43 @@ impl UblxDbStatements {
     /// (path, size, hash) for non-directory rows; used for duplicate detection (by hash or content).
     pub const SELECT_SNAPSHOT_PATH_SIZE_HASH: &'static str =
         "SELECT path, size, hash FROM snapshot WHERE category IS NULL OR category != 'Directory'";
+
+    /// Lens table: list lens names for TUI.
+    pub const SELECT_LENS_NAMES: &'static str = "SELECT name FROM lens ORDER BY id";
+
+    /// Lens id by name (for loading paths).
+    pub const SELECT_LENS_ID_BY_NAME: &'static str = "SELECT id FROM lens WHERE name = ?1";
+
+    /// Path id by path string (for lens_path).
+    pub const SELECT_PATH_ID_BY_PATH: &'static str = "SELECT id FROM path WHERE path = ?1";
+
+    /// Insert path, return id (use INSERT OR IGNORE then SELECT id).
+    pub const INSERT_PATH: &'static str = "INSERT OR IGNORE INTO path (path) VALUES (?1)";
+
+    pub const INSERT_LENS: &'static str = "INSERT INTO lens (name) VALUES (?1)";
+
+    /// (path_id, position) for a lens, ordered by position. Join with path to get path string.
+    pub const SELECT_LENS_PATH_IDS: &'static str =
+        "SELECT path_id, position FROM lens_path WHERE lens_id = ?1 ORDER BY position";
+
+    pub const INSERT_LENS_PATH: &'static str =
+        "INSERT OR REPLACE INTO lens_path (lens_id, path_id, position) VALUES (?1, ?2, ?3)";
+
+    /// Remove one path from a lens (by lens name and path string).
+    pub const DELETE_LENS_PATH_ROW: &'static str = "DELETE FROM lens_path WHERE lens_id = (SELECT id FROM lens WHERE name = ?1) AND path_id = (SELECT id FROM path WHERE path = ?2)";
+    /// Rename a lens.
+    pub const UPDATE_LENS_NAME: &'static str = "UPDATE lens SET name = ?2 WHERE name = ?1";
+    /// Delete a lens (lens_path rows removed by FK CASCADE).
+    pub const DELETE_LENS: &'static str = "DELETE FROM lens WHERE name = ?1";
+
+    /// (path, category, size) for TUI list for a lens; joins lens_path, path, and snapshot for category/size.
+    pub const SELECT_LENS_ROWS_FOR_TUI: &'static str = "
+        SELECT p.path, COALESCE(s.category, ''), COALESCE(s.size, 0)
+        FROM lens_path lp
+        JOIN path p ON lp.path_id = p.id
+        LEFT JOIN snapshot s ON s.path = p.path
+        WHERE lp.lens_id = ?1
+        ORDER BY lp.position";
 
     pub fn create_query_for_nefax_from_db(table_name: &str) -> String {
         format!("SELECT path, mtime_ns, size, hash FROM {}", table_name)

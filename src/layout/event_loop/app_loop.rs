@@ -15,11 +15,12 @@ use crate::handlers::{
 };
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
-use crate::ui::input::handle_ublx_input;
+use crate::ui::input::{MainTabFlags, handle_ublx_input};
 use crate::utils::notifications;
 
 use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_delta_mode};
 use super::duplicates::{clamp_duplicates_selection, view_data_for_duplicates_mode};
+use super::lenses::{clamp_lenses_selection, view_data_for_lenses_mode};
 use super::params::RunUblxParams;
 use super::snapshot::load_snapshot_for_tui;
 use super::view_data::build_view_data;
@@ -96,6 +97,7 @@ fn run_tick(
     let theme_name = theme_name_owned.as_deref();
     let has_duplicates =
         !params.duplicate_groups.is_empty() || params.duplicate_groups_rx.is_some();
+    let has_lenses = !params.lens_names.is_empty();
     {
         let draw_inputs = DrawInputs {
             params,
@@ -111,7 +113,10 @@ fn run_tick(
         &view,
         &right_content,
         Some((params.dir_to_ublx, theme_name)),
-        has_duplicates,
+        MainTabFlags {
+            has_duplicates,
+            has_lenses,
+        },
         params,
         ublx_opts,
     )?;
@@ -182,12 +187,18 @@ fn build_draw_args<'a>(
         } else {
             Some(params.duplicate_groups.as_slice())
         },
+        lens_names: if params.lens_names.is_empty() {
+            None
+        } else {
+            Some(params.lens_names.as_slice())
+        },
     }
 }
 
 fn prune_toasts(state: &mut setup::UblxState) {
     state
-        .toast_slots
+        .toasts
+        .slots
         .retain(|s| Instant::now() < s.visible_until);
 }
 
@@ -230,10 +241,10 @@ fn handle_snapshot_done(
         snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
         let op = OPERATION_NAME.snapshot();
         notifications::show_toast_slot(
-            &mut state.toast_slots,
+            &mut state.toasts.slots,
             b,
             Some(op.as_str()),
-            &mut state.toast_consumed_per_operation,
+            &mut state.toasts.consumed_per_operation,
         );
     }
 }
@@ -292,41 +303,44 @@ fn build_view_and_right_content<'a>(
             open_hint_label: None,
         };
         (view, right_content, Some(d), None)
-    } else if state.main_mode == setup::MainMode::Duplicates {
-        let view = view_data_for_duplicates_mode(state, &params.duplicate_groups);
-        clamp_duplicates_selection(state, &view);
-        let right_content = viewing::resolve_right_pane_content(
-            state,
-            params.dir_to_ublx,
-            params.db_path,
-            &view,
-            None,
-        );
-        (view, right_content, None, None)
     } else {
-        let view = build_view_data(state, categories, all_rows);
+        let db_path_for_read =
+            db_ops::snapshot_read_path_for_tui(params.db_path, !state.snapshot_done_received);
+        let (view, rows_for_right_pane) = if state.main_mode == setup::MainMode::Duplicates {
+            let view = view_data_for_duplicates_mode(state, &params.duplicate_groups);
+            clamp_duplicates_selection(state, &view);
+            (view, None)
+        } else if state.main_mode == setup::MainMode::Lenses {
+            let view = view_data_for_lenses_mode(state, &params.lens_names, &db_path_for_read);
+            clamp_lenses_selection(state, &view);
+            (view, None)
+        } else {
+            let view = build_view_data(state, categories, all_rows);
+            (view, Some(all_rows))
+        };
         let right_content = viewing::resolve_right_pane_content(
             state,
             params.dir_to_ublx,
-            params.db_path,
+            &db_path_for_read,
             &view,
-            Some(all_rows),
+            rows_for_right_pane,
         );
-        (view, right_content, None, Some(all_rows))
+        (view, right_content, None, rows_for_right_pane)
     }
 }
 
 /// Return owned theme name so callers don't hold a borrow of state (avoids borrow conflicts with draw/input).
 fn theme_name_for_tick(state: &setup::UblxState, params: &RunUblxParams<'_>) -> Option<String> {
-    if state.theme_selector_visible {
+    if state.theme.selector_visible {
         Some(
-            themes::theme_options()[state.theme_selector_index]
+            themes::theme_options()[state.theme.selector_index]
                 .display_name
                 .to_string(),
         )
     } else {
         state
-            .theme_override
+            .theme
+            .override_name
             .clone()
             .or_else(|| params.theme.clone())
     }

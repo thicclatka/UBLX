@@ -50,6 +50,7 @@ pub fn write_snapshot_to_db(
 
     write_settings(&conn, settings)?;
     copy_previous_delta_log(&conn, &db_path)?;
+    copy_previous_lens_tables(&conn, &db_path)?;
     write_delta_log(&conn, nefax, diff)?;
     drop(conn);
 
@@ -109,6 +110,7 @@ pub fn write_snapshot_to_db_streaming(
 
     write_settings(&conn, settings)?;
     copy_previous_delta_log(&conn, &db_path)?;
+    copy_previous_lens_tables(&conn, &db_path)?;
     write_delta_log(&conn, nefax, diff)?;
     drop(conn);
 
@@ -157,6 +159,36 @@ fn copy_previous_delta_log(conn: &Connection, db_path: &Path) -> Result<(), anyh
     if copied > 0 {
         log::debug!("copied {} previous delta_log rows into tmp", copied);
     }
+    Ok(())
+}
+
+/// Copy path, lens, and lens_path from the existing .ublx into the open tmp DB so lenses persist
+/// across snapshot replace. No-op if db_path does not exist or has no lens table.
+fn copy_previous_lens_tables(conn: &Connection, db_path: &Path) -> Result<(), anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(());
+    }
+    let path_abs = fs::canonicalize(db_path)?;
+    let path_str = path_abs
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("db path not UTF-8"))?
+        .replace('\'', "''");
+    conn.execute(UblxDbStatements::ATTACH_OLD_DB, rusqlite::params![path_str])?;
+    let has_lens = matches!(
+        conn.query_row(UblxDbStatements::SELECT_LENS_TABLE_EXISTS, [], |row| row
+            .get::<_, i32>(0)),
+        Ok(1)
+    );
+    if has_lens {
+        conn.execute(UblxDbStatements::COPY_PREVIOUS_PATH, [])?;
+        conn.execute(UblxDbStatements::COPY_PREVIOUS_LENS, [])?;
+        let n = conn.execute(UblxDbStatements::COPY_PREVIOUS_LENS_PATH, [])?;
+        log::debug!(
+            "copied previous lens tables into tmp ({} lens_path rows)",
+            n
+        );
+    }
+    conn.execute(UblxDbStatements::DETACH_OLD_DB, [])?;
     Ok(())
 }
 

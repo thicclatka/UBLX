@@ -1,11 +1,12 @@
 //! Snapshot mode: categories (left) and contents (middle) panels.
 
 use ratatui::Frame;
-use ratatui::layout::{HorizontalAlignment, Rect};
+use ratatui::layout::Rect;
 use ratatui::text::Line;
 use ratatui::widgets::ListItem;
 
-use super::panels;
+use super::panes;
+
 use crate::config::UblxPaths;
 use crate::layout::setup;
 use crate::layout::style;
@@ -17,21 +18,21 @@ pub(super) fn draw_categories_panel(
     view: &setup::ViewData,
     area: Rect,
 ) {
-    let focused = matches!(state.focus, setup::PanelFocus::Categories);
-    let title = panels::set_title(UI_STRINGS.categories, focused);
+    let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
+    let title = panes::set_title(UI_STRINGS.categories, focused);
     let mut items = vec![ListItem::new(UI_STRINGS.all_categories)];
     items.extend(
         view.filtered_categories
             .iter()
             .map(|s| ListItem::new(s.as_str())),
     );
-    let block = panels::panel_block(title, focused);
-    panels::draw_list_panel(
+    let block = panes::panel_block(title, focused);
+    panes::draw_list_panel(
         f,
         items,
         block,
-        state.highlight_style,
-        &mut state.category_state,
+        state.panels.highlight_style,
+        &mut state.panels.category_state,
         area,
     );
 }
@@ -64,12 +65,6 @@ fn contents_display_label(
     }
 }
 
-const MAX_SELECTION_INDEX: usize = 99_999;
-
-fn format_selection_counter(current: usize, total: usize) -> String {
-    format!("{:>5}/{:>5}", current, total)
-}
-
 pub fn draw_contents_panel(
     f: &mut Frame,
     state: &mut setup::UblxState,
@@ -78,16 +73,8 @@ pub fn draw_contents_panel(
     dir_to_ublx: Option<&std::path::Path>,
     area: Rect,
 ) {
-    let focused = matches!(state.focus, setup::PanelFocus::Contents);
-    let left_title = panels::set_title(UI_STRINGS.contents, focused);
-    let current = state
-        .content_state
-        .selected()
-        .map(|i| i + 1)
-        .unwrap_or(0)
-        .min(MAX_SELECTION_INDEX);
-    let total = view.content_len.min(MAX_SELECTION_INDEX);
-    let counter_str = format_selection_counter(current, total);
+    let focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
+    let left_title = panes::set_title(UI_STRINGS.contents, focused);
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(if focused {
@@ -96,9 +83,12 @@ pub fn draw_contents_panel(
             style::panel_unfocused()
         })
         .title(Line::from(left_title).left_aligned())
-        .title(style::node_line(&counter_str, HorizontalAlignment::Right));
+        .title_bottom(panes::line_for(
+            state.panels.content_state.selected(),
+            view.content_len,
+        ));
     let items: Vec<ListItem> = if view.content_len == 0 {
-        vec![ListItem::new(if state.search_query.is_empty() {
+        vec![ListItem::new(if state.search.query.is_empty() {
             UI_STRINGS.no_contents
         } else {
             UI_STRINGS.no_matches
@@ -111,12 +101,12 @@ pub fn draw_contents_panel(
             })
             .collect()
     };
-    panels::draw_list_panel(
+    panes::draw_list_panel(
         f,
         items,
         block,
-        state.highlight_style,
-        &mut state.content_state,
+        state.panels.highlight_style,
+        &mut state.panels.content_state,
         area,
     );
 }

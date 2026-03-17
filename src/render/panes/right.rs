@@ -161,7 +161,7 @@ pub fn draw_right_pane(
     let layout = scrollable_content::layout_scrollable_content(
         content_area,
         total_lines,
-        &mut state.preview_scroll,
+        &mut state.panels.preview_scroll,
         bottom_pad,
     );
     let text_rect = layout.content_rect;
@@ -231,7 +231,7 @@ pub fn draw_right_pane_fullscreen(
     let layout = scrollable_content::layout_scrollable_content(
         inner,
         total_lines,
-        &mut state.preview_scroll,
+        &mut state.panels.preview_scroll,
         bottom_pad,
     );
     let text_rect = layout.content_rect;

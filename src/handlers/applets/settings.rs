@@ -20,10 +20,10 @@ pub fn on_first_tick(state: &mut UblxState, params: &RunUblxParams<'_>) {
     state.first_tick = false;
     if let Some(b) = params.bumper {
         notifications::show_toast_slot(
-            &mut state.toast_slots,
+            &mut state.toasts.slots,
             b,
             Some(OPERATION_NAME.ublx_settings().as_str()),
-            &mut state.toast_consumed_per_operation,
+            &mut state.toasts.consumed_per_operation,
         );
     }
 }
@@ -39,7 +39,7 @@ pub fn on_config_reload(
         .as_ref()
         .is_none_or(|t| t.elapsed() >= Duration::from_millis(CONFIG_SELF_WRITE_WINDOW_MS));
     if from_external_save {
-        state.theme_override = None;
+        state.theme.override_name = None;
     }
     let reload_msg = if from_external_save {
         Some(UI_STRINGS.config_reload_triggered_by_save())

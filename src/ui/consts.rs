@@ -35,6 +35,7 @@ pub struct UiStrings {
     pub main_tab_snapshot: &'static str,
     pub main_tab_delta: &'static str,
     pub main_tab_duplicates: &'static str,
+    pub main_tab_lenses: &'static str,
     /// Delta left-pane labels
     pub delta_added: &'static str,
     pub delta_mod: &'static str,
@@ -51,6 +52,7 @@ pub struct UiStrings {
     pub delta_type_label: &'static str,
     pub paths_label: &'static str,
     pub duplicates_group_label: &'static str,
+    pub lenses_group_label: &'static str,
     pub brand: &'static str,
     pub fullscreen_suffix: &'static str,
     pub table_header_key: &'static str,
@@ -67,6 +69,26 @@ pub struct UiStrings {
     pub config_reloaded: &'static str,
     /// Toast when no duplicates are found.
     pub no_duplicates: &'static str,
+    /// Lens menu: first option to create a new lens.
+    pub lens_menu_create_new: &'static str,
+    /// Prompt at bottom when typing new lens name (Shift+L → Create New Lens).
+    pub lens_name_prompt: &'static str,
+    /// Spacebar menu (file): open in editor/terminal or GUI.
+    pub space_menu_open: &'static str,
+    /// Spacebar menu (main mode): add current file to a lens.
+    pub space_menu_add_to_lens: &'static str,
+    /// Spacebar menu (lens mode): remove current file from lens.
+    pub space_menu_remove_from_lens: &'static str,
+    /// Spacebar menu (lens left panel): rename lens.
+    pub space_menu_rename: &'static str,
+    /// Spacebar menu (lens left panel): delete lens.
+    pub space_menu_delete: &'static str,
+    /// Prompt at bottom when renaming a lens.
+    pub lens_rename_prompt: &'static str,
+    /// Delete lens confirmation title (use with lens name).
+    pub lens_delete_confirm_title: &'static str,
+    pub lens_delete_yes: &'static str,
+    pub lens_delete_no: &'static str,
 }
 
 impl Default for UiStrings {
@@ -105,6 +127,7 @@ impl UiStrings {
             main_tab_snapshot: "Snapshot",
             main_tab_delta: "Delta",
             main_tab_duplicates: "Duplicates",
+            main_tab_lenses: "Lenses",
             delta_added: "Added",
             delta_mod: "Modified",
             delta_removed: "Removed",
@@ -118,6 +141,7 @@ impl UiStrings {
             delta_type_label: "Delta type",
             paths_label: "Paths",
             duplicates_group_label: "Duplicate",
+            lenses_group_label: "Lens",
             brand: "UBLX",
             fullscreen_suffix: "(Esc to exit fullscreen)",
             table_header_key: "Key",
@@ -132,6 +156,17 @@ impl UiStrings {
             help_table_action: "Action",
             config_reloaded: "Config reloaded",
             no_duplicates: "No duplicates found",
+            lens_menu_create_new: "Create New Lens",
+            lens_name_prompt: "Lens name: ",
+            space_menu_open: "Open…",
+            space_menu_add_to_lens: "Add to Lens…",
+            space_menu_remove_from_lens: "Remove from Lens",
+            space_menu_rename: "Rename",
+            space_menu_delete: "Delete",
+            lens_rename_prompt: "Rename lens: ",
+            lens_delete_confirm_title: "Delete lens ",
+            lens_delete_yes: "Yes",
+            lens_delete_no: "No",
         }
     }
 

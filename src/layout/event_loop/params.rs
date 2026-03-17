@@ -23,6 +23,8 @@ pub struct RunUblxParams<'a> {
     pub duplicate_groups: Vec<DuplicateGroup>,
     /// When some, a background thread is loading duplicate groups; main loop receives via try_recv.
     pub duplicate_groups_rx: Option<mpsc::Receiver<Vec<DuplicateGroup>>>,
+    /// Lens names for the Lenses tab (loaded at startup). When non-empty, Lenses tab is shown.
+    pub lens_names: Vec<String>,
     /// When some, a file watcher sends () on global/local config save; main loop triggers hot reload.
     pub config_reload_rx: Option<mpsc::Receiver<()>>,
 }

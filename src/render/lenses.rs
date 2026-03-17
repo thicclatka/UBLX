@@ -1,4 +1,4 @@
-//! Duplicates mode: left (one name per duplicate group), middle (paths in group), right (viewer for selected path).
+//! Lenses mode: left = lens names, middle = paths in selected lens, right = viewer for selected path.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -9,8 +9,8 @@ use super::panes;
 use crate::layout::setup;
 use crate::ui::UI_STRINGS;
 
-/// Draw Duplicates mode panes: left = group names, middle = paths in selected group, right = viewer (same as Snapshot).
-pub fn draw_duplicates_panes(
+/// Draw Lenses mode panes: left = lens names, middle = paths in selected lens, right = viewer (same as Snapshot).
+pub fn draw_lenses_panes(
     f: &mut Frame,
     state: &mut setup::UblxState,
     view: &setup::ViewData,
@@ -20,7 +20,7 @@ pub fn draw_duplicates_panes(
     right_rect: Rect,
 ) {
     let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
-    let left_title = panes::set_title(UI_STRINGS.duplicates_group_label, focused);
+    let left_title = panes::set_title(UI_STRINGS.lenses_group_label, focused);
     let left_block = panes::panel_block(left_title, focused);
     let left_items: Vec<ListItem> = view
         .filtered_categories

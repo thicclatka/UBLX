@@ -116,21 +116,23 @@ pub fn resolve_right_pane_content(
     view: &ViewData,
     all_rows: Option<&[TuiRow]>,
 ) -> RightPaneContent {
-    let selected = state
+    let selected: Option<&TuiRow> = state
+        .panels
         .content_state
         .selected()
         .and_then(|i| view.row_at(i, all_rows));
     match selected {
         Some((path, category, size)) => {
+            let path: &str = path.as_str();
             if *category == CATEGORY_DIRECTORY {
-                let full_path = dir_to_ublx.join(Path::new(path.as_str()));
+                let full_path = dir_to_ublx.join(Path::new(path));
                 let tree_str = tree_for_path(state, path, &full_path);
                 tree_content(tree_str)
             } else {
-                let full_path: PathBuf = if Path::new(path.as_str()).is_absolute() {
-                    PathBuf::from(path.as_str())
+                let full_path: PathBuf = if Path::new(path).is_absolute() {
+                    PathBuf::from(path)
                 } else {
-                    dir_to_ublx.join(Path::new(path.as_str()))
+                    dir_to_ublx.join(Path::new(path))
                 };
                 if full_path.is_dir() {
                     let tree_str = tree_for_path(state, path, &full_path);
@@ -151,7 +153,7 @@ pub fn resolve_right_pane_content(
                         metadata: None,
                         writing: None,
                         viewer: viewer_str,
-                        viewer_path: Some(path.clone()),
+                        viewer_path: Some(path.to_string()),
                         viewer_byte_size,
                         viewer_mtime_ns,
                         viewer_can_open,
@@ -166,7 +168,7 @@ pub fn resolve_right_pane_content(
                                 metadata: s.metadata,
                                 writing: s.writing,
                                 viewer: viewer_str,
-                                viewer_path: Some(path.clone()),
+                                viewer_path: Some(path.to_string()),
                                 viewer_byte_size,
                                 viewer_mtime_ns,
                                 viewer_can_open,
@@ -178,7 +180,7 @@ pub fn resolve_right_pane_content(
                             metadata: None,
                             writing: None,
                             viewer: viewer_str,
-                            viewer_path: Some(path.clone()),
+                            viewer_path: Some(path.to_string()),
                             viewer_byte_size,
                             viewer_mtime_ns,
                             viewer_can_open,

@@ -6,7 +6,8 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 
-use super::panels;
+use super::panes;
+
 use crate::layout::{setup, style};
 use crate::ui::UI_STRINGS;
 use crate::utils::format::StringObjTraits;
@@ -59,7 +60,7 @@ fn delta_left_labels() -> [(&'static str, Style); 3] {
 
 pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
     let state = params.state;
-    let focused = matches!(state.focus, setup::PanelFocus::Categories);
+    let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
     let labels = delta_left_labels();
     let items: Vec<ListItem> = params
         .view
@@ -75,37 +76,15 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
             ListItem::new(Line::from(span))
         })
         .collect();
-    let title = panels::set_title(UI_STRINGS.delta_type_label, focused);
-    let left_block = panels::panel_block(title, focused);
+    let title = panes::set_title(UI_STRINGS.delta_type_label, focused);
+    let left_block = panes::panel_block(title, focused);
     f.render_stateful_widget(
-        panels::styled_list(items, left_block, state.highlight_style),
+        panes::styled_list(items, left_block, state.panels.highlight_style),
         params.left,
-        &mut state.category_state,
+        &mut state.panels.category_state,
     );
 
-    let content_focused = matches!(state.focus, setup::PanelFocus::Contents);
-    let mid_title = panels::set_title(UI_STRINGS.paths_label, content_focused);
-    let mid_items: Vec<ListItem> = if params.view.content_len == 0 {
-        vec![ListItem::new(if state.search_query.is_empty() {
-            UI_STRINGS.no_contents
-        } else {
-            UI_STRINGS.no_matches
-        })]
-    } else {
-        params
-            .view
-            .iter_contents(None)
-            .map(|(path, _, _)| ListItem::new(path.as_str()))
-            .collect()
-    };
-    panels::draw_list_panel(
-        f,
-        mid_items,
-        panels::panel_block(mid_title, content_focused),
-        state.highlight_style,
-        &mut state.content_state,
-        params.middle,
-    );
+    panes::draw_paths_list_with_counter(f, state, params.view, params.middle);
 
     let right_block = Block::default()
         .borders(Borders::ALL)
@@ -117,7 +96,7 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
             params.delta.overview_text.as_str(),
         ))
         .style(style::text_style())
-        .scroll((state.preview_scroll, 0)),
+        .scroll((state.panels.preview_scroll, 0)),
         right_inner,
     );
 }

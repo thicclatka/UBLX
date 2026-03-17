@@ -22,10 +22,10 @@ pub fn on_groups_received(
                 Some(&op),
             );
             notifications::show_toast_slot(
-                &mut state.toast_slots,
+                &mut state.toasts.slots,
                 b,
                 Some(op.as_str()),
-                &mut state.toast_consumed_per_operation,
+                &mut state.toasts.consumed_per_operation,
             );
         }
     } else {

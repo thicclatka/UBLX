@@ -3,9 +3,11 @@
 mod block;
 mod layout;
 mod list;
-mod right_pane;
+mod middle;
+mod right;
 
 pub use block::*;
 pub use layout::*;
 pub use list::*;
-pub use right_pane::*;
+pub use middle::*;
+pub use right::*;

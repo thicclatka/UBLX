@@ -17,54 +17,109 @@ pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
 /// Category string for directories in the snapshot (matches [crate::engine::db_ops::UblxDbCategory]).
 pub const CATEGORY_DIRECTORY: &str = "Directory";
 
-pub struct UblxState {
-    pub main_mode: MainMode,
-    pub focus: PanelFocus,
+/// List panels: categories, contents, focus, preview scroll, and highlight style.
+#[derive(Default)]
+pub struct PanelState {
     pub category_state: ListState,
     pub content_state: ListState,
+    pub focus: PanelFocus,
     pub preview_scroll: u16,
     pub prev_preview_key: Option<(usize, Option<usize>)>,
-    pub search_query: String,
-    pub search_active: bool,
-    pub cached_tree: Option<(String, String)>,
-    pub help_visible: bool,
-    /// When true, show theme selector popup; j/k to move, Enter to pick and save, Esc to revert.
-    pub theme_selector_visible: bool,
-    /// Selected index in theme_options() when theme selector is open.
-    pub theme_selector_index: usize,
-    /// Theme name before opening selector; restored on Esc.
-    pub theme_before_selector: Option<String>,
-    /// Override theme for this run (set when user picks in selector; used instead of opts theme).
-    pub theme_override: Option<String>,
-    pub right_pane_mode: RightPaneMode,
     pub highlight_style: Style,
-    /// Set by TakeSnapshot key; event loop spawns pipeline and clears.
+}
+
+impl PanelState {
+    fn new() -> Self {
+        let mut p = Self {
+            highlight_style: style::list_highlight(),
+            ..Default::default()
+        };
+        p.category_state.select(Some(0));
+        p.content_state.select(Some(0));
+        p
+    }
+}
+
+/// Search bar state.
+#[derive(Default)]
+pub struct SearchState {
+    pub query: String,
+    pub active: bool,
+}
+
+/// Theme selector and override.
+#[derive(Default)]
+pub struct ThemeState {
+    pub selector_visible: bool,
+    pub selector_index: usize,
+    pub before_selector: Option<String>,
+    pub override_name: Option<String>,
+}
+
+/// Toast notifications stack and per-operation consumed counts.
+#[derive(Default)]
+pub struct ToastState {
+    pub slots: Vec<crate::utils::notifications::ToastSlot>,
+    pub consumed_per_operation: HashMap<String, usize>,
+}
+
+/// Open (Terminal/GUI) menu state.
+#[derive(Default)]
+pub struct OpenMenuState {
+    pub visible: bool,
+    pub path: Option<String>,
+    pub can_terminal: bool,
+    pub selected_index: usize,
+}
+
+/// Lens menu (Add to lens) state.
+#[derive(Default)]
+pub struct LensMenuState {
+    pub visible: bool,
+    pub path: Option<String>,
+    pub selected_index: usize,
+    pub name_input: Option<String>,
+}
+
+/// Spacebar context menu state.
+#[derive(Default)]
+pub struct SpaceMenuState {
+    pub visible: bool,
+    pub selected_index: usize,
+    pub kind: Option<SpaceMenuKind>,
+}
+
+/// Lens rename input and delete-lens confirmation.
+#[derive(Default)]
+pub struct LensConfirmState {
+    pub rename_input: Option<(String, String)>,
+    pub delete_visible: bool,
+    pub delete_lens_name: Option<String>,
+    pub delete_selected: usize,
+}
+
+/// Top-level TUI state. Menu and UI sub-states are grouped into nested structs.
+pub struct UblxState {
+    pub main_mode: MainMode,
+    pub right_pane_mode: RightPaneMode,
+    pub panels: PanelState,
+    pub search: SearchState,
+    pub theme: ThemeState,
+    pub toasts: ToastState,
+    pub open_menu: OpenMenuState,
+    pub lens_menu: LensMenuState,
+    pub space_menu: SpaceMenuState,
+    pub lens_confirm: LensConfirmState,
+    pub help_visible: bool,
+    pub cached_tree: Option<(String, String)>,
     pub snapshot_requested: bool,
-    /// Stack of toasts (each has its own timer); oldest first, newest last.
-    pub toast_slots: Vec<crate::utils::notifications::ToastSlot>,
-    /// Per-operation count of messages we've already shown in a toast (so the next toast only shows new ones).
-    pub toast_consumed_per_operation: HashMap<String, usize>,
-    /// Viewer takes full screen (hide categories and contents).
     pub viewer_fullscreen: bool,
-    /// For double-key detection (e.g. gg → ListTop). Cleared on any other key.
     pub last_key_for_double: Option<char>,
-    /// When set, we poll the snapshot DB (e.g. .ublx_tmp) at most when this time is reached.
     pub snapshot_poll_deadline: Option<std::time::Instant>,
-    /// True after we've received a "snapshot done" message; reset when user triggers a new snapshot so we poll again.
     pub snapshot_done_received: bool,
-    /// Set by Ctrl+D; event loop spawns duplicate detection and clears this.
     pub duplicate_load_requested: bool,
-    /// When set, we recently wrote the config ourselves (e.g. theme selector). Used to avoid showing "Config reload (triggered by save)" for our own write.
     pub config_written_by_us_at: Option<std::time::Instant>,
-    /// True on first tick only; used to show any ublx-settings bumper messages (e.g. "config invalid at startup, using cache") as a toast.
     pub first_tick: bool,
-    /// When true, show Open (Terminal) / Open (GUI) popup below selection. Path is relative to indexed dir.
-    pub open_menu_visible: bool,
-    /// Path of file to open (relative) when open_menu_visible. None when menu closed.
-    pub open_menu_path: Option<String>,
-    /// Selected index in open menu: 0 = Open (Terminal), 1 = Open (GUI).
-    pub open_menu_selected_index: usize,
-    /// When true, the next tick should re-apply terminal state and redraw (set after Open (Terminal) returns so the TUI repaints correctly).
     pub refresh_terminal_after_editor: bool,
 }
 
@@ -76,70 +131,132 @@ impl Default for UblxState {
 
 impl UblxState {
     pub fn new() -> Self {
-        let mut state = Self {
+        Self {
             main_mode: MainMode::default(),
-            focus: PanelFocus::default(),
-            category_state: ListState::default(),
-            content_state: ListState::default(),
-            preview_scroll: 0,
-            prev_preview_key: None,
-            search_query: String::new(),
-            search_active: false,
-            cached_tree: None,
-            help_visible: false,
-            theme_selector_visible: false,
-            theme_selector_index: 0,
-            theme_before_selector: None,
-            theme_override: None,
             right_pane_mode: RightPaneMode::default(),
-            highlight_style: style::list_highlight(),
+            panels: PanelState::new(),
+            search: SearchState::default(),
+            theme: ThemeState::default(),
+            toasts: ToastState::default(),
+            open_menu: OpenMenuState::default(),
+            lens_menu: LensMenuState::default(),
+            space_menu: SpaceMenuState::default(),
+            lens_confirm: LensConfirmState::default(),
+            help_visible: false,
+            cached_tree: None,
             snapshot_requested: false,
-            toast_slots: Vec::new(),
-            toast_consumed_per_operation: HashMap::new(),
             viewer_fullscreen: false,
             last_key_for_double: None,
             snapshot_poll_deadline: None,
-            snapshot_done_received: false, // poll until we receive done; run_ublx sets true when initial load has data (already-done dir)
+            snapshot_done_received: false,
             duplicate_load_requested: false,
             config_written_by_us_at: None,
             first_tick: true,
-            open_menu_visible: false,
-            open_menu_path: None,
-            open_menu_selected_index: 0,
             refresh_terminal_after_editor: false,
-        };
-        state.category_state.select(Some(0));
-        state.content_state.select(Some(0));
-        state
+        }
+    }
+
+    /// Reset open menu state (Esc or after action).
+    pub fn close_open_menu(&mut self) {
+        self.open_menu.visible = false;
+        self.open_menu.path = None;
+        self.open_menu.can_terminal = false;
+    }
+
+    /// Open the Open (Terminal/GUI) menu. When `can_open_in_terminal` is true, show both options; otherwise only Open (GUI).
+    pub fn open_open_menu(&mut self, path: String, can_open_in_terminal: bool) {
+        self.open_menu.visible = true;
+        self.open_menu.path = Some(path);
+        self.open_menu.can_terminal = can_open_in_terminal;
+        self.open_menu.selected_index = 0;
+    }
+
+    /// Reset lens menu state (Esc or after adding to lens). Does not clear [LensMenuState::name_input].
+    pub fn close_lens_menu(&mut self) {
+        self.lens_menu.visible = false;
+        self.lens_menu.path = None;
+        self.lens_menu.selected_index = 0;
+    }
+
+    /// Reset spacebar context menu state.
+    pub fn close_space_menu(&mut self) {
+        self.space_menu.visible = false;
+        self.space_menu.selected_index = 0;
+        self.space_menu.kind = None;
+    }
+
+    /// Reset delete-lens confirmation popup state.
+    pub fn close_lens_delete_confirm(&mut self) {
+        self.lens_confirm.delete_visible = false;
+        self.lens_confirm.delete_lens_name = None;
+        self.lens_confirm.delete_selected = 0;
+    }
+
+    /// Open the Lens menu (Add to lens) for the given relative path.
+    pub fn open_lens_menu(&mut self, path: String) {
+        self.lens_menu.visible = true;
+        self.lens_menu.path = Some(path);
+        self.lens_menu.selected_index = 0;
+    }
+
+    /// Open the spacebar context menu with the given kind.
+    pub fn open_space_menu(&mut self, kind: SpaceMenuKind) {
+        self.space_menu.visible = true;
+        self.space_menu.selected_index = 0;
+        self.space_menu.kind = Some(kind);
+    }
+
+    /// Show the delete-lens confirmation for the given lens name.
+    pub fn open_lens_delete_confirm(&mut self, lens_name: String) {
+        self.lens_confirm.delete_visible = true;
+        self.lens_confirm.delete_lens_name = Some(lens_name);
+        self.lens_confirm.delete_selected = 0;
     }
 }
 
-/// Top-level mode: Snapshot (categories/contents/preview), Delta (added/mod/removed), or Duplicates (only if any exist).
+/// Top-level mode: Snapshot (categories/contents/preview), Delta (added/mod/removed), Duplicates (if any), or Lenses (if any).
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum MainMode {
     #[default]
     Snapshot,
     Delta,
     Duplicates,
+    Lenses,
 }
 
 impl MainMode {
-    /// Cycle Snapshot → Delta → Duplicates (when available) → Snapshot. Used for MainModeToggle (Shift+Tab).
-    pub fn next(self, has_duplicates: bool) -> MainMode {
+    /// Cycle Snapshot → Delta → Lenses (when available) → Duplicates (when available) → Snapshot. Used for MainModeToggle (Shift+Tab).
+    pub fn next(self, has_duplicates: bool, has_lenses: bool) -> MainMode {
         match self {
             MainMode::Snapshot => MainMode::Delta,
+            MainMode::Delta if has_lenses => MainMode::Lenses,
             MainMode::Delta if has_duplicates => MainMode::Duplicates,
-            MainMode::Delta | MainMode::Duplicates => MainMode::Snapshot,
+            MainMode::Delta => MainMode::Snapshot,
+            MainMode::Lenses if has_duplicates => MainMode::Duplicates,
+            MainMode::Lenses => MainMode::Snapshot,
+            MainMode::Duplicates => MainMode::Snapshot,
         }
     }
 }
 
 /// Which panel has focus (Categories or Contents; Metadata is read-only).
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub enum PanelFocus {
     #[default]
     Categories,
     Contents,
+}
+
+/// Which variant of the spacebar context menu is open (determines items and Enter behavior).
+#[derive(Clone, Debug)]
+pub enum SpaceMenuKind {
+    /// File actions: path is the selected file (relative). can_open_in_terminal: when true, Open shows Terminal+GUI; else GUI only.
+    FileActions {
+        path: String,
+        can_open_in_terminal: bool,
+    },
+    /// Lens panel actions: lens_name is the selected lens. Options: Rename, Delete.
+    LensPanelActions { lens_name: String },
 }
 
 /// Per-pane content from zahir JSON. Templates always present; metadata and writing only if keys exist.

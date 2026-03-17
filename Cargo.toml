@@ -17,7 +17,7 @@ categories = []
 anyhow = "1.0.102"
 blake3 = "1.5"
 chrono = "0.4"
-clap = { version = "4.5.56", features = ["derive"] }
+clap = { version = "4.6.0", features = ["derive"] }
 colored = "3.1.1"
 crossterm = "0.29"
 env_logger = "0.11.9"

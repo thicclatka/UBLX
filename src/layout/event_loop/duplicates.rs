@@ -9,7 +9,7 @@ pub fn view_data_for_duplicates_mode(
     state: &setup::UblxState,
     groups: &[DuplicateGroup],
 ) -> setup::ViewData {
-    let search_query = state.search_query.trim();
+    let search_query = state.search.query.trim();
     let filtered_names: Vec<String> = if search_query.is_empty() {
         groups
             .iter()
@@ -27,7 +27,7 @@ pub fn view_data_for_duplicates_mode(
     };
     let category_list_len = filtered_names.len();
     let cat_idx = clamp_selection(
-        state.category_state.selected().unwrap_or(0),
+        state.panels.category_state.selected().unwrap_or(0),
         category_list_len.max(1),
     );
     let selected_paths: Vec<String> = filtered_names
@@ -59,14 +59,14 @@ pub fn view_data_for_duplicates_mode(
 /// Clamp list selection for Duplicates mode.
 pub fn clamp_duplicates_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
     let cat_idx = clamp_selection(
-        state.category_state.selected().unwrap_or(0),
+        state.panels.category_state.selected().unwrap_or(0),
         view.category_list_len,
     );
-    state.category_state.select(Some(cat_idx));
+    state.panels.category_state.select(Some(cat_idx));
     let len = view.content_len;
-    if let Some(sel) = clamp_selection_opt(state.content_state.selected().unwrap_or(0), len) {
-        state.content_state.select(Some(sel));
+    if let Some(sel) = clamp_selection_opt(state.panels.content_state.selected().unwrap_or(0), len) {
+        state.panels.content_state.select(Some(sel));
     } else {
-        state.content_state.select(None);
+        state.panels.content_state.select(None);
     }
 }

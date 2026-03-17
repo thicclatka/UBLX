@@ -16,7 +16,7 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::config::{UblxOpts, UblxPaths};
-use crate::engine::db_ops::SnapshotReaderPreference;
+use crate::engine::db_ops::{SnapshotReaderPreference, load_lens_names};
 use crate::handlers::{nefax_ops::NefaxResult, snapshot};
 use crate::layout::{event_loop, setup};
 use crate::utils::notifications;
@@ -83,6 +83,7 @@ fn run_tui_mode(
 
     let config_reload_rx = spawn_config_watcher(dir_to_ublx);
 
+    let lens_names = load_lens_names(db_path).unwrap_or_default();
     let mut params = event_loop::RunUblxParams {
         db_path,
         dir_to_ublx,
@@ -95,6 +96,7 @@ fn run_tui_mode(
         layout: ublx_opts.layout.clone(),
         duplicate_groups: Vec::new(),
         duplicate_groups_rx: None,
+        lens_names,
         config_reload_rx,
     };
     run_ublx(&mut params, ublx_opts)?;

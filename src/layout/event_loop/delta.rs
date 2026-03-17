@@ -51,15 +51,15 @@ fn build_delta_display_lines(rows: Vec<(i64, String)>) -> Vec<String> {
 /// Clamp list selection for Delta mode (category and content from view).
 pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
     let cat_idx = clamp_selection(
-        state.category_state.selected().unwrap_or(0),
+        state.panels.category_state.selected().unwrap_or(0),
         view.category_list_len,
     );
-    state.category_state.select(Some(cat_idx));
+    state.panels.category_state.select(Some(cat_idx));
     let len = view.content_len;
-    if let Some(sel) = clamp_selection_opt(state.content_state.selected().unwrap_or(0), len) {
-        state.content_state.select(Some(sel));
+    if let Some(sel) = clamp_selection_opt(state.panels.content_state.selected().unwrap_or(0), len) {
+        state.panels.content_state.select(Some(sel));
     } else {
-        state.content_state.select(None);
+        state.panels.content_state.select(None);
     }
 }
 
@@ -76,9 +76,9 @@ pub fn view_data_for_delta_mode(
     state: &setup::UblxState,
     delta: &setup::DeltaViewData,
 ) -> setup::ViewData {
-    let search_query = state.search_query.trim();
+    let search_query = state.search.query.trim();
     let cat_idx = clamp_selection(
-        state.category_state.selected().unwrap_or(0),
+        state.panels.category_state.selected().unwrap_or(0),
         DELTA_CATEGORY_COUNT,
     );
     let raw_rows = delta.rows_by_index(cat_idx);

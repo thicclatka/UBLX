@@ -21,7 +21,10 @@ const DESC_MIN_WIDTH: usize = WIDTH_LIMIT - 4;
 
 /// All help rows: (shortcut, action). Edit this list to change the help popup.
 const HELP_ENTRIES: &[(&str, &str)] = help_entries![
-    ("1 | 2", "Main tabs: Snapshot / Delta"),
+    (
+        "1 | 2 | 3 | 9",
+        "Main tabs: Snapshot / Delta / Lenses / Duplicates"
+    ),
     ("Shift+Tab", "Alternate between Main tabs"),
     ("Ctrl+d", "Run duplicate detection, show Duplicates tab"),
     ("/", "Search (strict substring search)"),
@@ -45,6 +48,14 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     (
         "Ctrl+t",
         "Theme selector (j/k preview, Enter save to .ublx.toml, Esc cancel)"
+    ),
+    (
+        "Shift+L",
+        "Add to lens: menu (Create New Lens or pick lens), then add current file"
+    ),
+    (
+        "Space",
+        "Context menu: Open… / Add to Lens… (main) or Remove (lens); or Rename/Delete (lens list)"
     ),
     ("q | Esc", "Quit"),
     ("?", "Show this help"),
