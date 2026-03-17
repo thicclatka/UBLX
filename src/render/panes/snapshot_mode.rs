@@ -5,29 +5,29 @@ use ratatui::layout::Rect;
 use ratatui::text::Line;
 use ratatui::widgets::ListItem;
 
-use super::panes;
-
 use crate::config::UblxPaths;
 use crate::layout::setup;
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
 
-pub(super) fn draw_categories_panel(
+/// Draw the categories (left) pane. `chunks` must have at least 1 element; uses `chunks[0]`.
+pub fn draw_categories_pane(
     f: &mut Frame,
     state: &mut setup::UblxState,
     view: &setup::ViewData,
-    area: Rect,
+    chunks: &[Rect],
 ) {
+    let area = chunks[0];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
-    let title = panes::set_title(UI_STRINGS.categories, focused);
+    let title = super::set_title(UI_STRINGS.categories, focused);
     let mut items = vec![ListItem::new(UI_STRINGS.all_categories)];
     items.extend(
         view.filtered_categories
             .iter()
             .map(|s| ListItem::new(s.as_str())),
     );
-    let block = panes::panel_block(title, focused);
-    panes::draw_list_panel(
+    let block = super::panel_block(title, focused);
+    super::draw_list_panel(
         f,
         items,
         block,
@@ -65,16 +65,18 @@ fn contents_display_label(
     }
 }
 
+/// Draw the contents (middle) panel. `chunks` must have at least 2 elements; uses `chunks[1]`.
 pub fn draw_contents_panel(
     f: &mut Frame,
     state: &mut setup::UblxState,
     view: &setup::ViewData,
     all_rows: Option<&[setup::TuiRow]>,
     dir_to_ublx: Option<&std::path::Path>,
-    area: Rect,
+    chunks: &[Rect],
 ) {
+    let area = chunks[1];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
-    let left_title = panes::set_title(UI_STRINGS.contents, focused);
+    let left_title = super::set_title(UI_STRINGS.contents, focused);
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(if focused {
@@ -83,7 +85,7 @@ pub fn draw_contents_panel(
             style::panel_unfocused()
         })
         .title(Line::from(left_title).left_aligned())
-        .title_bottom(panes::line_for(
+        .title_bottom(super::line_for(
             state.panels.content_state.selected(),
             view.content_len,
         ));
@@ -101,7 +103,7 @@ pub fn draw_contents_panel(
             })
             .collect()
     };
-    panes::draw_list_panel(
+    super::draw_list_panel(
         f,
         items,
         block,

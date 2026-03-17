@@ -24,14 +24,14 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
 }
 
 fn viewer_display_text(
-    right: &RightPaneContent,
+    right_content: &RightPaneContent,
     content_width: u16,
 ) -> ratatui::text::Text<'static> {
-    let raw = right
+    let raw = right_content
         .viewer
         .as_deref()
         .unwrap_or(UI_STRINGS.viewer_placeholder);
-    if let Some(ref path) = right.viewer_path
+    if let Some(ref path) = right_content.viewer_path
         && is_markdown_path(path)
     {
         return parse_markdown(raw).to_text(content_width);
@@ -41,20 +41,20 @@ fn viewer_display_text(
 
 fn content_display_text(
     state: &UblxState,
-    right: &RightPaneContent,
+    right_content: &RightPaneContent,
     content_width: u16,
 ) -> ratatui::text::Text<'static> {
     match state.right_pane_mode {
-        RightPaneMode::Viewer => viewer_display_text(right, content_width),
-        RightPaneMode::Templates => ratatui::text::Text::from(right.templates.clone()),
+        RightPaneMode::Viewer => viewer_display_text(right_content, content_width),
+        RightPaneMode::Templates => ratatui::text::Text::from(right_content.templates.clone()),
         RightPaneMode::Metadata => ratatui::text::Text::from(
-            right
+            right_content
                 .metadata
                 .clone()
                 .unwrap_or_else(|| UI_STRINGS.not_available.to_string()),
         ),
         RightPaneMode::Writing => ratatui::text::Text::from(
-            right
+            right_content
                 .writing
                 .clone()
                 .unwrap_or_else(|| UI_STRINGS.not_available.to_string()),
@@ -89,23 +89,25 @@ fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> 
     .collect()
 }
 
+/// Draw the right (viewer) pane. `chunks` must have at least 3 elements; the right pane uses `chunks[2]`.
 pub fn draw_right_pane(
     f: &mut ratatui::Frame,
     state: &mut UblxState,
-    right: &RightPaneContent,
-    area: Rect,
+    right_content: &RightPaneContent,
+    chunks: &[Rect],
 ) {
+    let area = chunks[2];
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
-        && (right.open_hint_label.is_some()
-            || right.viewer_byte_size.is_some()
-            || right.viewer_mtime_ns.is_some());
-    let size_str = right.viewer_byte_size.map(format_bytes);
+        && (right_content.open_hint_label.is_some()
+            || right_content.viewer_byte_size.is_some()
+            || right_content.viewer_mtime_ns.is_some());
+    let size_str = right_content.viewer_byte_size.map(format_bytes);
     let footer_line = show_footer
         .then(|| {
             style::viewer_footer_line(
-                right.open_hint_label.as_deref(),
+                right_content.open_hint_label.as_deref(),
                 size_str.as_deref(),
-                right.viewer_mtime_ns,
+                right_content.viewer_mtime_ns,
             )
         })
         .flatten();
@@ -120,7 +122,7 @@ pub fn draw_right_pane(
             .borders(Borders::ALL)
             .title(block_title.as_str())
     };
-    let tabs = visible_tabs(right);
+    let tabs = visible_tabs(right_content);
     if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
         state.right_pane_mode = tabs[0].0;
     }
@@ -144,18 +146,18 @@ pub fn draw_right_pane(
     let content_area = content_chunks[1];
     let bottom_pad = UI_CONSTANTS.v_pad;
     let use_kv_tables = match state.right_pane_mode {
-        RightPaneMode::Metadata => right.metadata.as_deref(),
-        RightPaneMode::Writing => right.writing.as_deref(),
+        RightPaneMode::Metadata => right_content.metadata.as_deref(),
+        RightPaneMode::Writing => right_content.writing.as_deref(),
         _ => None,
     };
     let total_lines = match (state.right_pane_mode, use_kv_tables) {
         (_, Some(json)) => kv_tables::content_height(json) as usize,
-        (RightPaneMode::Viewer, _) => right
+        (RightPaneMode::Viewer, _) => right_content
             .viewer
             .as_deref()
             .map(|t| wrapped_line_count(t, content_area.width) as usize)
             .unwrap_or(0),
-        (RightPaneMode::Templates, _) => right.templates.lines().count(),
+        (RightPaneMode::Templates, _) => right_content.templates.lines().count(),
         (RightPaneMode::Writing, _) | (RightPaneMode::Metadata, _) => 0,
     };
     let layout = scrollable_content::layout_scrollable_content(
@@ -169,7 +171,7 @@ pub fn draw_right_pane(
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
         f.render_widget(
-            Paragraph::new(content_display_text(state, right, text_rect.width))
+            Paragraph::new(content_display_text(state, right_content, text_rect.width))
                 .style(style::text_style())
                 .wrap(Wrap { trim: false })
                 .scroll((layout.scroll_y, 0)),

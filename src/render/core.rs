@@ -6,12 +6,8 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Paragraph};
 
-use super::delta;
-use super::duplicates;
-use super::lenses;
 use super::panes;
 use super::search;
-use super::snapshot_panels;
 
 use crate::config::{LayoutOverlay, TOAST_CONFIG};
 use crate::layout;
@@ -46,7 +42,7 @@ pub fn draw_ublx_frame(
     f: &mut Frame,
     state: &mut layout::setup::UblxState,
     view: &layout::setup::ViewData,
-    right: &layout::setup::RightPaneContent,
+    right_content: &layout::setup::RightPaneContent,
     args: &DrawFrameArgs<'_>,
 ) {
     layout::themes::set_current(Some(layout::themes::theme_name_from_config(
@@ -59,7 +55,7 @@ pub fn draw_ublx_frame(
     draw_main_tabs(f, state, tabs_area, args);
 
     let body = compute_body_areas(body_area, args.layout);
-    draw_main_content(f, state, view, right, args, &body);
+    draw_main_content(f, state, view, right_content, args, &body);
 
     draw_toast_if_visible(f, state, args);
     if state.help_visible {
@@ -182,67 +178,63 @@ fn draw_main_content(
     f: &mut Frame,
     state: &mut layout::setup::UblxState,
     view: &layout::setup::ViewData,
-    right: &layout::setup::RightPaneContent,
+    right_content: &layout::setup::RightPaneContent,
     args: &DrawFrameArgs<'_>,
     body: &BodyAreas,
 ) {
-    let left = body.chunks[0];
-    let middle = body.chunks[1];
-    let right_rect = body.chunks[2];
+    let chunks = &body.chunks[..];
     match state.main_mode {
         layout::setup::MainMode::Snapshot => {
             if state.viewer_fullscreen {
-                panes::draw_right_pane_fullscreen(f, state, right, body.main_area);
+                panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
             } else {
-                snapshot_panels::draw_categories_panel(f, state, view, left);
-                snapshot_panels::draw_contents_panel(
+                panes::snapshot_mode::draw_categories_pane(f, state, view, chunks);
+                panes::snapshot_mode::draw_contents_panel(
                     f,
                     state,
                     view,
                     args.all_rows,
                     args.dir_to_ublx,
-                    middle,
+                    chunks,
                 );
-                panes::draw_right_pane(f, state, right, right_rect);
+                panes::draw_right_pane(f, state, right_content, chunks);
             }
         }
         layout::setup::MainMode::Delta => {
             if let Some(delta) = args.delta_data {
-                delta::draw_delta_panes(
+                panes::delta_mode::draw_delta_panes(
                     f,
-                    delta::DrawDeltaPanesParams {
+                    panes::delta_mode::DrawDeltaPanesParams {
                         state,
                         delta,
                         view,
-                        left,
-                        middle,
-                        right: right_rect,
+                        chunks,
                     },
                 );
             } else {
-                delta::draw_delta_placeholder(f, left, middle, right_rect);
+                panes::delta_mode::draw_delta_placeholder(f, chunks);
             }
         }
         layout::setup::MainMode::Duplicates => {
             if state.viewer_fullscreen {
-                panes::draw_right_pane_fullscreen(f, state, right, body.main_area);
+                panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
             } else if let Some(groups) = args.duplicate_groups
                 && !groups.is_empty()
             {
-                duplicates::draw_duplicates_panes(f, state, view, right, left, middle, right_rect);
+                panes::draw_duplicates_panes(f, state, view, right_content, chunks);
             } else {
-                delta::draw_delta_placeholder(f, left, middle, right_rect);
+                panes::delta_mode::draw_delta_placeholder(f, chunks);
             }
         }
         layout::setup::MainMode::Lenses => {
             if state.viewer_fullscreen {
-                panes::draw_right_pane_fullscreen(f, state, right, body.main_area);
+                panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
             } else if let Some(names) = args.lens_names
                 && !names.is_empty()
             {
-                lenses::draw_lenses_panes(f, state, view, right, left, middle, right_rect);
+                panes::draw_lenses_panes(f, state, view, right_content, chunks);
             } else {
-                delta::draw_delta_placeholder(f, left, middle, right_rect);
+                panes::delta_mode::draw_delta_placeholder(f, chunks);
             }
         }
     }

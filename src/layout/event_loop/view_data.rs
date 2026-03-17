@@ -4,14 +4,13 @@ use crate::layout::{filter, setup};
 use crate::utils::{clamp_selection, clamp_selection_opt};
 
 /// Resolve the selected category string from the category list index (0 = "All").
-fn selected_category(
-    filtered_categories: &[String],
-    category_idx: usize,
-) -> Option<&str> {
+fn selected_category(filtered_categories: &[String], category_idx: usize) -> Option<&str> {
     if category_idx == 0 {
         None
     } else {
-        filtered_categories.get(category_idx - 1).map(String::as_str)
+        filtered_categories
+            .get(category_idx - 1)
+            .map(String::as_str)
     }
 }
 

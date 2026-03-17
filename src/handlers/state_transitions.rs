@@ -9,12 +9,15 @@ use crate::utils::clamp_selection;
 /// Context (view + right-pane content) required to apply actions to state.
 pub struct UblxActionContext<'a> {
     view: &'a ViewData,
-    right: &'a RightPaneContent,
+    right_content: &'a RightPaneContent,
 }
 
 impl<'a> UblxActionContext<'a> {
-    pub fn new(view: &'a ViewData, right: &'a RightPaneContent) -> Self {
-        Self { view, right }
+    pub fn new(view: &'a ViewData, right_content: &'a RightPaneContent) -> Self {
+        Self {
+            view,
+            right_content,
+        }
     }
 
     /// Apply the key action to state (mutates focus, selection, panes, etc.).
@@ -53,17 +56,17 @@ impl<'a> UblxActionContext<'a> {
                 state.viewer_fullscreen = !state.viewer_fullscreen;
             }
             UblxAction::RightPaneTemplates => {
-                if !self.right.templates.is_empty() {
+                if !self.right_content.templates.is_empty() {
                     state.right_pane_mode = RightPaneMode::Templates;
                 }
             }
             UblxAction::RightPaneMetadata => {
-                if self.right.metadata.is_some() {
+                if self.right_content.metadata.is_some() {
                     state.right_pane_mode = RightPaneMode::Metadata;
                 }
             }
             UblxAction::RightPaneWriting => {
-                if self.right.writing.is_some() {
+                if self.right_content.writing.is_some() {
                     state.right_pane_mode = RightPaneMode::Writing;
                 }
             }
@@ -103,9 +106,9 @@ impl<'a> UblxActionContext<'a> {
         .into_iter()
         .filter(|m| match m {
             RightPaneMode::Viewer => true,
-            RightPaneMode::Templates => !self.right.templates.is_empty(),
-            RightPaneMode::Metadata => self.right.metadata.is_some(),
-            RightPaneMode::Writing => self.right.writing.is_some(),
+            RightPaneMode::Templates => !self.right_content.templates.is_empty(),
+            RightPaneMode::Metadata => self.right_content.metadata.is_some(),
+            RightPaneMode::Writing => self.right_content.writing.is_some(),
         })
         .collect();
         if !available.is_empty() {

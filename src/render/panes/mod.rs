@@ -1,13 +1,14 @@
 //! Panel layout, blocks, lists, and right-pane rendering.
 
-mod block;
 mod layout;
-mod list;
 mod middle;
 mod right;
+mod user_selected_mode;
 
-pub use block::*;
+pub mod delta_mode;
+pub mod snapshot_mode;
+
 pub use layout::*;
-pub use list::*;
 pub use middle::*;
 pub use right::*;
+pub use user_selected_mode::{draw_duplicates_panes, draw_lenses_panes};

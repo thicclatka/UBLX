@@ -56,7 +56,8 @@ pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewDat
     );
     state.panels.category_state.select(Some(cat_idx));
     let len = view.content_len;
-    if let Some(sel) = clamp_selection_opt(state.panels.content_state.selected().unwrap_or(0), len) {
+    if let Some(sel) = clamp_selection_opt(state.panels.content_state.selected().unwrap_or(0), len)
+    {
         state.panels.content_state.select(Some(sel));
     } else {
         state.panels.content_state.select(None);

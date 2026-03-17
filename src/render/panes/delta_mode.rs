@@ -6,13 +6,15 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 
-use super::panes;
-
 use crate::layout::{setup, style};
 use crate::ui::UI_STRINGS;
 use crate::utils::format::StringObjTraits;
 
-pub(super) fn draw_delta_placeholder(f: &mut Frame, left: Rect, middle: Rect, right: Rect) {
+/// Draw placeholder when delta data is missing. `chunks` must have at least 3 elements: [left, middle, right].
+pub fn draw_delta_placeholder(f: &mut Frame, chunks: &[Rect]) {
+    let left = chunks[0];
+    let middle = chunks[1];
+    let right = chunks[2];
     let block = Block::default()
         .borders(Borders::ALL)
         .title(UI_STRINGS.pad(UI_STRINGS.delta_block_title));
@@ -44,9 +46,8 @@ pub struct DrawDeltaPanesParams<'a> {
     pub state: &'a mut setup::UblxState,
     pub delta: &'a setup::DeltaViewData,
     pub view: &'a setup::ViewData,
-    pub left: Rect,
-    pub middle: Rect,
-    pub right: Rect,
+    /// Left, middle, right pane rects (at least 3 elements).
+    pub chunks: &'a [Rect],
 }
 
 /// Left-pane labels for Delta: Added / Mod / Removed, with styles.
@@ -60,6 +61,9 @@ fn delta_left_labels() -> [(&'static str, Style); 3] {
 
 pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
     let state = params.state;
+    let left = params.chunks[0];
+    let middle = params.chunks[1];
+    let right = params.chunks[2];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
     let labels = delta_left_labels();
     let items: Vec<ListItem> = params
@@ -76,21 +80,21 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
             ListItem::new(Line::from(span))
         })
         .collect();
-    let title = panes::set_title(UI_STRINGS.delta_type_label, focused);
-    let left_block = panes::panel_block(title, focused);
+    let title = super::set_title(UI_STRINGS.delta_type_label, focused);
+    let left_block = super::panel_block(title, focused);
     f.render_stateful_widget(
-        panes::styled_list(items, left_block, state.panels.highlight_style),
-        params.left,
+        super::styled_list(items, left_block, state.panels.highlight_style),
+        left,
         &mut state.panels.category_state,
     );
 
-    panes::draw_paths_list_with_counter(f, state, params.view, params.middle);
+    super::draw_paths_list_with_counter(f, state, params.view, middle);
 
     let right_block = Block::default()
         .borders(Borders::ALL)
         .title(UI_STRINGS.pad(UI_STRINGS.delta_right_title));
-    f.render_widget(&right_block, params.right);
-    let right_inner = right_block.inner(params.right);
+    f.render_widget(&right_block, right);
+    let right_inner = right_block.inner(right);
     f.render_widget(
         Paragraph::new(ratatui::text::Text::from(
             params.delta.overview_text.as_str(),
