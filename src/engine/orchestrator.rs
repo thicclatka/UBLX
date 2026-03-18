@@ -5,8 +5,7 @@ use std::sync::mpsc;
 
 use crate::config::{RunMode, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
-use crate::handlers::nefax_ops;
-use crate::handlers::zahir_ops;
+use crate::handlers::{nefax_ops, zahir_ops};
 use crate::utils::{canonicalize_dir_to_ublx, error_writer, exit_error};
 
 type PreRunSetup = (PathBuf, std::collections::HashMap<String, String>);

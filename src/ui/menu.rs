@@ -1,7 +1,7 @@
 //! Open menu (Shift+O) and spacebar context menu input handling.
 
 use crate::config::UblxOpts;
-use crate::handlers::{core, open};
+use crate::handlers::{applets, core};
 use crate::layout::event_loop::RunUblxParams;
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
@@ -34,13 +34,15 @@ pub fn handle_open_menu(
                 let use_terminal =
                     state.open_menu.can_terminal && state.open_menu.selected_index == 0;
                 if use_terminal {
-                    if let Some(ed) = open::editor_for_open(ublx_opts.editor_path.as_deref()) {
+                    if let Some(ed) =
+                        applets::opener::editor_for_open(ublx_opts.editor_path.as_deref())
+                    {
                         let _ = core::leave_terminal_for_editor();
-                        let _ = open::open_in_editor(&ed, &full_path);
+                        let _ = applets::opener::open_in_editor(&ed, &full_path);
                         state.refresh_terminal_after_editor = true;
                     }
                 } else {
-                    let _ = open::open_in_gui(&full_path);
+                    let _ = applets::opener::open_in_gui(&full_path);
                 }
             }
             state.close_open_menu();
@@ -54,14 +56,14 @@ pub fn handle_open_menu(
 /// Openable files (e.g. text) get Terminal + GUI; others (e.g. .mp3) get only Open (GUI).
 pub fn try_open_open_menu(
     state: &mut UblxState,
-    right: &RightPaneContent,
+    right_content: &RightPaneContent,
     action: UblxAction,
 ) -> bool {
     if !matches!(action, UblxAction::OpenMenu) {
         return false;
     }
-    if let Some(path) = right.viewer_path.clone() {
-        state.open_open_menu(path, right.viewer_can_open);
+    if let Some(path) = right_content.viewer_path.clone() {
+        state.open_open_menu(path, right_content.viewer_can_open);
         return true;
     }
     false
@@ -140,7 +142,7 @@ pub fn handle_space_menu(
 pub fn try_open_space_menu(
     state: &mut UblxState,
     view: &ViewData,
-    right: &RightPaneContent,
+    right_content: &RightPaneContent,
     action: UblxAction,
 ) -> bool {
     if !matches!(action, UblxAction::SpaceMenu) {
@@ -157,10 +159,10 @@ pub fn try_open_space_menu(
         return false;
     }
     if state.panels.focus == PanelFocus::Contents {
-        if let Some(ref path) = right.viewer_path {
+        if let Some(ref path) = right_content.viewer_path {
             state.open_space_menu(SpaceMenuKind::FileActions {
                 path: path.clone(),
-                can_open_in_terminal: right.viewer_can_open,
+                can_open_in_terminal: right_content.viewer_can_open,
             });
             return true;
         }

@@ -9,8 +9,9 @@ use zahirscan::{
     extract_zahir_from_stream,
 };
 
+use super::nefax_ops;
+
 use crate::config::UblxOpts;
-use crate::handlers::nefax_ops;
 
 pub type ZahirResult = ZahirScanResult;
 pub type ZahirOutput = Output;

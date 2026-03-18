@@ -1,3 +1,5 @@
+//! Help overlay: keybinding table.
+
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::Style;
@@ -8,8 +10,6 @@ use crate::layout::{style, themes};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::format::StringObjTraits;
 
-/// Build a static slice of (shortcut, action) pairs. Add lines like:
-/// `help_entries![ ("keys", "description"), ... ]`
 macro_rules! help_entries {
     ($( ($key:expr, $action:expr) ),* $(,)?) => {
         &[ $( ($key, $action) ),* ]
@@ -19,7 +19,6 @@ macro_rules! help_entries {
 const WIDTH_LIMIT: usize = 24;
 const DESC_MIN_WIDTH: usize = WIDTH_LIMIT - 4;
 
-/// All help rows: (shortcut, action). Edit this list to change the help popup.
 const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     (
         "1 | 2 | 3 | 9",

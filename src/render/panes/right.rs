@@ -72,7 +72,7 @@ fn title(state: &UblxState) -> String {
     UI_STRINGS.pad(label)
 }
 
-fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> {
+fn visible_tabs(right_content: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> {
     [
         (RightPaneMode::Viewer, UI_STRINGS.tab_viewer),
         (RightPaneMode::Templates, UI_STRINGS.tab_templates),
@@ -82,9 +82,9 @@ fn visible_tabs(right: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> 
     .into_iter()
     .filter(|(mode, _)| match mode {
         RightPaneMode::Viewer => true,
-        RightPaneMode::Templates => !right.templates.is_empty(),
-        RightPaneMode::Metadata => right.metadata.is_some(),
-        RightPaneMode::Writing => right.writing.is_some(),
+        RightPaneMode::Templates => !right_content.templates.is_empty(),
+        RightPaneMode::Metadata => right_content.metadata.is_some(),
+        RightPaneMode::Writing => right_content.writing.is_some(),
     })
     .collect()
 }
@@ -185,20 +185,20 @@ pub fn draw_right_pane(
 pub fn draw_right_pane_fullscreen(
     f: &mut ratatui::Frame,
     state: &mut UblxState,
-    right: &RightPaneContent,
+    right_content: &RightPaneContent,
     area: Rect,
 ) {
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
-        && (right.open_hint_label.is_some()
-            || right.viewer_byte_size.is_some()
-            || right.viewer_mtime_ns.is_some());
-    let size_str = right.viewer_byte_size.map(format_bytes);
+        && (right_content.open_hint_label.is_some()
+            || right_content.viewer_byte_size.is_some()
+            || right_content.viewer_mtime_ns.is_some());
+    let size_str = right_content.viewer_byte_size.map(format_bytes);
     let footer_line = show_footer
         .then(|| {
             style::viewer_footer_line(
-                right.open_hint_label.as_deref(),
+                right_content.open_hint_label.as_deref(),
                 size_str.as_deref(),
-                right.viewer_mtime_ns,
+                right_content.viewer_mtime_ns,
             )
         })
         .flatten();
@@ -216,18 +216,18 @@ pub fn draw_right_pane_fullscreen(
     let inner = block.inner(area);
     let bottom_pad = UI_CONSTANTS.v_pad;
     let use_kv_tables = match state.right_pane_mode {
-        RightPaneMode::Metadata => right.metadata.as_deref(),
-        RightPaneMode::Writing => right.writing.as_deref(),
+        RightPaneMode::Metadata => right_content.metadata.as_deref(),
+        RightPaneMode::Writing => right_content.writing.as_deref(),
         _ => None,
     };
     let total_lines = match (state.right_pane_mode, use_kv_tables) {
         (_, Some(json)) => kv_tables::content_height(json) as usize,
-        (RightPaneMode::Viewer, _) => right
+        (RightPaneMode::Viewer, _) => right_content
             .viewer
             .as_deref()
             .map(|t| wrapped_line_count(t, inner.width) as usize)
             .unwrap_or(0),
-        (RightPaneMode::Templates, _) => right.templates.lines().count(),
+        (RightPaneMode::Templates, _) => right_content.templates.lines().count(),
         (RightPaneMode::Writing, _) | (RightPaneMode::Metadata, _) => 0,
     };
     let layout = scrollable_content::layout_scrollable_content(
@@ -242,7 +242,7 @@ pub fn draw_right_pane_fullscreen(
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
         f.render_widget(
-            Paragraph::new(content_display_text(state, right, text_rect.width))
+            Paragraph::new(content_display_text(state, right_content, text_rect.width))
                 .style(style::text_style())
                 .wrap(Wrap { trim: false })
                 .scroll((layout.scroll_y, 0)),

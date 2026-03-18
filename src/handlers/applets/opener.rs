@@ -1,4 +1,4 @@
-//! Open file in external editor (Terminal) or with OS default app (GUI).
+//! Opener applet: open file in external editor (Terminal) or with OS default app (GUI).
 
 use std::path::Path;
 use std::process::Command;

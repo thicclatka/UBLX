@@ -1,12 +1,8 @@
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyEvent};
 use std::io;
 
 use crate::config::UblxOpts;
-use crate::handlers::{
-    applets::theme_selector::{self, ThemeContext},
-    reload,
-    state_transitions::UblxActionContext,
-};
+use crate::handlers::{applets, state_transitions};
 use crate::layout::{
     event_loop::RunUblxParams,
     setup::{RightPaneContent, UblxState, ViewData},
@@ -24,11 +20,73 @@ pub struct MainTabFlags {
     pub has_lenses: bool,
 }
 
+/// Key event and resolved action passed into modal handlers (keeps [dispatch_modal_handlers] under clippy’s arg limit).
+struct ModalInput {
+    e: KeyEvent,
+    action: UblxAction,
+}
+
+/// Run modal handlers in order; returns true if any handler consumed the event (caller should then return Ok(false)).
+/// Keeps the main input function short and makes it easy to add new modals in one place.
+///
+/// Rust note: a single dispatch function like this is the usual pattern when each handler has different arguments.
+/// A true "(guard, handler)" table would require either (1) a common context struct passed to every handler, or
+/// (2) `Box<dyn FnOnce() -> bool>` and passing captured state into a runner—often not worth it until you have
+/// many more handlers or need to register them dynamically.
+fn dispatch_modal_handlers(
+    state: &mut UblxState,
+    view: &ViewData,
+    right_content: &RightPaneContent,
+    theme_ctx: applets::theme_selector::ThemeContext<'_>,
+    params: &mut RunUblxParams<'_>,
+    ublx_opts: &mut UblxOpts,
+    input: ModalInput,
+) -> bool {
+    let ModalInput { e, action } = input;
+    // Table-style: each line is (guard / handler returns true) → we handled the event.
+    if lens::handle_lens_name_input(state, params, e) {
+        return true;
+    }
+    if lens::handle_lens_rename_input(state, params, e) {
+        return true;
+    }
+    if lens::handle_lens_delete_confirm(state, params, action) {
+        return true;
+    }
+    if menu::handle_space_menu(state, view, params, action) {
+        return true;
+    }
+    if lens::handle_lens_menu(state, params, action) {
+        return true;
+    }
+    if state.theme.selector_visible {
+        applets::theme_selector::handle_key(state, params, theme_ctx, action);
+        return true;
+    }
+    if state.help_visible {
+        state.help_visible = false;
+        return true;
+    }
+    if menu::handle_open_menu(state, params, ublx_opts, action) {
+        return true;
+    }
+    if menu::try_open_open_menu(state, right_content, action) {
+        return true;
+    }
+    if lens::try_open_lens_menu(state, right_content, action) {
+        return true;
+    }
+    if menu::try_open_space_menu(state, view, right_content, action) {
+        return true;
+    }
+    false
+}
+
 pub fn handle_ublx_input(
     state: &mut UblxState,
     view: &ViewData,
-    right: &RightPaneContent,
-    theme_ctx: ThemeContext<'_>,
+    right_content: &RightPaneContent,
+    theme_ctx: applets::theme_selector::ThemeContext<'_>,
     tabs: MainTabFlags,
     params: &mut RunUblxParams<'_>,
     ublx_opts: &mut UblxOpts,
@@ -51,49 +109,24 @@ pub fn handle_ublx_input(
     state.last_key_for_double = result.last_key_for_double;
     let action = result.action;
 
-    if lens::handle_lens_name_input(state, params, e) {
-        return Ok(false);
-    }
-    if lens::handle_lens_rename_input(state, params, e) {
-        return Ok(false);
-    }
-    if lens::handle_lens_delete_confirm(state, params, action) {
-        return Ok(false);
-    }
-    if menu::handle_space_menu(state, view, params, action) {
-        return Ok(false);
-    }
-    if lens::handle_lens_menu(state, params, action) {
-        return Ok(false);
-    }
-
-    if state.theme.selector_visible {
-        theme_selector::handle_key(state, params, theme_ctx, action);
-        return Ok(false);
-    }
-    if state.help_visible {
-        state.help_visible = false;
-        return Ok(false);
-    }
-    if menu::handle_open_menu(state, params, ublx_opts, action) {
-        return Ok(false);
-    }
-    if menu::try_open_open_menu(state, right, action) {
-        return Ok(false);
-    }
-    if lens::try_open_lens_menu(state, right, action) {
-        return Ok(false);
-    }
-    if menu::try_open_space_menu(state, view, right, action) {
+    if dispatch_modal_handlers(
+        state,
+        view,
+        right_content,
+        theme_ctx,
+        params,
+        ublx_opts,
+        ModalInput { e, action },
+    ) {
         return Ok(false);
     }
 
     if matches!(action, UblxAction::ThemeSelector) {
-        theme_selector::open(state, theme_ctx);
+        applets::theme_selector::open(state, theme_ctx);
         return Ok(false);
     }
     if matches!(action, UblxAction::ReloadConfig) {
-        reload::apply_config_reload(
+        applets::settings::apply_config_reload(
             params,
             ublx_opts,
             state,
@@ -119,6 +152,6 @@ pub fn handle_ublx_input(
             return Ok(false);
         }
     }
-    let ctx = UblxActionContext::new(view, right);
+    let ctx = state_transitions::UblxActionContext::new(view, right_content);
     Ok(ctx.apply_action_to_state(state, action, tabs.has_duplicates, tabs.has_lenses))
 }

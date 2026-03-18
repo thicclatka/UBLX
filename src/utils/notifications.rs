@@ -1,23 +1,18 @@
-//! Log capture and TUI display: toast notifications from log messages.
+//! Log capture and toast data: bumper buffer, ToastSlot stack, show_toast_slot.
 //!
-//! - **User mode**: toast (last N messages, level-colored); info/warn/error.
+//! - **User mode**: toast (last N messages); rendering is in [crate::render::overlays::toast].
 //! - **Dev mode** (`--dev`): tui-logger drain + move_log_events(); trace-level default filter.
 
-use log::Level;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::Instant;
 
+use log::Level;
+use ratatui::style::Style;
+
 use crate::config::TOAST_CONFIG;
 use crate::layout::themes;
-use crate::ui::UI_STRINGS;
-use crate::utils::format::StringObjTraits;
 
 static BUMPER_FOR_LOG: OnceLock<BumperBuffer> = OnceLock::new();
 static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();
@@ -254,7 +249,7 @@ pub fn move_log_events() {
     tui_logger::move_events();
 }
 
-fn level_style(level: Level) -> Style {
+pub fn level_style(level: Level) -> Style {
     let colors = themes::DEFAULT_COLORS;
     let color = match level {
         Level::Error => colors.red,
@@ -266,7 +261,7 @@ fn level_style(level: Level) -> Style {
     Style::default().fg(color)
 }
 
-fn level_short(level: Level) -> &'static str {
+pub fn level_short(level: Level) -> &'static str {
     match level {
         Level::Error => "E",
         Level::Warn => "W",
@@ -274,45 +269,4 @@ fn level_short(level: Level) -> &'static str {
         Level::Debug => "D",
         Level::Trace => "T",
     }
-}
-
-/// Draw one toast slot in the given rect (used for stacked toasts).
-pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
-    f.render_widget(Clear, area);
-    if slot.messages.is_empty() {
-        return;
-    }
-    let title = slot
-        .messages
-        .last()
-        .and_then(|m| m.operation.as_deref())
-        .map(|s| UI_STRINGS.pad(s))
-        .unwrap_or_else(|| UI_STRINGS.pad(UI_STRINGS.notification_title));
-    let lines: Vec<Line<'_>> = slot
-        .messages
-        .iter()
-        .flat_map(|m| {
-            let prefix = format!(" [{}] ", level_short(m.level));
-            let indent = " ".repeat(prefix.len());
-            let style = level_style(m.level).add_modifier(Modifier::BOLD);
-            m.text
-                .split('\n')
-                .enumerate()
-                .map(|(i, seg)| {
-                    let p = if i == 0 { prefix.as_str() } else { &indent };
-                    Line::from(Span::styled(format!("{}{}", p, seg), style))
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    let t = themes::current();
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(t.focused_border).bg(t.notification_bg))
-        .style(Style::default().bg(t.notification_bg))
-        .title(title);
-    let para = Paragraph::new(Text::from(lines))
-        .block(block)
-        .wrap(Wrap { trim: true });
-    f.render_widget(para, area);
 }

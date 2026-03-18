@@ -6,6 +6,56 @@ use crate::layout::setup::{
 use crate::ui::keymap::UblxAction;
 use crate::utils::clamp_selection;
 
+fn apply_quit(state: &mut UblxState) -> bool {
+    if state.viewer_fullscreen {
+        state.viewer_fullscreen = false;
+        false
+    } else {
+        true
+    }
+}
+
+fn apply_misc(state: &mut UblxState, action: UblxAction) {
+    match action {
+        UblxAction::Help => state.help_visible = true,
+        UblxAction::TakeSnapshot => state.snapshot_requested = true,
+        _ => {}
+    }
+}
+
+fn apply_mode_switch(
+    state: &mut UblxState,
+    action: UblxAction,
+    has_duplicates: bool,
+    has_lenses: bool,
+) {
+    match action {
+        UblxAction::MainModeSnapshot => state.main_mode = MainMode::Snapshot,
+        UblxAction::MainModeDelta => state.main_mode = MainMode::Delta,
+        UblxAction::MainModeDuplicates => state.main_mode = MainMode::Duplicates,
+        UblxAction::MainModeLenses => state.main_mode = MainMode::Lenses,
+        UblxAction::LoadDuplicates => state.duplicate_load_requested = true,
+        UblxAction::MainModeToggle => {
+            state.main_mode = state.main_mode.next(has_duplicates, has_lenses);
+        }
+        _ => {}
+    }
+}
+
+fn apply_preview_scroll(state: &mut UblxState, action: UblxAction) {
+    match action {
+        UblxAction::ScrollPreviewUp => {
+            state.panels.preview_scroll = state.panels.preview_scroll.saturating_sub(1);
+        }
+        UblxAction::ScrollPreviewDown => {
+            state.panels.preview_scroll = state.panels.preview_scroll.saturating_add(1);
+        }
+        UblxAction::PreviewTop => state.panels.preview_scroll = 0,
+        UblxAction::PreviewBottom => state.panels.preview_scroll = u16::MAX,
+        _ => {}
+    }
+}
+
 /// Context (view + right-pane content) required to apply actions to state.
 pub struct UblxActionContext<'a> {
     view: &'a ViewData,
@@ -30,30 +80,48 @@ impl<'a> UblxActionContext<'a> {
         has_duplicates: bool,
         has_lenses: bool,
     ) -> bool {
+        if let UblxAction::Quit = action {
+            return apply_quit(state);
+        }
         match action {
-            UblxAction::Quit => {
-                if state.viewer_fullscreen {
-                    state.viewer_fullscreen = false;
-                } else {
-                    return true;
-                }
-            }
-            UblxAction::Help => state.help_visible = true,
-            UblxAction::MainModeSnapshot => state.main_mode = MainMode::Snapshot,
-            UblxAction::MainModeDelta => state.main_mode = MainMode::Delta,
-            UblxAction::MainModeDuplicates => state.main_mode = MainMode::Duplicates,
-            UblxAction::MainModeLenses => state.main_mode = MainMode::Lenses,
-            UblxAction::LoadDuplicates => {
-                state.duplicate_load_requested = true;
-            }
-            UblxAction::MainModeToggle => {
-                state.main_mode = state.main_mode.next(has_duplicates, has_lenses);
+            UblxAction::Help | UblxAction::TakeSnapshot => apply_misc(state, action),
+            UblxAction::MainModeSnapshot
+            | UblxAction::MainModeDelta
+            | UblxAction::MainModeDuplicates
+            | UblxAction::MainModeLenses
+            | UblxAction::MainModeToggle
+            | UblxAction::LoadDuplicates => {
+                apply_mode_switch(state, action, has_duplicates, has_lenses)
             }
             UblxAction::SearchStart => state.search.active = true,
+            UblxAction::CycleRightPane
+            | UblxAction::RightPaneViewer
+            | UblxAction::ViewerFullscreenToggle
+            | UblxAction::RightPaneTemplates
+            | UblxAction::RightPaneMetadata
+            | UblxAction::RightPaneWriting => self.apply_right_pane(state, action),
+            UblxAction::ScrollPreviewUp
+            | UblxAction::ScrollPreviewDown
+            | UblxAction::PreviewTop
+            | UblxAction::PreviewBottom => apply_preview_scroll(state, action),
+            UblxAction::ListTop
+            | UblxAction::ListBottom
+            | UblxAction::MoveUp
+            | UblxAction::MoveDown
+            | UblxAction::FocusCategories
+            | UblxAction::FocusContents
+            | UblxAction::Tab => self.apply_navigation(state, action),
+            _ => {}
+        }
+        false
+    }
+
+    fn apply_right_pane(&self, state: &mut UblxState, action: UblxAction) {
+        match action {
             UblxAction::CycleRightPane => self.apply_cycle_right_pane(state),
             UblxAction::RightPaneViewer => state.right_pane_mode = RightPaneMode::Viewer,
             UblxAction::ViewerFullscreenToggle => {
-                state.viewer_fullscreen = !state.viewer_fullscreen;
+                state.viewer_fullscreen = !state.viewer_fullscreen
             }
             UblxAction::RightPaneTemplates => {
                 if !self.right_content.templates.is_empty() {
@@ -70,16 +138,14 @@ impl<'a> UblxActionContext<'a> {
                     state.right_pane_mode = RightPaneMode::Writing;
                 }
             }
-            UblxAction::ScrollPreviewUp => {
-                state.panels.preview_scroll = state.panels.preview_scroll.saturating_sub(1);
-            }
-            UblxAction::ScrollPreviewDown => {
-                state.panels.preview_scroll = state.panels.preview_scroll.saturating_add(1);
-            }
+            _ => {}
+        }
+    }
+
+    fn apply_navigation(&self, state: &mut UblxState, action: UblxAction) {
+        match action {
             UblxAction::ListTop => self.apply_list_top(state),
             UblxAction::ListBottom => self.apply_list_bottom(state),
-            UblxAction::PreviewTop => state.panels.preview_scroll = 0,
-            UblxAction::PreviewBottom => state.panels.preview_scroll = u16::MAX,
             UblxAction::MoveUp => self.apply_move_up(state),
             UblxAction::MoveDown => self.apply_move_down(state),
             UblxAction::FocusCategories => state.panels.focus = PanelFocus::Categories,
@@ -90,10 +156,8 @@ impl<'a> UblxActionContext<'a> {
                     PanelFocus::Contents => PanelFocus::Categories,
                 };
             }
-            UblxAction::TakeSnapshot => state.snapshot_requested = true,
             _ => {}
         }
-        false
     }
 
     fn apply_cycle_right_pane(&self, state: &mut UblxState) {

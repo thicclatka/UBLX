@@ -192,17 +192,7 @@ pub fn resolve_right_pane_content(
         }
         None => {
             state.cached_tree = None;
-            RightPaneContent {
-                templates: String::new(),
-                metadata: None,
-                writing: None,
-                viewer: None,
-                viewer_path: None,
-                viewer_byte_size: None,
-                viewer_mtime_ns: None,
-                viewer_can_open: false,
-                open_hint_label: None,
-            }
+            RightPaneContent::empty()
         }
     }
 }

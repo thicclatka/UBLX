@@ -4,8 +4,10 @@ use crossterm::event::KeyCode;
 
 use crate::config::OPERATION_NAME;
 use crate::handlers::applets::lens as lens_applet;
-use crate::layout::event_loop::RunUblxParams;
-use crate::layout::setup::UblxState;
+use crate::layout::{
+    event_loop::RunUblxParams,
+    setup::{RightPaneContent, UblxState},
+};
 use crate::ui::keymap::UblxAction;
 use crate::utils::notifications;
 
@@ -178,13 +180,13 @@ pub fn handle_lens_menu(
 /// If action is LensMenu and a file is selected, open the lens menu. Returns true if opened.
 pub fn try_open_lens_menu(
     state: &mut UblxState,
-    right: &crate::layout::setup::RightPaneContent,
+    right_content: &RightPaneContent,
     action: UblxAction,
 ) -> bool {
     if !matches!(action, UblxAction::LensMenu) {
         return false;
     }
-    if let Some(path) = right.viewer_path.clone() {
+    if let Some(path) = right_content.viewer_path.clone() {
         state.open_lens_menu(path);
         return true;
     }

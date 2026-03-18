@@ -2,10 +2,9 @@
 
 mod app_loop;
 mod delta;
-mod duplicates;
-mod lenses;
 mod params;
 mod snapshot;
+mod user_selected;
 mod view_data;
 
 pub use app_loop::main_app_loop;

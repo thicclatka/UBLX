@@ -10,7 +10,7 @@ use crate::ui::UI_STRINGS;
 
 /// Draw the three panes for a list mode: left list from view.filtered_categories, middle paths with counter, right viewer.
 /// `chunks` must have at least 3 elements: [left, middle, right].
-fn draw_list_mode_panes(
+fn draw_user_selected_mode_panes(
     f: &mut Frame,
     state: &mut setup::UblxState,
     view: &setup::ViewData,
@@ -51,7 +51,7 @@ pub fn draw_duplicates_panes(
     right_content: &setup::RightPaneContent,
     chunks: &[Rect],
 ) {
-    draw_list_mode_panes(
+    draw_user_selected_mode_panes(
         f,
         state,
         view,
@@ -69,7 +69,7 @@ pub fn draw_lenses_panes(
     right_content: &setup::RightPaneContent,
     chunks: &[Rect],
 ) {
-    draw_list_mode_panes(
+    draw_user_selected_mode_panes(
         f,
         state,
         view,

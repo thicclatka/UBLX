@@ -1,5 +1,6 @@
 pub mod core;
 pub mod kv_tables;
+pub mod overlays;
 pub mod panes;
 pub mod scrollable_content;
 pub mod search;

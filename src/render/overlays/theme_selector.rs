@@ -1,4 +1,4 @@
-//! Theme selector popup: list of theme names; highlight shows theme preview. Enter to pick and save, Esc to revert.
+//! Theme selector overlay: list of theme names; highlight shows theme preview.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -27,7 +27,6 @@ pub fn render_theme_selector(f: &mut Frame, selected_index: usize) {
     f.render_widget(List::new(items).block(block), rect);
 }
 
-// Centered popup rect for the theme selector: width/height clamped to area, with padding for borders/title.
 fn popup_rect(area: Rect, opts: &[themes::ThemeOption]) -> Rect {
     let content_w = 2 + opts.iter().map(|o| o.display_name.len()).max().unwrap_or(0);
     let content_h = opts.len();
@@ -40,7 +39,6 @@ fn popup_rect(area: Rect, opts: &[themes::ThemeOption]) -> Rect {
     )
 }
 
-// Block for the theme selector popup: centered title, borders, and background.
 fn theme_selector_block(t: &themes::Theme) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
@@ -49,7 +47,6 @@ fn theme_selector_block(t: &themes::Theme) -> Block<'static> {
         .style(Style::default().bg(t.popup_bg))
 }
 
-// One row in the theme selector: swatch (theme background lightened) then name.
 fn theme_option_row(
     index: usize,
     opt: &themes::ThemeOption,
@@ -75,7 +72,6 @@ fn theme_option_row(
     ListItem::new(line)
 }
 
-// Styles for the theme option row: selected and unselected.
 fn row_styles(
     index: usize,
     opt: &themes::ThemeOption,

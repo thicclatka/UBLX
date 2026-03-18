@@ -1,7 +1,7 @@
 //! Snapshot-mode view data: filtered categories and contents from search + selection.
 
 use crate::layout::{filter, setup};
-use crate::utils::{clamp_selection, clamp_selection_opt};
+use crate::utils::format::{clamp_selection, clamp_selection_opt};
 
 /// Resolve the selected category string from the category list index (0 = "All").
 fn selected_category(filtered_categories: &[String], category_idx: usize) -> Option<&str> {
@@ -34,6 +34,41 @@ fn clamp_content_selection(state: &mut setup::UblxState, content_len: usize) {
     } else {
         state.panels.content_state.select(None);
     }
+}
+
+/// Filter content rows by search query on the path (first element of [setup::TuiRow]). Shared by Duplicates and Lenses.
+pub fn filter_contents_by_search(
+    rows: Vec<setup::TuiRow>,
+    search_query: &str,
+) -> Vec<setup::TuiRow> {
+    if search_query.is_empty() {
+        rows
+    } else {
+        rows.into_iter()
+            .filter(|(path, _, _)| path.contains(search_query))
+            .collect()
+    }
+}
+
+/// Build [ViewData] from filtered category names and content rows (DeltaRows). Shared by Duplicates and Lenses.
+pub fn build_user_selected_mode_view_data(
+    filtered_categories: Vec<String>,
+    contents: Vec<setup::TuiRow>,
+) -> setup::ViewData {
+    let category_list_len = filtered_categories.len().max(1);
+    let content_len = contents.len();
+    setup::ViewData {
+        filtered_categories,
+        contents: setup::ViewContents::DeltaRows(contents),
+        category_list_len,
+        content_len,
+    }
+}
+
+/// Clamp category and content list selection from a [ViewData]. Shared by Duplicates and Lenses (and any two-pane list mode).
+pub fn clamp_two_pane_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
+    clamp_category_selection(state, view.category_list_len);
+    clamp_content_selection(state, view.content_len);
 }
 
 /// Reset preview scroll when category or content selection changes.

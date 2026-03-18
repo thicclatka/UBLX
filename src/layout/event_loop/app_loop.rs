@@ -8,22 +8,18 @@ use ratatui::prelude::CrosstermBackend;
 
 use crate::config::{OPERATION_NAME, UblxOpts};
 use crate::engine::db_ops;
-use crate::handlers::{
-    applets::{dupe_finder, settings},
-    core::reapply_terminal_after_editor,
-    snapshot, viewing,
-};
+use crate::handlers::{applets, core::reapply_terminal_after_editor, snapshot, viewing};
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
 use crate::ui::input::{MainTabFlags, handle_ublx_input};
 use crate::utils::notifications;
 
 use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_delta_mode};
-use super::duplicates::{clamp_duplicates_selection, view_data_for_duplicates_mode};
-use super::lenses::{clamp_lenses_selection, view_data_for_lenses_mode};
 use super::params::RunUblxParams;
 use super::snapshot::load_snapshot_for_tui;
+use super::user_selected::{view_data_for_duplicates_mode, view_data_for_lenses_mode};
 use super::view_data::build_view_data;
+use super::view_data::clamp_two_pane_selection;
 
 /// Runs until the user quits. Call from [crate::handlers::core::run_ublx] after terminal setup.
 ///
@@ -55,23 +51,23 @@ fn run_tick(
     params: &mut RunUblxParams<'_>,
     ublx_opts: &mut UblxOpts,
 ) -> io::Result<bool> {
-    settings::on_first_tick(state, params);
+    applets::settings::on_first_tick(state, params);
 
     // Drain completed duplicate load from background thread (non-blocking).
     if let Some(rx) = params.duplicate_groups_rx.as_ref()
         && let Ok(groups) = rx.try_recv()
     {
         params.duplicate_groups_rx = None;
-        dupe_finder::on_groups_received(state, params, groups);
+        applets::dupe_finder::on_groups_received(state, params, groups);
     }
 
     if let Some(rx) = params.config_reload_rx.as_ref()
         && rx.try_recv().is_ok()
     {
-        settings::on_config_reload(state, params, ublx_opts);
+        applets::settings::on_config_reload(state, params, ublx_opts);
     }
 
-    dupe_finder::spawn_if_requested(state, params);
+    applets::dupe_finder::spawn_if_requested(state, params);
 
     prune_toasts(state);
     handle_snapshot_request(state, params);
@@ -86,8 +82,7 @@ fn run_tick(
         build_view_and_right_content(state, categories.as_slice(), all_rows.as_slice(), params);
     if right_content.viewer_can_open {
         right_content.open_hint_label =
-            crate::handlers::open::open_hint_label(ublx_opts.editor_path.as_deref())
-                .map(String::from);
+            applets::opener::open_hint_label(ublx_opts.editor_path.as_deref()).map(String::from);
     }
 
     let latest_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(params.db_path)
@@ -275,7 +270,35 @@ fn poll_snapshot_if_due(
     state.snapshot_poll_deadline = Some(now + SNAPSHOT_POLL_INTERVAL);
 }
 
-/// Build view data and right-pane content for the current mode (Snapshot, Delta, or Duplicates). Returns (view, right_content, delta_data for draw, rows slice for draw).
+/// Shared path for Duplicates and Lenses: clamp selection on `view`, then resolve right-pane content. Caller builds `view` first so no closure captures `state` (avoids E0502).
+fn build_view_and_right_for_user_selected_mode(
+    state: &mut setup::UblxState,
+    params: &RunUblxParams<'_>,
+    db_path_for_read: &std::path::Path,
+    view: setup::ViewData,
+) -> (setup::ViewData, setup::RightPaneContent) {
+    clamp_two_pane_selection(state, &view);
+    let right_content = viewing::resolve_right_pane_content(
+        state,
+        params.dir_to_ublx,
+        db_path_for_read,
+        &view,
+        None,
+    );
+    (view, right_content)
+}
+
+/// Expands to: build view from `$view`, then [build_view_and_right_for_user_selected_mode]; returns `(view, right_content, None)`.
+macro_rules! build_view_and_right_user_selected_mode {
+    ($state:expr, $params:expr, $db_path:expr, $view:expr) => {{
+        let view = $view;
+        let (view, right_content) =
+            build_view_and_right_for_user_selected_mode($state, $params, $db_path, view);
+        (view, right_content, None)
+    }};
+}
+
+/// Build view data and right-pane content for the current mode (Snapshot, Delta, Duplicates, Lenses). Returns (view, right_content, delta_data for draw, rows slice for draw).
 fn build_view_and_right_content<'a>(
     state: &mut setup::UblxState,
     categories: &[String],
@@ -287,45 +310,53 @@ fn build_view_and_right_content<'a>(
     Option<setup::DeltaViewData>,
     Option<&'a [setup::TuiRow]>,
 ) {
+    // If Duplicates/Lenses has no data, switch to Snapshot to avoid empty or hanging loading screen.
+    if state.main_mode == setup::MainMode::Duplicates
+        && params.duplicate_groups.is_empty()
+        && params.duplicate_groups_rx.is_none()
+    {
+        state.main_mode = setup::MainMode::Snapshot;
+    }
+    if state.main_mode == setup::MainMode::Lenses && params.lens_names.is_empty() {
+        state.main_mode = setup::MainMode::Snapshot;
+    }
+
     if state.main_mode == setup::MainMode::Delta {
         let d = build_delta_view_data(params.db_path);
         let view = view_data_for_delta_mode(state, &d);
         clamp_delta_selection(state, &view);
-        let right_content = setup::RightPaneContent {
-            templates: String::new(),
-            metadata: None,
-            writing: None,
-            viewer: None,
-            viewer_path: None,
-            viewer_byte_size: None,
-            viewer_mtime_ns: None,
-            viewer_can_open: false,
-            open_hint_label: None,
-        };
+        let right_content = setup::RightPaneContent::empty();
         (view, right_content, Some(d), None)
     } else {
         let db_path_for_read =
             db_ops::snapshot_read_path_for_tui(params.db_path, !state.snapshot_done_received);
-        let (view, rows_for_right_pane) = if state.main_mode == setup::MainMode::Duplicates {
-            let view = view_data_for_duplicates_mode(state, &params.duplicate_groups);
-            clamp_duplicates_selection(state, &view);
-            (view, None)
+        let (view, right_content, rows_for_draw) = if state.main_mode == setup::MainMode::Duplicates
+        {
+            build_view_and_right_user_selected_mode!(
+                state,
+                params,
+                &db_path_for_read,
+                view_data_for_duplicates_mode(state, &params.duplicate_groups)
+            )
         } else if state.main_mode == setup::MainMode::Lenses {
-            let view = view_data_for_lenses_mode(state, &params.lens_names, &db_path_for_read);
-            clamp_lenses_selection(state, &view);
-            (view, None)
+            build_view_and_right_user_selected_mode!(
+                state,
+                params,
+                &db_path_for_read,
+                view_data_for_lenses_mode(state, &params.lens_names, &db_path_for_read)
+            )
         } else {
             let view = build_view_data(state, categories, all_rows);
-            (view, Some(all_rows))
+            let right_content = viewing::resolve_right_pane_content(
+                state,
+                params.dir_to_ublx,
+                &db_path_for_read,
+                &view,
+                Some(all_rows),
+            );
+            (view, right_content, Some(all_rows))
         };
-        let right_content = viewing::resolve_right_pane_content(
-            state,
-            params.dir_to_ublx,
-            &db_path_for_read,
-            &view,
-            rows_for_right_pane,
-        );
-        (view, right_content, None, rows_for_right_pane)
+        (view, right_content, None, rows_for_draw)
     }
 }
 

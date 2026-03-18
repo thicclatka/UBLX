@@ -6,6 +6,7 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Paragraph};
 
+use super::overlays;
 use super::panes;
 use super::search;
 
@@ -59,20 +60,32 @@ pub fn draw_ublx_frame(
 
     draw_toast_if_visible(f, state, args);
     if state.help_visible {
-        layout::help::render_help_box(f);
+        overlays::render_help_box(f);
     }
     if state.theme.selector_visible {
-        layout::theme_selector::render_theme_selector(f, state.theme.selector_index);
+        overlays::render_theme_selector(f, state.theme.selector_index);
     }
-    if state.open_menu.visible
-        && matches!(
-            state.main_mode,
-            layout::setup::MainMode::Snapshot | layout::setup::MainMode::Lenses
-        )
-    {
-        let middle = body.chunks[1];
-        let content_sel = state.panels.content_state.selected().unwrap_or(0);
-        layout::popup_menu::render_open_menu(
+    draw_popups(f, state, &body, args);
+}
+
+/// Render open menu, lens menu, space menu, and delete confirm popups when visible.
+fn draw_popups(
+    f: &mut Frame,
+    state: &layout::setup::UblxState,
+    body: &BodyAreas,
+    args: &DrawFrameArgs<'_>,
+) {
+    let left = body.chunks[0];
+    let middle = body.chunks[1];
+    let content_sel = state.panels.content_state.selected().unwrap_or(0);
+    let category_sel = state.panels.category_state.selected().unwrap_or(0);
+    let in_snapshot_or_lenses = matches!(
+        state.main_mode,
+        layout::setup::MainMode::Snapshot | layout::setup::MainMode::Lenses
+    );
+
+    if state.open_menu.visible && in_snapshot_or_lenses {
+        overlays::popup::render_open_menu(
             f,
             state.open_menu.selected_index,
             state.open_menu.can_terminal,
@@ -80,17 +93,9 @@ pub fn draw_ublx_frame(
             content_sel,
         );
     }
-    if state.lens_menu.visible
-        && state.lens_menu.name_input.is_none()
-        && matches!(
-            state.main_mode,
-            layout::setup::MainMode::Snapshot | layout::setup::MainMode::Lenses
-        )
-    {
-        let middle = body.chunks[1];
-        let content_sel = state.panels.content_state.selected().unwrap_or(0);
+    if state.lens_menu.visible && state.lens_menu.name_input.is_none() && in_snapshot_or_lenses {
         let lens_names = args.lens_names.unwrap_or(&[]);
-        layout::popup_menu::render_lens_menu(
+        overlays::popup::render_lens_menu(
             f,
             state.lens_menu.selected_index,
             middle,
@@ -101,15 +106,11 @@ pub fn draw_ublx_frame(
     if state.space_menu.visible
         && let Some(ref kind) = state.space_menu.kind
     {
-        let left = body.chunks[0];
-        let middle = body.chunks[1];
-        let content_sel = state.panels.content_state.selected().unwrap_or(0);
-        let category_sel = state.panels.category_state.selected().unwrap_or(0);
         let (area, row) = match kind {
             layout::setup::SpaceMenuKind::FileActions { .. } => (middle, content_sel),
             layout::setup::SpaceMenuKind::LensPanelActions { .. } => (left, category_sel),
         };
-        layout::popup_menu::render_space_menu(
+        overlays::popup::render_space_menu(
             f,
             state.space_menu.selected_index,
             kind,
@@ -121,9 +122,7 @@ pub fn draw_ublx_frame(
     if state.lens_confirm.delete_visible
         && let Some(ref name) = state.lens_confirm.delete_lens_name
     {
-        let left = body.chunks[0];
-        let category_sel = state.panels.category_state.selected().unwrap_or(0);
-        layout::popup_menu::render_delete_confirm(
+        overlays::popup::render_delete_confirm(
             f,
             name,
             state.lens_confirm.delete_selected,
@@ -174,6 +173,34 @@ fn compute_body_areas(body_area: Rect, layout: &LayoutOverlay) -> BodyAreas {
     }
 }
 
+/// Shared path for Duplicates and Lenses: fullscreen right pane, or draw panes when data present, else placeholder.
+fn draw_user_selected_mode_content<F>(
+    f: &mut Frame,
+    state: &mut layout::setup::UblxState,
+    view: &layout::setup::ViewData,
+    right_content: &layout::setup::RightPaneContent,
+    body: &BodyAreas,
+    has_data: bool,
+    draw_panes: F,
+) where
+    F: FnOnce(
+        &mut Frame,
+        &mut layout::setup::UblxState,
+        &layout::setup::ViewData,
+        &layout::setup::RightPaneContent,
+        &[Rect],
+    ),
+{
+    let chunks = &body.chunks[..];
+    if state.viewer_fullscreen {
+        panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
+    } else if has_data {
+        draw_panes(f, state, view, right_content, chunks);
+    } else {
+        panes::delta_mode::draw_delta_placeholder(f, chunks);
+    }
+}
+
 fn draw_main_content(
     f: &mut Frame,
     state: &mut layout::setup::UblxState,
@@ -215,37 +242,36 @@ fn draw_main_content(
                 panes::delta_mode::draw_delta_placeholder(f, chunks);
             }
         }
-        layout::setup::MainMode::Duplicates => {
-            if state.viewer_fullscreen {
-                panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
-            } else if let Some(groups) = args.duplicate_groups
-                && !groups.is_empty()
-            {
-                panes::draw_duplicates_panes(f, state, view, right_content, chunks);
-            } else {
-                panes::delta_mode::draw_delta_placeholder(f, chunks);
-            }
-        }
-        layout::setup::MainMode::Lenses => {
-            if state.viewer_fullscreen {
-                panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
-            } else if let Some(names) = args.lens_names
-                && !names.is_empty()
-            {
-                panes::draw_lenses_panes(f, state, view, right_content, chunks);
-            } else {
-                panes::delta_mode::draw_delta_placeholder(f, chunks);
-            }
-        }
+        layout::setup::MainMode::Duplicates => draw_user_selected_mode_content(
+            f,
+            state,
+            view,
+            right_content,
+            body,
+            args.duplicate_groups.is_some_and(|g| !g.is_empty()),
+            panes::draw_duplicates_panes,
+        ),
+        layout::setup::MainMode::Lenses => draw_user_selected_mode_content(
+            f,
+            state,
+            view,
+            right_content,
+            body,
+            args.lens_names.is_some_and(|n| !n.is_empty()),
+            panes::draw_lenses_panes,
+        ),
     }
     if state.lens_menu.name_input.is_some() {
-        layout::popup_menu::render_lens_name_prompt(
+        let middle = body.chunks[1];
+        let content_sel = state.panels.content_state.selected().unwrap_or(0);
+        overlays::popup::render_lens_name_popup(
             f,
-            body.status_area,
+            middle,
+            content_sel,
             state.lens_menu.name_input.as_deref().unwrap_or(""),
         );
     } else if let Some((_, ref input)) = state.lens_confirm.rename_input {
-        layout::popup_menu::render_lens_rename_prompt(f, body.status_area, input);
+        overlays::popup::render_lens_rename_prompt(f, body.status_area, input);
     } else {
         search::draw_status_line(
             f,
@@ -282,7 +308,7 @@ fn draw_toast_if_visible(
         let h = h.min(area.height);
         let top = bottom.saturating_sub(h);
         if top >= area.y && h > 0 {
-            notifications::render_toast_slot(f, Rect::new(x, top, w, h), slot);
+            overlays::render_toast_slot(f, Rect::new(x, top, w, h), slot);
         }
         bottom = top.saturating_sub(gap);
     }

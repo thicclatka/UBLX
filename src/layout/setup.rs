@@ -334,6 +334,7 @@ impl DeltaViewData {
     }
 }
 /// Text to show in the right pane for the current selection.
+#[derive(Default)]
 pub struct RightPaneContent {
     pub templates: String,
     pub metadata: Option<String>,
@@ -349,6 +350,13 @@ pub struct RightPaneContent {
     pub viewer_can_open: bool,
     /// Label for the open hint node in the footer (e.g. "↗", "↗ (Terminal)", "↗ (GUI)"). Set by caller when viewer_can_open.
     pub open_hint_label: Option<String>,
+}
+
+impl RightPaneContent {
+    /// Empty right-pane content (e.g. Delta mode has no selection-based viewer).
+    pub fn empty() -> Self {
+        Self::default()
+    }
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
