@@ -1,5 +1,3 @@
-//! Library for the ublx TUI. The binary in `main.rs` is the primary entry point; this crate exposes modules for integration tests and reuse.
-
 pub mod config;
 pub mod engine;
 pub mod handlers;
