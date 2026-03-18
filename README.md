@@ -7,7 +7,7 @@
 
 [_Ublx ... Safe when taken as directed._](https://bookshop.org/p/books/ubik-philip-k-dick/1fc432e3ade32290)
 
-UBLX is a **TUI that turns any directory into a flat, navigable catalog** — previews, metadata, and templates in the terminal. Index once (nefaxer + zahirscan), then browse and search a single snapshot.
+UBLX is a **TUI that turns any directory into a flat, navigable catalog** — index once, then browse categories, previews, metadata, and templates in the terminal. (Driven by [nefaxer](https://github.com/thicclatka/nefaxer) and [zahirscan](https://github.com/thicclatka/zahirscan).)
 
 ## Install
 
@@ -19,7 +19,7 @@ Or clone the repo and run `cargo build --release`; the binary is in `target/rele
 
 ## What it does
 
-- **Index & enrich** — [nefaxer](https://github.com/thicclatka/nefaxer) walks the tree (drive-aware); [zahirscan](https://github.com/thicclatka/zahirscan) adds metadata. Prior index (`.ublx` or `.nefaxer`) used for fast diffs. Writes `DIR/.ublx` (SQLite: snapshot, settings, delta_log, lenses). Config: `ublx.toml` or `.ublx.toml`.
+- **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes `DIR/.ublx` (SQLite: snapshot, settings, delta_log, lenses). Config: `ublx.toml` or `.ublx.toml`.
 - **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), context menus (Space, Shift+L), stacked toasts. Viewer has fullscreen (F). `q` / Esc quit.
 - **Test run** — `ublx --test [DIR]` runs index + enrich only, no TUI.
 
@@ -56,21 +56,30 @@ Press **?** in the TUI to open the full keybinding help.
 
 ## Configuration
 
-Config is optional. If present, **global** config is applied first, then **local** overrides from the indexed directory.
+Config is optional. If present, **global** config is applied first, then **local** overrides from the indexed directory. Successful configs are cached per indexed directory.
 
-| Platform      | Global config              |
-| ------------- | -------------------------- |
-| macOS / Linux | `~/.config/ublx/ublx.toml` |
-| Windows       | `%APPDATA%\ublx\ublx.toml` |
+| Platform      | Global config              | Config Cache                   |
+| ------------- | -------------------------- | ------------------------------ |
+| macOS / Linux | `~/.config/ublx/ublx.toml` | `~/.local/share/ublx/configs/` |
+| Windows       | `%APPDATA%\ublx\ublx.toml` | `%LOCALAPPDATA%\ublx\configs\` |
 
-**Local** config (same on all platforms): `.ublx.toml` or `ublx.toml` in the directory you index. Only keys present in each file override defaults (e.g. theme, layout pane percentages). Choosing a theme in the theme selector (Ctrl+t) and pressing Enter saves it to the local config.
+**Local** config (same on all platforms): `.ublx.toml` or `ublx.toml` in the directory you index. Only keys present in each file override defaults. Choosing a theme in the theme selector (Ctrl+t) and pressing Enter saves it to the local config.
 
-**Live reload** — UBLX watches the config file. If you edit it (inside the TUI or in an external editor), a successful parse applies the new settings immediately. If the file is invalid, an error is shown and the last successful config is used; that snapshot is cached per indexed directory at:
+**Configurable keys** (in `ublx.toml` / `.ublx.toml`):
 
-| Platform      | Config cache                   |
-| ------------- | ------------------------------ |
-| macOS / Linux | `~/.local/share/ublx/configs/` |
-| Windows       | `%LOCALAPPDATA%\ublx\configs\` |
+| Key                 | Type             | Allowable values / notes                                                                                                                         |
+| ------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `theme`             | string           | See [Themes](src/layout/themes/README.md#allowable-values).                                                                                      |
+| `layout`            | table            | Pane widths: `left_pct`, `middle_pct`, `right_pct` (each 0–100; must sum to 100). Default: `left_pct = 20`, `middle_pct = 30`, `right_pct = 50`. |
+| `transparent`       | bool             | If `true`, no app background (terminal default/transparency shows).                                                                              |
+| `show_hidden_files` | bool             | If `true`, include hidden files (e.g. `.*`) in the index.                                                                                        |
+| `hash`              | bool             | If `true`, compute blake3 hash per file (slower; used for duplicate detection and change detection).                                             |
+| `exclude`           | array of strings | Extra path patterns to exclude from indexing (startup only; not hot-reloadable).                                                                 |
+| `editor_path`       | string           | Path to editor for “Open (Terminal)” (e.g. `"vim"`, `"nvim"`). When unset, uses `$EDITOR`.                                                       |
+
+All of the above except `exclude` are **hot-reloadable** (edit the file and changes apply without restart).
+
+**Live reload** — UBLX watches the config file. If you edit it (inside the TUI or in an external editor), a successful parse applies the new settings immediately. If the file is invalid, an error is shown and the last successful config is used (loaded from cache for that directory).
 
 ## Usage
 
