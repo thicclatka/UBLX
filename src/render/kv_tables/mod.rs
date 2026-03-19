@@ -9,6 +9,7 @@ pub mod consts;
 pub mod csv;
 pub mod draw;
 pub mod format;
+pub mod ratatui_table;
 pub mod schema;
 pub mod sections;
 pub mod walk;

@@ -3,13 +3,12 @@
 
 use rayon::prelude::*;
 
+use crate::config::PARALLEL;
 use super::setup::TuiRow;
-
-/// Threshold above which we use parallel iteration for content indices (avoids rayon overhead on small lists).
-const PAR_CONTENT_INDICES_THRESHOLD: usize = 5000;
 
 /// Categories that have at least one row matching the search query.
 /// If `search_query` is empty, returns all categories.
+/// Uses parallel iteration when there are many categories (≥ [PARALLEL.categories_for_search]) and search is non-empty.
 pub fn categories_for_search(
     categories: &[String],
     all_rows: &[TuiRow],
@@ -19,21 +18,22 @@ pub fn categories_for_search(
     if q.is_empty() {
         return categories.to_vec();
     }
-    categories
-        .iter()
-        .filter(|cat| {
-            all_rows
-                .iter()
-                .any(|(path, c, _)| c == *cat && (path.contains(q) || c.contains(q)))
-        })
-        .cloned()
-        .collect()
+    let matches = |cat: &String| {
+        all_rows
+            .iter()
+            .any(|(path, c, _)| c == cat && (path.contains(q) || c.contains(q)))
+    };
+    if categories.len() >= PARALLEL.categories_for_search {
+        categories.par_iter().filter(|cat| matches(cat)).cloned().collect()
+    } else {
+        categories.iter().filter(|cat| matches(cat)).cloned().collect()
+    }
 }
 
 /// Indices into `all_rows` for the current category and search (no row copy).
 /// When `selected_category` is `None`, all rows are considered; otherwise only rows in that category.
 /// Search filter is applied when `search_query` is non-empty.
-/// Uses parallel iteration when `all_rows.len()` exceeds [PAR_CONTENT_INDICES_THRESHOLD].
+/// Uses parallel iteration when `all_rows.len()` exceeds [PARALLEL.content_indices].
 pub fn content_indices_for_view(
     all_rows: &[TuiRow],
     selected_category: Option<&str>,
@@ -47,7 +47,7 @@ pub fn content_indices_for_view(
         selected_category.is_none_or(|c| category.as_str() == c) && match_search(path, category)
     };
 
-    if all_rows.len() >= PAR_CONTENT_INDICES_THRESHOLD {
+    if all_rows.len() >= PARALLEL.content_indices {
         all_rows
             .par_iter()
             .enumerate()
@@ -65,13 +65,21 @@ pub fn content_indices_for_view(
 }
 
 /// Filter raw delta rows (created_ns, path) by path containing query. Keeps dates when building display lines.
+/// Uses parallel iteration when row count exceeds [PARALLEL.delta_rows].
 pub fn filter_delta_rows(rows: &[(i64, String)], search_query: &str) -> Vec<(i64, String)> {
     let q = search_query.trim();
     if q.is_empty() {
         return rows.to_vec();
     }
-    rows.iter()
-        .filter(|(_, path)| path.contains(q))
-        .cloned()
-        .collect()
+    if rows.len() >= PARALLEL.delta_rows {
+        rows.par_iter()
+            .filter(|(_, path)| path.contains(q))
+            .cloned()
+            .collect()
+    } else {
+        rows.iter()
+            .filter(|(_, path)| path.contains(q))
+            .cloned()
+            .collect()
+    }
 }

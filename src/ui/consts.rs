@@ -252,6 +252,12 @@ pub struct UiGlyphs {
     pub round_right: char,
     /// Full block (e.g. theme selector swatch). U+2588.
     pub swatch_block: char,
+    /// Markdown viewer: suffix (after link text) for inline links `[text](url)`.
+    pub markdown_link: char,
+    /// Markdown viewer: suffix for link destinations that look like file attachments (.pdf, .zip, …).
+    pub markdown_attachment: char,
+    /// Markdown viewer: prefix for `![alt](url)` image syntax (photo / figure).
+    pub markdown_image: char,
 }
 
 impl Default for UiGlyphs {
@@ -272,6 +278,9 @@ impl UiGlyphs {
             round_left: '\u{e0b6}',
             round_right: '\u{e0b4}',
             swatch_block: '\u{2588}',
+            markdown_link: '\u{2197}',     // ↗
+            markdown_attachment: '\u{1f4ce}', // 📎
+            markdown_image: '\u{1f5bc}',      // 🖼 (framed picture)
         }
     }
 }

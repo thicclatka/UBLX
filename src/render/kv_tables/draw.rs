@@ -6,7 +6,7 @@ use super::consts::TABLE_GAP;
 use super::sections;
 use super::sections::Section;
 use crate::layout::style;
-use crate::render::tables;
+use super::ratatui_table;
 use crate::ui::UI_STRINGS;
 
 /// Visible line range for a section: (skip_lines, take_lines) or None if section is off-screen.
@@ -135,7 +135,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                     let actual_y = table_start_line.saturating_sub(visible_start);
                     let rect = rect_in_viewport(table_area, actual_y, (1 + take) as u16, viewport);
                     f.render_widget(
-                        tables::section_to_table(&kv_visible, row_offset + skip),
+                        ratatui_table::section_to_table(&kv_visible, row_offset + skip),
                         rect,
                     );
                 }
@@ -151,7 +151,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                     let y_offset = table_start.saturating_sub(visible_start);
                     let rect = rect_in_viewport(table_area, y_offset, (1 + take) as u16, viewport);
                     f.render_widget(
-                        tables::contents_to_table_window(
+                        ratatui_table::contents_to_table_window(
                             c,
                             row_offset + skip,
                             skip,
@@ -171,7 +171,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                     let y_offset = table_start.saturating_sub(visible_start);
                     let rect = rect_in_viewport(table_area, y_offset, take as u16, viewport);
                     f.render_widget(
-                        tables::single_column_list_to_table(list, row_offset, skip, skip + take),
+                        ratatui_table::single_column_list_to_table(list, row_offset, skip, skip + take),
                         rect,
                     );
                 }

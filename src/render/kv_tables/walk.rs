@@ -53,6 +53,13 @@ fn push_contents_from_entries(sections: &mut Vec<Section>, arr: Vec<Value>) {
     }
 }
 
+/// Same as [push_root_parts] but returns a new vec. Used when parsing blobs in parallel.
+pub fn root_parts_sections(map: &Map<String, Value>) -> Vec<Section> {
+    let mut sections = Vec::new();
+    push_root_parts(&mut sections, map);
+    sections
+}
+
 /// Walk root map once; push sections in order (flat KV, schema, sheet_stats, common_pivots, csv_metadata, then each nested, then entries). Uses JSON key names (SectionKeys) in the match.
 pub fn push_root_parts(sections: &mut Vec<Section>, map: &Map<String, Value>) {
     let mut flat = Vec::new();

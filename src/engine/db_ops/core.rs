@@ -9,8 +9,10 @@ use rusqlite::{Connection, OptionalExtension};
 use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
 use super::utils as db_ops_utils;
 use crate::config::{UblxPaths, UblxSettings};
-use crate::handlers::nefax_ops::{NefaxDiff, NefaxResult};
-use crate::handlers::zahir_ops::{ZahirOutput, ZahirResult, get_zahir_output_by_path};
+use crate::handlers::{
+    nefax_ops::{NefaxDiff, NefaxResult},
+    zahir_ops::{ZahirOutput, ZahirResult, get_zahir_output_by_path},
+};
 use crate::utils::canonicalize_dir_to_ublx;
 
 /// One row from snapshot for TUI list: (path, category, size_bytes). zahir_json is loaded on demand for the selected row.

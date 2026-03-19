@@ -1,15 +1,17 @@
-//! Building ratatui Table widgets from sections.
+//! Ratatui [`Table`] widgets for [`super::sections`] (metadata, writing, sheet-style JSON).
 //!
-//! Column widths are computed from content (header + visible rows), then balanced against
-//! the current window width so no column is squeezed when others are wide.
+//! Windowed row slicing and column width balancing live here; see [`super::draw`] for painting.
+//! File-viewer grids (CSV / Markdown) use **comfy-table** in [`crate::render::viewers::pretty_tables`].
 
 use ratatui::layout::Constraint;
 use ratatui::widgets::{Cell, Row, Table};
+use rayon::prelude::*;
 
-use super::kv_tables::{
+use super::{
     format,
     sections::{ContentsSection, KvSection, SingleColumnListSection},
 };
+use crate::config::PARALLEL;
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;
@@ -130,29 +132,56 @@ fn contents_row(
 
 /// Natural width (chars) per column: max of header length and max cell length in visible window.
 /// Column names (headers) are always included so they are never squeezed.
+/// Uses parallel iteration when visible row count exceeds [PARALLEL.contents_natural_widths].
 fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) -> Vec<usize> {
     let keys = &section.column_keys;
     let cols = &section.columns;
     if keys.is_empty() {
         return vec![];
     }
-    let mut natural: Vec<usize> = cols.iter().map(|s| s.chars().count()).collect();
-    for (_, v) in section
-        .entries
-        .iter()
-        .enumerate()
-        .skip(start)
-        .take(end.saturating_sub(start))
-    {
-        let Some(obj) = v.as_object() else { continue };
-        for (j, k) in keys.iter().enumerate() {
-            let len = entry_cell(obj, k).chars().count();
-            if let Some(nat) = natural.get_mut(j) {
-                *nat = (*nat).max(len);
+    let header_natural: Vec<usize> = cols.iter().map(|s| s.chars().count()).collect();
+    let entries_window = end.saturating_sub(start);
+    if entries_window < PARALLEL.contents_natural_widths {
+        let mut natural = header_natural;
+        for v in section.entries.iter().skip(start).take(entries_window) {
+            let Some(obj) = v.as_object() else { continue };
+            for (j, k) in keys.iter().enumerate() {
+                let len = entry_cell(obj, k).chars().count();
+                if let Some(nat) = natural.get_mut(j) {
+                    *nat = (*nat).max(len);
+                }
             }
         }
+        natural
+    } else {
+        let slice = &section.entries[start..end];
+        let chunk_size = (entries_window / 4).max(1);
+        let chunk_naturals: Vec<Vec<usize>> = slice
+            .par_chunks(chunk_size)
+            .map(|chunk| {
+                let mut nat = header_natural.clone();
+                for v in chunk {
+                    let Some(obj) = v.as_object() else { continue };
+                    for (j, k) in keys.iter().enumerate() {
+                        let len = entry_cell(obj, k).chars().count();
+                        if let Some(nat_j) = nat.get_mut(j) {
+                            *nat_j = (*nat_j).max(len);
+                        }
+                    }
+                }
+                nat
+            })
+            .collect();
+        let mut natural = header_natural;
+        for chunk_nat in chunk_naturals {
+            for (j, &cn) in chunk_nat.iter().enumerate() {
+                if let Some(nat_j) = natural.get_mut(j) {
+                    *nat_j = (*nat_j).max(cn);
+                }
+            }
+        }
+        natural
     }
-    natural
 }
 
 /// Minimum width per column (header length) so column names are never truncated.

@@ -3,7 +3,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
-use crate::config::{RunMode, UblxOpts, UblxPaths};
+use rayon::prelude::*;
+
+use crate::config::{RunMode, PARALLEL, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
 use crate::handlers::{nefax_ops, zahir_ops};
 use crate::utils::{canonicalize_dir_to_ublx, error_writer, exit_error};
@@ -46,13 +48,19 @@ fn paths_needing_zahir(
     prior_nefax: Option<&nefax_ops::NefaxResult>,
     dir_to_ublx_abs: &Path,
 ) -> Vec<PathBuf> {
-    nefax
-        .iter()
-        .filter(|(path, meta)| {
-            meta.size > 0 && zahir_ops::needs_zahir(prior_nefax, path, meta.mtime_ns)
-        })
-        .map(|(p, _)| dir_to_ublx_abs.join(p))
-        .collect()
+    let entries: Vec<_> = nefax.iter().collect();
+    let filter_map = |(path, meta): &(&PathBuf, &nefax_ops::NefaxPathMeta)| {
+        if meta.size > 0 && zahir_ops::needs_zahir(prior_nefax, path, meta.mtime_ns) {
+            Some(dir_to_ublx_abs.join(path))
+        } else {
+            None
+        }
+    };
+    if entries.len() >= PARALLEL.paths_needing_zahir {
+        entries.par_iter().filter_map(filter_map).collect()
+    } else {
+        entries.iter().filter_map(filter_map).collect()
+    }
 }
 
 /// Run the index → zahir pipeline. Mode (sequential vs stream) is derived from [UblxOpts].

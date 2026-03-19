@@ -112,6 +112,8 @@ pub struct UblxState {
     pub lens_confirm: LensConfirmState,
     pub help_visible: bool,
     pub cached_tree: Option<(String, String)>,
+    /// CSV viewer: (path, content_width, table_string, line_count) to avoid re-parsing every frame.
+    pub viewer_csv_cache: Option<(String, u16, String, usize)>,
     pub snapshot_requested: bool,
     pub viewer_fullscreen: bool,
     pub last_key_for_double: Option<char>,
@@ -144,6 +146,7 @@ impl UblxState {
             lens_confirm: LensConfirmState::default(),
             help_visible: false,
             cached_tree: None,
+            viewer_csv_cache: None,
             snapshot_requested: false,
             viewer_fullscreen: false,
             last_key_for_double: None,

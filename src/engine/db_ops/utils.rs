@@ -4,10 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use rayon::prelude::*;
 use rusqlite::{Connection, Statement};
 
 use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
-use crate::config::{NEFAX_DB, UblxPaths};
+use crate::config::{NEFAX_DB, PARALLEL, UblxPaths};
 use crate::handlers::{
     nefax_ops::{NefaxDiff, NefaxPathMeta, NefaxResult},
     zahir_ops::{ZahirOutput, zahir_output_to_json},
@@ -62,6 +63,10 @@ pub fn prepare_results_for_snapshot_insertion(
     (path_str, category, zahir_json)
 }
 
+/// Prepared row for snapshot insert: (path_str, category, zahir_json, mtime_ns, size, hash).
+/// Hash is owned so the vec can be built in parallel (Send).
+type SnapshotInsertRow = (String, String, String, i64, i64, Option<Vec<u8>>);
+
 pub fn insert_results_into_snapshot(
     stmt: &mut Statement,
     nefax: &NefaxResult,
@@ -70,22 +75,60 @@ pub fn insert_results_into_snapshot(
     zahir_output_by_path: &HashMap<String, &ZahirOutput>,
     prior_zahir_json: &std::collections::HashMap<String, String>,
 ) -> Result<(), anyhow::Error> {
-    for (path, meta) in nefax {
-        let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
-            dir_to_ublx,
-            path,
-            ublx_paths,
-            zahir_output_by_path,
-            prior_zahir_json,
-        );
-        stmt.execute(rusqlite::params![
-            path_str,
-            meta.mtime_ns,
-            meta.size as i64,
-            meta.hash.as_ref().map(|h| h.as_slice()),
-            category,
-            zahir_json,
-        ])?;
+    if nefax.len() >= PARALLEL.snapshot_insert_prep {
+        let entries: Vec<_> = nefax.iter().collect();
+        let prepared: Vec<SnapshotInsertRow> = entries
+            .par_iter()
+            .map(|(path, meta)| {
+                let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
+                    dir_to_ublx,
+                    path.as_path(),
+                    ublx_paths,
+                    zahir_output_by_path,
+                    prior_zahir_json,
+                );
+                let hash = meta
+                    .hash
+                    .as_ref()
+                    .map(|h| h.as_slice().to_vec());
+                (
+                    path_str,
+                    category,
+                    zahir_json,
+                    meta.mtime_ns,
+                    meta.size as i64,
+                    hash,
+                )
+            })
+            .collect();
+        for (path_str, category, zahir_json, mtime_ns, size, hash) in prepared {
+            stmt.execute(rusqlite::params![
+                path_str,
+                mtime_ns,
+                size,
+                hash.as_deref(),
+                category,
+                zahir_json,
+            ])?;
+        }
+    } else {
+        for (path, meta) in nefax {
+            let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
+                dir_to_ublx,
+                path,
+                ublx_paths,
+                zahir_output_by_path,
+                prior_zahir_json,
+            );
+            stmt.execute(rusqlite::params![
+                path_str,
+                meta.mtime_ns,
+                meta.size as i64,
+                meta.hash.as_ref().map(|h| h.as_slice()),
+                category,
+                zahir_json,
+            ])?;
+        }
     }
     insert_global_config_row_if_exists(stmt, ublx_paths)?;
     Ok(())

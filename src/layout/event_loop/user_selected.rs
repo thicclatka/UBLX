@@ -3,6 +3,9 @@
 
 use std::path::Path;
 
+use rayon::prelude::*;
+
+use crate::config::PARALLEL;
 use crate::engine::db_ops::{self, DuplicateGroup};
 use crate::layout::setup;
 use crate::utils::format::clamp_selection;
@@ -34,6 +37,15 @@ pub fn view_data_for_user_selected_mode(
                     .iter()
                     .map(|g| g.representative_name().to_string())
                     .collect()
+            } else if groups.len() >= PARALLEL.user_selected_filter {
+                groups
+                    .par_iter()
+                    .filter(|g| {
+                        g.representative_name().contains(search_query)
+                            || g.paths.iter().any(|p| p.contains(search_query))
+                    })
+                    .map(|g| g.representative_name().to_string())
+                    .collect()
             } else {
                 groups
                     .iter()
@@ -48,6 +60,12 @@ pub fn view_data_for_user_selected_mode(
         UserSelectedSource::Lenses { lens_names, .. } => {
             if search_query.is_empty() {
                 lens_names.to_vec()
+            } else if lens_names.len() >= PARALLEL.user_selected_filter {
+                lens_names
+                    .par_iter()
+                    .filter(|n| n.contains(search_query))
+                    .cloned()
+                    .collect()
             } else {
                 lens_names
                     .iter()

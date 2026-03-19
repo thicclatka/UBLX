@@ -1,7 +1,9 @@
 //! Section types and JSON parsing into Key/Value and Contents sections.
 
+use rayon::prelude::*;
 use serde_json::Value;
 
+use crate::config::PARALLEL;
 use crate::ui::UI_STRINGS;
 
 use super::consts::TABLE_GAP;
@@ -69,31 +71,39 @@ impl Section {
     }
 }
 
+/// Parse one blob into sections (either csv_metadata or walk). Returns empty vec on parse failure.
+fn parse_one_blob(blob: &str) -> Vec<Section> {
+    let value: Value = match serde_json::from_str(blob.trim()) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+    let map = match value.as_object() {
+        Some(o) => o,
+        None => return vec![],
+    };
+    if csv::is_csv_metadata(map) {
+        csv::sections_from_csv_root(map)
+    } else {
+        walk::root_parts_sections(map)
+    }
+}
+
 /// Parse JSON string (one or more objects joined by "\n\n") into sections. First section is titled "General"; nested objects become separate sections; objects with "entries" get an extra "Contents" table. Special keys: schema (tree), sheet_stats, common_pivots, csv_metadata.
+/// Uses parallel iteration when blob count exceeds [PARALLEL.json_sections_blobs].
 pub fn parse_json_sections(json: &str) -> Vec<Section> {
-    let mut sections = Vec::new();
     let blobs: Vec<&str> = json
         .split("\n\n")
         .filter(|s| !s.trim().is_empty())
         .collect();
 
-    for blob in blobs {
-        let value: Value = match serde_json::from_str(blob.trim()) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let map = match value.as_object() {
-            Some(o) => o,
-            None => continue,
-        };
-
-        if csv::is_csv_metadata(map) {
-            sections.extend(csv::sections_from_csv_root(map));
-            continue;
-        }
-
-        walk::push_root_parts(&mut sections, map);
-    }
+    let mut sections: Vec<Section> = if blobs.len() >= PARALLEL.json_sections_blobs {
+        blobs.par_iter().flat_map(|blob| parse_one_blob(blob)).collect()
+    } else {
+        blobs
+            .iter()
+            .flat_map(|blob| parse_one_blob(blob))
+            .collect()
+    };
 
     if let Some(Section::KeyValue(kv)) = sections.first_mut() {
         kv.title = Some(UI_STRINGS.first_table_title.to_string());

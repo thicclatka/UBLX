@@ -18,8 +18,7 @@ use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_d
 use super::params::RunUblxParams;
 use super::snapshot::load_snapshot_for_tui;
 use super::user_selected::{view_data_for_duplicates_mode, view_data_for_lenses_mode};
-use super::view_data::build_view_data;
-use super::view_data::clamp_two_pane_selection;
+use super::view_data::{build_view_data, clamp_two_pane_selection};
 
 /// Runs until the user quits. Call from [crate::handlers::core::run_ublx] after terminal setup.
 ///
