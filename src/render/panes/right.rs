@@ -13,16 +13,20 @@
 //! 3. **Total lines** — [`viewer_total_lines`] must match what is actually drawn (scrollbar height).
 //!    Branches: JSON metadata/writing → [`kv_tables::content_height`]; CSV → cache or
 //!    [`csv::table_line_count`]; otherwise plain text → [`wrapped_line_count`].
+//!    Delimited table preview: [`viewer_show_delimited_table`] — zahir category **CSV** (incl. tsv/tab/psv)
+//!    **or** path extension `.csv`/`.tsv`/`.tab`/`.psv` so rows still get tables if metadata category is off.
 //! 4. **Scroll** — [`scrollable_content::layout_scrollable_content`] + [`scrollable_content::draw_scrollbar`].
 //! 5. **Draw** — If metadata/writing JSON is present, [`kv_tables::draw_tables`] (no `Paragraph`).
 //!    Else [`content_display_text`] → `Paragraph` with optional ratatui [`Wrap`].
+//! 6. **Images** — See [`crate::render::viewers::image_handler`]: ≥512 KiB off-thread decode, tiered
+//!    downscale, **min(tier, viewport cells)**, and a small **LRU** for instant back within a few files.
 //!
 //! **Preformatted layout:** [`viewer_uses_preformatted_layout`] is true for Markdown and for CSV
 //! that parsed to a non-empty table. Those paths already produce viewport-width lines; ratatui must
 //! *not* wrap again ([`ratatui_wrap_right_paragraph`]). Plain text and failed/empty CSV still use
 //! `Wrap`.
 //!
-//! ## Adding another path-based viewer
+//! ## Adding another category-based viewer
 //!
 //! Keep display, line count, and wrap flag aligned: extend [`viewer_display_text`] and
 //! [`viewer_total_lines`], and set whether [`viewer_uses_preformatted_layout`] should skip `Wrap`.
@@ -31,13 +35,44 @@
 use ratatui::layout::{Constraint, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use zahirscan::FileType;
 
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
 use crate::layout::style;
-use crate::render::viewers::{csv, markdown};
+use crate::render::viewers::{csv_handler, image_handler as viewer_image, markdown};
 use crate::render::{kv_tables, scrollable_content};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
+use crate::utils::path::path_has_extension;
 use crate::utils::{format::StringObjTraits, format_bytes};
+
+/// Extensions zahirscan treats as delimiter-separated ([`FileType::Csv`]).
+const DELIMITED_TABLE_EXTS: &[&str] = &["csv", "tsv", "tab", "psv"];
+
+#[inline]
+fn viewer_is_csv(rc: &RightPaneContent) -> bool {
+    rc.viewer_zahir_type == Some(FileType::Csv)
+}
+
+/// Use comfy-table preview for delimiter-separated files: zahir **CSV** category **or** known extension.
+/// Relying only on [`RightPaneContent::viewer_zahir_type`] breaks when the snapshot category string
+/// doesn’t map to [`FileType::Csv`] (e.g. legacy `"Text"`), so we also key off the path.
+#[inline]
+fn viewer_show_delimited_table(rc: &RightPaneContent) -> bool {
+    if viewer_is_markdown(rc) {
+        return false;
+    }
+    if viewer_is_csv(rc) {
+        return true;
+    }
+    rc.viewer_path
+        .as_deref()
+        .is_some_and(|p| path_has_extension(p, DELIMITED_TABLE_EXTS))
+}
+
+#[inline]
+fn viewer_is_markdown(rc: &RightPaneContent) -> bool {
+    rc.viewer_zahir_type == Some(FileType::Markdown)
+}
 
 /// Ensure CSV viewer cache is filled for current (path, width) so we parse/build only once per frame.
 fn ensure_viewer_csv_cache(
@@ -52,7 +87,7 @@ fn ensure_viewer_csv_cache(
         state.viewer_csv_cache = None;
         return;
     };
-    if !csv::is_csv_path(path) {
+    if !viewer_show_delimited_table(right_content) {
         state.viewer_csv_cache = None;
         return;
     }
@@ -66,9 +101,10 @@ fn ensure_viewer_csv_cache(
     {
         return;
     }
-    match csv::parse_csv(raw) {
+    match csv_handler::parse_csv(raw, Some(path)) {
         Ok(rows) if !rows.is_empty() => {
-            let (table_string, line_count) = csv::table_string_and_line_count(&rows, content_width);
+            let (table_string, line_count) =
+                csv_handler::table_string_and_line_count(&rows, content_width);
             state.viewer_csv_cache =
                 Some((path.to_string(), content_width, table_string, line_count));
         }
@@ -92,15 +128,30 @@ fn viewer_total_lines(
             {
                 return c.3;
             }
-            if right_content
-                .viewer_path
-                .as_deref()
-                .is_some_and(csv::is_csv_path)
+            if viewer_show_delimited_table(right_content)
                 && let Some(raw) = right_content.viewer.as_deref()
-                && let Ok(rows) = csv::parse_csv(raw)
+                && let Some(vp) = right_content.viewer_path.as_deref()
+                && let Ok(rows) = csv_handler::parse_csv(raw, Some(vp))
                 && !rows.is_empty()
             {
-                return csv::table_line_count(&rows, content_width);
+                return csv_handler::table_line_count(&rows, content_width);
+            }
+            if viewer_image::is_image_category(right_content) {
+                if state.viewer_image.protocol.is_some() {
+                    return 1;
+                }
+                if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
+                    return wrapped_line_count(
+                        &viewer_image::label_body(viewer_image::LOADING_MESSAGE),
+                        content_width,
+                    ) as usize;
+                }
+                if let Some(e) = state.viewer_image.err.as_deref() {
+                    return wrapped_line_count(&viewer_image::label_body(e), content_width)
+                        as usize;
+                }
+                let msg = right_content.viewer.as_deref().unwrap_or("");
+                return wrapped_line_count(&viewer_image::label_body(msg), content_width) as usize;
             }
             right_content
                 .viewer
@@ -117,19 +168,24 @@ fn viewer_uses_preformatted_layout(state: &UblxState, right_content: &RightPaneC
     if state.right_pane_mode != RightPaneMode::Viewer {
         return false;
     }
-    let Some(path) = right_content.viewer_path.as_deref() else {
+    if right_content.viewer_path.is_none() {
         return false;
-    };
-    if markdown::is_markdown_path(path) {
+    }
+    if viewer_is_markdown(right_content) {
         return true;
     }
-    if !csv::is_csv_path(path) {
+    if viewer_image::is_image_category(right_content) && state.viewer_image.protocol.is_some() {
+        return true;
+    }
+    if !viewer_show_delimited_table(right_content) {
         return false;
     }
     let Some(raw) = right_content.viewer.as_deref() else {
         return false;
     };
-    csv::parse_csv(raw).map(|r| !r.is_empty()).unwrap_or(false)
+    csv_handler::parse_csv(raw, right_content.viewer_path.as_deref())
+        .map(|r| !r.is_empty())
+        .unwrap_or(false)
 }
 
 fn ratatui_wrap_right_paragraph(state: &UblxState, right_content: &RightPaneContent) -> bool {
@@ -156,22 +212,37 @@ fn viewer_display_text(
         .viewer
         .as_deref()
         .unwrap_or(UI_STRINGS.viewer_placeholder);
-    if let Some(ref path) = right_content.viewer_path {
-        if csv::is_csv_path(path) {
-            if let Some(ref c) = state.viewer_csv_cache
+    if right_content.viewer_path.is_some() {
+        if viewer_show_delimited_table(right_content) {
+            if let Some(ref path) = right_content.viewer_path
+                && let Some(ref c) = state.viewer_csv_cache
                 && c.0 == path.as_str()
                 && c.1 == content_width
             {
-                return csv::table_string_to_text(&c.2);
+                return csv_handler::table_string_to_text(&c.2);
             }
-            if let Ok(rows) = csv::parse_csv(raw)
+            if let Ok(rows) = csv_handler::parse_csv(raw, right_content.viewer_path.as_deref())
                 && !rows.is_empty()
             {
-                return csv::table_to_text(&rows, content_width);
+                return csv_handler::table_to_text(&rows, content_width);
             }
             // Parse failed or empty: fall back to raw
-        } else if markdown::is_markdown_path(path) {
+        } else if viewer_is_markdown(right_content) {
             return markdown::parse_markdown(raw).to_text(content_width);
+        } else if viewer_image::is_image_category(right_content) {
+            if state.viewer_image.protocol.is_some() {
+                return ratatui::text::Text::default();
+            }
+            if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
+                return ratatui::text::Text::from(viewer_image::label_body(
+                    viewer_image::LOADING_MESSAGE,
+                ));
+            }
+            if let Some(e) = state.viewer_image.err.as_deref() {
+                return ratatui::text::Text::from(viewer_image::label_body(e));
+            }
+            let msg = right_content.viewer.as_deref().unwrap_or("");
+            return ratatui::text::Text::from(viewer_image::label_body(msg));
         }
     }
     ratatui::text::Text::from(raw.to_string())
@@ -289,6 +360,7 @@ pub fn draw_right_pane(
         RightPaneMode::Writing => right_content.writing.as_deref(),
         _ => None,
     };
+    viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
     let mut text_w = padded.width;
     for _ in 0..6 {
         ensure_viewer_csv_cache(state, right_content, text_w);
@@ -311,13 +383,24 @@ pub fn draw_right_pane(
     if let Some(json) = use_kv_tables {
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
-        let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
-            .style(style::text_style())
-            .scroll((layout.scroll_y, 0));
-        if ratatui_wrap_right_paragraph(state, right_content) {
-            paragraph = paragraph.wrap(Wrap { trim: false });
+        let image_mode = state.right_pane_mode == RightPaneMode::Viewer
+            && viewer_image::is_image_category(right_content)
+            && right_content.viewer_path.is_some()
+            && state.viewer_image.protocol.is_some();
+        if image_mode {
+            if let Some(proto) = state.viewer_image.protocol.as_mut() {
+                f.render_stateful_widget(viewer_image::stateful_widget(), text_rect, proto);
+                let _ = proto.last_encoding_result();
+            }
+        } else {
+            let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
+                .style(style::text_style())
+                .scroll((layout.scroll_y, 0));
+            if ratatui_wrap_right_paragraph(state, right_content) {
+                paragraph = paragraph.wrap(Wrap { trim: false });
+            }
+            f.render_widget(paragraph, text_rect);
         }
-        f.render_widget(paragraph, text_rect);
     }
     scrollable_content::draw_scrollbar(f, &layout, total_lines);
 }
@@ -362,6 +445,7 @@ pub fn draw_right_pane_fullscreen(
         RightPaneMode::Writing => right_content.writing.as_deref(),
         _ => None,
     };
+    viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
     let mut text_w = padded.width;
     for _ in 0..6 {
         ensure_viewer_csv_cache(state, right_content, text_w);
@@ -385,13 +469,24 @@ pub fn draw_right_pane_fullscreen(
     if let Some(json) = use_kv_tables {
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
-        let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
-            .style(style::text_style())
-            .scroll((layout.scroll_y, 0));
-        if ratatui_wrap_right_paragraph(state, right_content) {
-            paragraph = paragraph.wrap(Wrap { trim: false });
+        let image_mode = state.right_pane_mode == RightPaneMode::Viewer
+            && viewer_image::is_image_category(right_content)
+            && right_content.viewer_path.is_some()
+            && state.viewer_image.protocol.is_some();
+        if image_mode {
+            if let Some(proto) = state.viewer_image.protocol.as_mut() {
+                f.render_stateful_widget(viewer_image::stateful_widget(), text_rect, proto);
+                let _ = proto.last_encoding_result();
+            }
+        } else {
+            let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
+                .style(style::text_style())
+                .scroll((layout.scroll_y, 0));
+            if ratatui_wrap_right_paragraph(state, right_content) {
+                paragraph = paragraph.wrap(Wrap { trim: false });
+            }
+            f.render_widget(paragraph, text_rect);
         }
-        f.render_widget(paragraph, text_rect);
     }
     scrollable_content::draw_scrollbar(f, &layout, total_lines);
 }

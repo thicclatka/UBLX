@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
+use zahirscan::parsers::structured::{
+    delimiter_byte_for_reader as zahir_delimiter_byte_for_reader,
+    detect_delimiter_byte as zahir_detect_delimiter_byte,
+};
 use zahirscan::{
     FileType, Output, OutputSink, RuntimeConfig, ZahirScanResult, extract_zahir,
     extract_zahir_from_stream,
@@ -16,7 +20,44 @@ use crate::config::UblxOpts;
 pub type ZahirResult = ZahirScanResult;
 pub type ZahirOutput = Output;
 pub type ZahirOutputSink = OutputSink;
-pub type ZahirFileType = FileType;
+
+/// Parse a DB `category` string into [`FileType`] when it matches [`FileType::as_metadata_name`].
+///
+/// Delegates to [`FileType::from_metadata_name`] (zahirscan); full round-trip tests live there.
+#[must_use]
+pub fn file_type_from_metadata_name(s: &str) -> Option<FileType> {
+    FileType::from_metadata_name(s)
+}
+
+/// Byte to pass to the Rust [`csv`](https://docs.rs/csv) crate’s [`csv::ReaderBuilder::delimiter`].
+/// Same rules as zahirscan’s CSV metadata parser: `.tsv` / `.tab` → tab, `.psv` → pipe, else sniff.
+#[must_use]
+pub fn delimiter_byte_for_reader(content: &str, path_hint: &str) -> u8 {
+    zahir_delimiter_byte_for_reader(content, path_hint)
+}
+
+/// Sniff delimiter from the first lines of `content` (comma, semicolon, tab, pipe, colon).
+/// Use as a **fallback** when the file path has no recognized extension (see [`delimiter_from_path_for_viewer`]).
+#[must_use]
+pub fn detect_delimiter_byte(content: &str) -> u8 {
+    zahir_detect_delimiter_byte(content)
+}
+
+/// Delimiter implied by the path’s extension, when it matches zahirscan’s delimited types.
+/// `.csv` → comma, `.tsv` / `.tab` → tab, `.psv` → pipe; otherwise [`None`] (caller should use [`detect_delimiter_byte`]).
+#[must_use]
+pub fn delimiter_from_path_for_viewer(path: &str) -> Option<u8> {
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)?;
+    match ext.as_str() {
+        "csv" => Some(b','),
+        "tsv" | "tab" => Some(b'\t'),
+        "psv" => Some(b'|'),
+        _ => None,
+    }
+}
 
 /// True if we should run zahir on this path (new or mtime changed). Skip when prior exists and mtime is unchanged.
 #[must_use]
@@ -54,7 +95,7 @@ pub fn run_zahir_batch(
         config.output_mode,
         Some(&config),
         None,
-        ZahirOutputSink::Collect,
+        &ZahirOutputSink::Collect,
     )
 }
 
@@ -71,11 +112,11 @@ pub fn run_zahir_from_stream(
 ) -> Result<ZahirScanResult, anyhow::Error> {
     let config = extract_zahir_opts_from_ublx_opts(ublx_opts);
     extract_zahir_from_stream(
-        paths_rx,
+        &paths_rx,
         config.output_mode,
         Some(&config),
         None,
-        output_sink,
+        &output_sink,
     )
 }
 
@@ -110,4 +151,24 @@ pub fn zahir_output_to_json(output: Option<&ZahirOutput>) -> String {
     output
         .and_then(|o| serde_json::to_string(o).ok())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod file_type_from_metadata_name_tests {
+    use super::{FileType, file_type_from_metadata_name};
+
+    #[test]
+    fn wrapper_matches_zahirscan_api() {
+        assert_eq!(file_type_from_metadata_name("CSV"), Some(FileType::Csv));
+        assert_eq!(
+            file_type_from_metadata_name("Markdown"),
+            Some(FileType::Markdown)
+        );
+    }
+
+    #[test]
+    fn non_zahir_categories_miss() {
+        assert_eq!(file_type_from_metadata_name("Directory"), None);
+        assert_eq!(file_type_from_metadata_name("not a label"), None);
+    }
 }

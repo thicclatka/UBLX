@@ -253,7 +253,7 @@ impl UblxOpts {
         if let Some(show_hidden) = overlay.show_hidden_files {
             if show_hidden {
                 self.nefax.exclude.retain(|p| p != HIDDEN_EXCLUDE_PATTERN);
-                self.zahir.ignore_hidden_files = false;
+                self.zahir.flags.ignore_hidden_files = false;
             } else {
                 if !self
                     .nefax
@@ -263,7 +263,7 @@ impl UblxOpts {
                 {
                     self.nefax.exclude.push(HIDDEN_EXCLUDE_PATTERN.to_string());
                 }
-                self.zahir.ignore_hidden_files = true;
+                self.zahir.flags.ignore_hidden_files = true;
             }
         }
         if let Some(hash) = overlay.hash {

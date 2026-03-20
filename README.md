@@ -45,10 +45,19 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 
 | Tab           | Content                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Viewer**    | Raw file content (text) or a type label for binaries; directory → `tree` output. Footer shows size and last-modified when available.                                                                                                                                                                                          |
+| **Viewer**    | Images, pretty tables for CSV-style files, Markdown, raw text, `tree` for directories; footer shows size and last-modified when available.                                                                                                                                                                                    |
 | **Templates** | Extracted template/structure snippet (e.g. document outline) when zahirscan provides it.                                                                                                                                                                                                                                      |
 | **Metadata**  | Enrichment metadata as **tables**: key/value pairs, and for supported types things like CSV column metadata, XLSX sheet stats (rows/columns per sheet), SQLite schema/table info, zip/archive “Contents” tables, and schema trees. Sections are parsed from the stored zahirscan result and rendered with headers and scroll. |
 | **Writing**   | **Writing stats** (writing footprint): word count, character counts, and similar stats when zahirscan has computed them. Shown in the same table layout as Metadata.                                                                                                                                                          |
+
+### Viewer
+
+- **Markdown** — formatted preview (headings, lists, code blocks, tables inside the doc).
+- **CSV-style files** — pretty table layout for `.csv`, `.tsv`, `.tab`, `.psv` when the index says so or the path matches (so previews still work if a row’s category label is off).
+- **Images** — terminal preview via [ratatui-image](https://github.com/ratatui-org/ratatui-image) (downscaled for the pane; larger files may decode off the UI thread; recent previews cached for quick navigation).
+- **Other text** — raw text (length-capped).
+- **Binaries** — short label instead of dumping bytes.
+- **Directories** — `tree` when available.
 
 Press **?** in the TUI to open the full keybinding help.
 

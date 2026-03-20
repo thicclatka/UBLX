@@ -7,7 +7,10 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use zahirscan::FileType;
+
 use crate::engine::db_ops;
+use crate::handlers::zahir_ops::file_type_from_metadata_name;
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState, ViewData,
 };
@@ -44,13 +47,17 @@ fn binary_file_label(path: &Path) -> String {
 }
 
 /// Resolve viewer string for a file: (directory), binary label, (file not found), or file contents (with size limit).
-fn file_content_for_viewer(path: &Path) -> Option<String> {
+/// When `zahir_type` is [`FileType::Image`], skip the binary short-label path — preview loads from disk in the render layer.
+fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Option<String> {
     let Ok(meta) = fs::metadata(path) else {
         return Some("(file not found)".to_string());
     };
     // if meta.is_dir() {
     //     return Some("(directory)".to_string());
     // }
+    if meta.is_file() && zahir_type == Some(FileType::Image) {
+        return Some(String::new());
+    }
     if meta.is_file() && is_likely_binary(path) {
         return Some(binary_file_label(path));
     }
@@ -107,6 +114,8 @@ fn tree_content(tree_str: String) -> RightPaneContent {
         writing: None,
         viewer: Some(tree_str),
         viewer_path: None,
+        viewer_abs_path: None,
+        viewer_zahir_type: None,
         viewer_byte_size: None,
         viewer_mtime_ns: None,
         viewer_can_open: false,
@@ -146,10 +155,12 @@ pub fn resolve_right_pane_content(
                 return tree_content(tree_str);
             }
             state.cached_tree = None;
-            let viewer_str = file_content_for_viewer(&full_path);
+            let viewer_zahir_type = file_type_from_metadata_name(category);
+            let viewer_str = file_content_for_viewer(&full_path, viewer_zahir_type);
             let viewer_byte_size = viewer_str.as_ref().map(|_| *size);
             let viewer_mtime_ns = db_ops::load_mtime_for_path(db_path, path).ok().flatten();
-            let viewer_can_open = !is_likely_binary(&full_path);
+            let viewer_can_open =
+                !is_likely_binary(&full_path) || viewer_zahir_type == Some(FileType::Image);
             let zahir_json: String = db_ops::load_zahir_json_for_path(db_path, path)
                 .ok()
                 .flatten()
@@ -161,6 +172,8 @@ pub fn resolve_right_pane_content(
                     writing: None,
                     viewer: viewer_str,
                     viewer_path: Some(path.to_string()),
+                    viewer_abs_path: Some(full_path.clone()),
+                    viewer_zahir_type,
                     viewer_byte_size,
                     viewer_mtime_ns,
                     viewer_can_open,
@@ -176,6 +189,8 @@ pub fn resolve_right_pane_content(
                             writing: s.writing,
                             viewer: viewer_str,
                             viewer_path: Some(path.to_string()),
+                            viewer_abs_path: Some(full_path.clone()),
+                            viewer_zahir_type,
                             viewer_byte_size,
                             viewer_mtime_ns,
                             viewer_can_open,
@@ -188,6 +203,8 @@ pub fn resolve_right_pane_content(
                         writing: None,
                         viewer: viewer_str,
                         viewer_path: Some(path.to_string()),
+                        viewer_abs_path: Some(full_path.clone()),
+                        viewer_zahir_type,
                         viewer_byte_size,
                         viewer_mtime_ns,
                         viewer_can_open,

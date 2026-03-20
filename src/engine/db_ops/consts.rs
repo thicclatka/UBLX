@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::config::UblxPaths;
-use crate::handlers::zahir_ops::ZahirFileType;
+use zahirscan::FileType;
 
 /// Schema for the ublx DB
 pub struct UblxDbSchema;
@@ -252,7 +252,7 @@ impl DeltaType {
     }
 }
 
-/// Category for ublx db: ublx-defined variants plus all [`ZahirFileType`] via [`UblxDbCategory::Zahir`].
+/// Category for ublx db: ublx-defined variants plus all [`FileType`] (zahirscan) via [`UblxDbCategory::Zahir`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UblxDbCategory {
     UblxSettings,
@@ -261,9 +261,8 @@ pub enum UblxDbCategory {
     // Hidden,
     Directory,
     File,
-    /// All zahirscan file types; use [`ZahirFileType::as_metadata_name`] for the display string.
-    #[allow(dead_code)]
-    Zahir(ZahirFileType),
+    /// All zahirscan file types; use [`FileType::as_metadata_name`] for the display string.
+    Zahir(FileType),
 }
 
 impl UblxDbCategory {
@@ -316,6 +315,10 @@ impl UblxDbCategory {
         if s.is_empty() || s.eq_ignore_ascii_case("Unknown") {
             return fallback;
         }
+        if let Some(ft) = FileType::from_metadata_name(s) {
+            return UblxDbCategory::Zahir(ft).as_str().to_string();
+        }
+        // Non-metadata label (future zahir strings or legacy rows): keep as stored.
         s.to_string()
     }
 

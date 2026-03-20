@@ -1,7 +1,8 @@
 //! Tests for `utils::format` helpers.
 
 use ublx::utils::format::{
-    clamp_selection, clamp_selection_opt, frame_string_with_spaces, truncate_middle,
+    clamp_selection, clamp_selection_opt, format_timestamp_ns, frame_string_with_spaces,
+    truncate_middle,
 };
 
 #[test]
@@ -53,4 +54,23 @@ fn truncate_middle_long() {
     let s = truncate_middle("hello world", 8);
     assert_eq!(s.len(), 8);
     assert!(s.contains("..."));
+}
+
+#[test]
+fn format_timestamp_ns_valid() {
+    let s = format_timestamp_ns(1_000_000_000); // 1 second after Unix epoch
+    assert!(
+        !s.contains("invalid"),
+        "expected valid timestamp string, got {s:?}"
+    );
+    assert!(
+        s.chars().filter(|c| c.is_ascii_digit()).count() >= 8,
+        "expected digits in output: {s:?}"
+    );
+}
+
+#[test]
+fn format_timestamp_ns_negative_no_panic() {
+    let s = format_timestamp_ns(-1);
+    assert!(!s.is_empty());
 }

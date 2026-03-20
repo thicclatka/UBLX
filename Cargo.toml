@@ -28,6 +28,11 @@ nefaxer = "0.1.4"
 notify = "8.2.0"
 pulldown-cmark = "0.13.0"
 ratatui = "0.30"
+ratatui-image = { version = "10", default-features = false, features = [
+  "crossterm",
+  "image-defaults",
+] }
+image = "0.25"
 rayon = "1.10"
 ratatui-notifications = "0.1.0"
 rusqlite = { version = "0.38.0", features = ["backup", "bundled-sqlcipher"] }
@@ -39,9 +44,9 @@ tui-logger = { version = "0.18.1", features = ["crossterm"] }
 unicode-width = "0.2"
 zahirscan = "0.2.13"
 
-# [patch.crates-io]
-# zahirscan = { path = "../zahirscan" }
-# nefaxer = { path = "../nefaxer" }
+[patch.crates-io]
+zahirscan = { path = "../zahirscan" }
+nefaxer = { path = "../nefaxer" }
 
 [dev-dependencies]
 anyhow = "1.0.102"

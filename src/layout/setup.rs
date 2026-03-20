@@ -3,15 +3,19 @@
 //! `run_ublx` is split into four phases per tick (see classification below).
 //! Action application (key → state changes) lives in [`crate::handlers::state_transitions`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::sync::mpsc;
 
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
+use zahirscan::FileType;
 
 use super::style;
 
 use crate::engine::db_ops::DeltaType;
-/// Row for TUI list: (path, category, `size_bytes`). Same as [`crate::engine::db_ops::SnapshotTuiRow`]; `zahir_json` is loaded on demand for the selected row.
+
+/// Re-export snapshot row type for layout/view/render (`path`, category, size).
 pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
 
 /// Category string for directories in the snapshot (matches [`crate::engine::db_ops::UblxDbCategory`]).
@@ -134,6 +138,54 @@ impl Default for SessionFlow {
     }
 }
 
+/// State for the image viewer in the right pane (`ratatui-image`, tiered downscale, optional background decode).
+#[derive(Default)]
+pub struct ViewerImageState {
+    pub protocol: Option<ratatui_image::protocol::StatefulProtocol>,
+    pub picker: Option<ratatui_image::picker::Picker>,
+    /// Cache key: [`std::path::Path::display`] string for the selected file.
+    pub key: Option<String>,
+    /// When set, a background thread is decoding/downsizing; poll in [`crate::render::viewers::image_handler::ensure_viewer_image`].
+    pub decode_rx: Option<mpsc::Receiver<Result<image::DynamicImage, String>>>,
+    pub err: Option<String>,
+    /// Recent previews (not the current row) for instant navigation back within [`Self::LRU_CAP`] paths.
+    pub image_lru: VecDeque<(String, ratatui_image::protocol::StatefulProtocol)>,
+}
+
+impl ViewerImageState {
+    pub const LRU_CAP: usize = 3;
+
+    /// Push a finished preview into the LRU ring; drops the oldest entry when full.
+    pub fn push_lru(&mut self, path: String, proto: ratatui_image::protocol::StatefulProtocol) {
+        while self.image_lru.len() >= Self::LRU_CAP {
+            self.image_lru.pop_front();
+        }
+        self.image_lru.push_back((path, proto));
+    }
+
+    /// Remove and return a cached protocol for `path` if present.
+    pub fn take_from_lru(
+        &mut self,
+        path: &str,
+    ) -> Option<ratatui_image::protocol::StatefulProtocol> {
+        let pos = self.image_lru.iter().position(|(k, _)| k == path)?;
+        self.image_lru.remove(pos).map(|(_, proto)| proto)
+    }
+
+    /// Clear loaded image, error, and async decode channel; **retains** [`Self::picker`] so the
+    /// terminal is not re-queried on every selection (matches previous flat-field behavior).
+    /// Finished previews are moved into [`Self::image_lru`] so returning to an image can be instant.
+    pub fn clear(&mut self) {
+        self.decode_rx = None;
+        self.err = None;
+        let k = self.key.take();
+        let p = self.protocol.take();
+        if let (Some(k), Some(p)) = (k, p) {
+            self.push_lru(k, p);
+        }
+    }
+}
+
 /// Top-level TUI state. Menu and UI sub-states are grouped into nested structs.
 pub struct UblxState {
     pub main_mode: MainMode,
@@ -150,6 +202,8 @@ pub struct UblxState {
     pub cached_tree: Option<(String, String)>,
     /// CSV viewer: (path, `content_width`, `table_string`, `line_count`) to avoid re-parsing every frame.
     pub viewer_csv_cache: Option<(String, u16, String, usize)>,
+    /// Image category viewer ([`RightPaneContent::viewer_abs_path`] + [`crate::render::viewers::image`]).
+    pub viewer_image: ViewerImageState,
     pub last_key_for_double: Option<char>,
     pub snapshot_bg: BackgroundSnapshot,
     pub duplicate_load: DuplicateLoadGate,
@@ -180,6 +234,7 @@ impl UblxState {
             chrome: ViewerChrome::default(),
             cached_tree: None,
             viewer_csv_cache: None,
+            viewer_image: ViewerImageState::default(),
             last_key_for_double: None,
             snapshot_bg: BackgroundSnapshot::default(),
             duplicate_load: DuplicateLoadGate::default(),
@@ -366,6 +421,7 @@ impl DeltaViewData {
         }
     }
 }
+
 /// Text to show in the right pane for the current selection.
 #[derive(Default)]
 pub struct RightPaneContent {
@@ -373,8 +429,12 @@ pub struct RightPaneContent {
     pub metadata: Option<String>,
     pub writing: Option<String>,
     pub viewer: Option<String>,
-    /// Path of the file being viewed (when viewer shows file content), for markdown detection.
+    /// Path of the file being viewed (when viewer shows file content); used for CSV cache keys, etc.
     pub viewer_path: Option<String>,
+    /// Absolute path on disk for the selected file (viewer). Used for image preview and open.
+    pub viewer_abs_path: Option<PathBuf>,
+    /// Parsed zahir [`FileType`] when snapshot `category` matches [`FileType::as_metadata_name`]; drives viewer mode.
+    pub viewer_zahir_type: Option<FileType>,
     /// When viewer shows file content, size in bytes from snapshot (for footer display).
     pub viewer_byte_size: Option<u64>,
     /// When viewer shows file content, mtime in ns from snapshot (for footer last-modified).

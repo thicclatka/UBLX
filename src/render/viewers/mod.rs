@@ -1,5 +1,6 @@
-//! Format file content by type for the viewer (markdown, csv, json, etc.).
+//! Format file content by type for the viewer (markdown, csv, image, json, etc.).
 
-pub mod csv;
+pub mod csv_handler;
+pub mod image_handler;
 pub mod markdown;
 pub mod pretty_tables;

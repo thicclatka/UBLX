@@ -1,34 +1,45 @@
-//! Render CSV file content in the viewer as a table with box-drawing borders (comfy-table).
+//! Render delimiter-separated file content in the viewer as a table with box-drawing borders
+//! (comfy-table). **Delimiter:** extension on the viewed path first (`.csv` → comma, `.tsv`/`.tab` →
+//! tab, `.psv` → pipe) via [`crate::handlers::zahir_ops::delimiter_from_path_for_viewer`]; if the
+//! extension doesn’t decide, fall back to zahirscan’s [`crate::handlers::zahir_ops::detect_delimiter_byte`]
+//! on the file contents.
+//!
 //! Layout matches markdown tables: word wrap, short columns without wrap (still row-padded), and
 //! [`crate::render::viewers::pretty_tables::VIEWER_TABLE_ELLIPSIS_CELL_CHARS`] truncation with `"..."`.
 
 use ratatui::text::Text;
 use std::io::Cursor;
 
+use crate::handlers::zahir_ops::{delimiter_from_path_for_viewer, detect_delimiter_byte};
 use crate::render::viewers::pretty_tables;
 
-crate::define_path_ext_predicate! {
-    /// Path is treated as CSV if it ends with this extension.
-    pub fn is_csv_path(path: &str) -> bool {
-        "csv"
-    }
-}
-
-/// Parse raw CSV string into a grid (first row = header).
-///
-/// # Errors
-///
-/// Returns [`csv::Error`] when a row cannot be read or parsed (invalid CSV).
-pub fn parse_csv(raw: &str) -> Result<Vec<Vec<String>>, csv::Error> {
+/// Parse with a single-byte delimiter. Uses the **`csv`** crate via `::csv::` (avoids confusion with
+/// this module’s name, `csv_handler`).
+fn parse_with_delimiter(raw: &str, delim: u8) -> Result<Vec<Vec<String>>, ::csv::Error> {
     let mut rows = Vec::new();
-    let mut rdr = csv::ReaderBuilder::new()
+    let mut rdr = ::csv::ReaderBuilder::new()
         .has_headers(false)
+        .delimiter(delim)
         .from_reader(Cursor::new(raw));
     for result in rdr.records() {
         let record = result?;
         rows.push(record.iter().map(String::from).collect());
     }
     Ok(rows)
+}
+
+/// Parse raw delimiter-separated text into a grid (first row = header for [`table_string`]).
+///
+/// `path_hint` should be the viewed file path when known so extensions select the delimiter; if
+/// [`None`] or the extension is unknown, zahirscan’s content sniffing is used.
+///
+/// # Errors
+///
+/// Returns [`csv::Error`] when a row cannot be read or parsed.
+pub fn parse_csv(raw: &str, path_hint: Option<&str>) -> Result<Vec<Vec<String>>, ::csv::Error> {
+    let hint = path_hint.unwrap_or("");
+    let delim = delimiter_from_path_for_viewer(hint).unwrap_or_else(|| detect_delimiter_byte(raw));
+    parse_with_delimiter(raw, delim)
 }
 
 /// Build a comfy-table string from parsed rows: UTF8 box-drawing style, cells truncated.
