@@ -72,9 +72,7 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let style = labels
-                .get(i)
-                .map_or(style::text_style(), |(_, st)| *st);
+            let style = labels.get(i).map_or(style::text_style(), |(_, st)| *st);
             let span = ratatui::text::Span::styled(s.as_str(), style);
             ListItem::new(Line::from(span))
         })

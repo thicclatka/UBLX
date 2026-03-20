@@ -7,9 +7,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use crossterm::cursor::Show as ShowCursor;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+use crossterm::{
+    cursor::Show as ShowCursor,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use notify::{RecursiveMode, Watcher};
 use ratatui::Terminal;

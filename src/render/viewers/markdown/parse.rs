@@ -112,7 +112,11 @@ struct MarkdownParseState<'a> {
 impl<'a> MarkdownParseState<'a> {
     fn on_start(&mut self, tag: Tag<'a>) {
         match &tag {
-            Tag::Strong | Tag::Emphasis | Tag::Strikethrough | Tag::Link { .. } | Tag::Image { .. } => {
+            Tag::Strong
+            | Tag::Emphasis
+            | Tag::Strikethrough
+            | Tag::Link { .. }
+            | Tag::Image { .. } => {
                 self.on_start_inline(&tag);
             }
             _ => self.on_start_block(tag),

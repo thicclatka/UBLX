@@ -3,8 +3,8 @@
 
 use rayon::prelude::*;
 
-use crate::config::PARALLEL;
 use super::setup::TuiRow;
+use crate::config::PARALLEL;
 
 /// Categories that have at least one row matching the search query.
 /// If `search_query` is empty, returns all categories.
@@ -25,9 +25,17 @@ pub fn categories_for_search(
             .any(|(path, c, _)| c == cat && (path.contains(q) || c.contains(q)))
     };
     if categories.len() >= PARALLEL.categories_for_search {
-        categories.par_iter().filter(|cat| matches(cat)).cloned().collect()
+        categories
+            .par_iter()
+            .filter(|cat| matches(cat))
+            .cloned()
+            .collect()
     } else {
-        categories.iter().filter(|cat| matches(cat)).cloned().collect()
+        categories
+            .iter()
+            .filter(|cat| matches(cat))
+            .cloned()
+            .collect()
     }
 }
 

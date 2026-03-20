@@ -10,8 +10,8 @@ const INLINE_CODE_BG_PCT: f32 = 0.20;
 
 /// Extensions treated as “attachment” links for trailing glyph selection.
 const ATTACH_EXT: &[&str] = &[
-    ".pdf", ".zip", ".gz", ".tar", ".tgz", ".bz2", ".7z", ".rar", ".doc", ".docx", ".xls",
-    ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".rtf",
+    ".pdf", ".zip", ".gz", ".tar", ".tgz", ".bz2", ".7z", ".rar", ".doc", ".docx", ".xls", ".xlsx",
+    ".ppt", ".pptx", ".odt", ".ods", ".rtf",
 ];
 
 pub fn link_trailing_glyph_for_dest(dest: &str) -> char {

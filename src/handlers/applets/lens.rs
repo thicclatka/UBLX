@@ -11,8 +11,8 @@ use crate::engine::db_ops;
 ///
 /// Returns [`anyhow::Error`] on `SQLite` errors from [`crate::engine::db_ops`].
 pub fn add_path_to_lens(db_path: &Path, lens_name: &str, path: &str) -> Result<(), anyhow::Error> {
-    let count = i64::try_from(db_ops::load_lens_paths(db_path, lens_name)?.len())
-        .unwrap_or(i64::MAX);
+    let count =
+        i64::try_from(db_ops::load_lens_paths(db_path, lens_name)?.len()).unwrap_or(i64::MAX);
     db_ops::add_path_to_lens(db_path, lens_name, path, count)
 }
 

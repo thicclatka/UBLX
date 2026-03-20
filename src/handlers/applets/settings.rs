@@ -85,11 +85,7 @@ pub fn apply_config_reload(
         if let Some(b) = params.bumper {
             let msg = first_validation_error_message(&result.validation_errors);
             let warn_msg = format!("Config validation: {msg}");
-            b.push_with_operation(
-                log::Level::Warn,
-                warn_msg.as_str(),
-                Some(op.clone()),
-            );
+            b.push_with_operation(log::Level::Warn, warn_msg.as_str(), Some(op.clone()));
             notifications::show_toast_slot(
                 &mut state.toasts.slots,
                 b,

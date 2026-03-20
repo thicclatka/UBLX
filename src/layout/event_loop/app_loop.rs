@@ -261,10 +261,7 @@ fn poll_snapshot_if_due(
         return;
     }
     let now = Instant::now();
-    let due = state
-        .snapshot_bg
-        .poll_deadline
-        .is_none_or(|d| now >= d);
+    let due = state.snapshot_bg.poll_deadline.is_none_or(|d| now >= d);
     if !due {
         return;
     }

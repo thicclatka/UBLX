@@ -65,7 +65,8 @@ pub fn balanced_column_widths(
 
 #[must_use]
 pub fn entry_cell(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> String {
-    obj.get(key).map_or_else(|| "—".to_string(), |v| format::format_value(v, key))
+    obj.get(key)
+        .map_or_else(|| "—".to_string(), |v| format::format_value(v, key))
 }
 
 /// Build key/value table for one section.

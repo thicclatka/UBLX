@@ -35,9 +35,7 @@ pub fn counter_line(current: usize, total: usize) -> Line<'static> {
 /// Bottom line for the middle panel from list state: pass selected index (from `content_state.selected()`) and content length.
 #[must_use]
 pub fn line_for(selected_index: Option<usize>, content_len: usize) -> Line<'static> {
-    let current = selected_index
-        .map_or(0, |i| i + 1)
-        .min(MAX_SELECTION_INDEX);
+    let current = selected_index.map_or(0, |i| i + 1).min(MAX_SELECTION_INDEX);
     let total = content_len.min(MAX_SELECTION_INDEX);
     counter_line(current, total)
 }

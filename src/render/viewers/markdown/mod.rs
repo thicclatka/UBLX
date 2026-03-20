@@ -24,5 +24,5 @@ mod rich_utils;
 mod to_text;
 mod types;
 
-pub use types::{is_markdown_path, Block, MarkdownDoc, StyledLines};
 pub use parse::parse_markdown;
+pub use types::{Block, MarkdownDoc, StyledLines, is_markdown_path};

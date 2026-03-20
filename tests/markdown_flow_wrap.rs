@@ -18,16 +18,11 @@ fn paragraph_wraps_to_width() {
 
 #[test]
 fn blockquote_wrap_respects_width() {
-    let doc = parse_markdown(
-        "> this is a long quoted line that must wrap when the viewport is narrow",
-    );
+    let doc =
+        parse_markdown("> this is a long quoted line that must wrap when the viewport is narrow");
     let text = doc.to_text(12);
     for line in &text.lines {
-        assert!(
-            line.width() <= 12,
-            "quote line {:?} exceeds width 12",
-            line
-        );
+        assert!(line.width() <= 12, "quote line {:?} exceeds width 12", line);
     }
 }
 

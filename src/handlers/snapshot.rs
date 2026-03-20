@@ -135,10 +135,12 @@ pub fn push_snapshot_done_to_bumper(
         Some(OPERATION_NAME.snapshot()),
     );
     if added + mod_count + removed > 0 {
-        let summary = format!(
-            "{added} added, {mod_count} modified, {removed} removed"
+        let summary = format!("{added} added, {mod_count} modified, {removed} removed");
+        bumper.push_with_operation(
+            log::Level::Info,
+            summary.as_str(),
+            Some(OPERATION_NAME.snapshot()),
         );
-        bumper.push_with_operation(log::Level::Info, summary.as_str(), Some(OPERATION_NAME.snapshot()));
     } else {
         bumper.push_with_operation(
             log::Level::Info,

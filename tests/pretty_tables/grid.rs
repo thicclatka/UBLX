@@ -1,5 +1,5 @@
 use ublx::render::viewers::pretty_tables::{
-    prepare_multiline_grid, VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS,
+    VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS, prepare_multiline_grid,
 };
 
 use super::common::cell_visual_lines;

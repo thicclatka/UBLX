@@ -5,7 +5,7 @@ use std::sync::mpsc;
 
 use rayon::prelude::*;
 
-use crate::config::{RunMode, PARALLEL, UblxOpts, UblxPaths};
+use crate::config::{PARALLEL, RunMode, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
 use crate::handlers::{nefax_ops, zahir_ops};
 use crate::utils::{canonicalize_dir_to_ublx, error_writer, exit_error};
@@ -92,12 +92,8 @@ pub fn run_sequential(
     prior_nefax: Option<&nefax_ops::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let (dir_to_ublx_abs, prior_zahir_json) = pre_run_setup(dir_to_ublx);
-    let (nefax, diff) = run_nefax_exiting::<fn(&nefax_ops::NefaxEntry)>(
-        dir_to_ublx,
-        ublx_opts,
-        prior_nefax,
-        None,
-    );
+    let (nefax, diff) =
+        run_nefax_exiting::<fn(&nefax_ops::NefaxEntry)>(dir_to_ublx, ublx_opts, prior_nefax, None);
 
     debug!(
         "indexed {} paths (added: {}, removed: {}, modified: {})",
@@ -170,19 +166,15 @@ pub fn run_stream(
             let _ = path_tx.send(abs);
         }
     };
-    let (nefax, diff) = match nefax_ops::run_nefaxer(
-        dir_to_ublx,
-        ublx_opts,
-        prior_nefax,
-        Some(on_entry),
-    ) {
-        Ok(result) => result,
-        Err(e) => {
-            drop(path_tx);
-            let _ = zahir_handle.join();
-            on_nefax_error(dir_to_ublx, &e);
-        }
-    };
+    let (nefax, diff) =
+        match nefax_ops::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax, Some(on_entry)) {
+            Ok(result) => result,
+            Err(e) => {
+                drop(path_tx);
+                let _ = zahir_handle.join();
+                on_nefax_error(dir_to_ublx, &e);
+            }
+        };
 
     drop(path_tx);
     debug!("indexed {} paths (streaming)", nefax.len());
