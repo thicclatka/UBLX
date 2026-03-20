@@ -7,7 +7,7 @@
 
 [_Ublx ... Safe when taken as directed._](https://bookshop.org/p/books/ubik-philip-k-dick/1fc432e3ade32290)
 
-UBLX is a **TUI that turns any directory into a flat, navigable catalog** — index once, then browse categories, previews, metadata, and templates in the terminal. (Driven by [nefaxer](https://github.com/thicclatka/nefaxer) and [zahirscan](https://github.com/thicclatka/zahirscan).)
+UBLX is a **TUI that turns any directory into a flat, navigable catalog** — index once, then browse categories, previews, metadata, and templates in the terminal. (Driven by [nefaxer](https://github.com/thicclatka/nefaxer) and [zahirscan](https://github.com/thicclatka/zahirscan))
 
 ## Install
 
@@ -32,7 +32,7 @@ Or clone the repo and run `cargo build --release`; the binary is in `target/rele
 | **Lenses**     | Saved lists of items with a specific focus (e.g. a “lens” on a subset of files); left = lens names, middle = paths in the selected lens. Shown when the DB has at least one lens. |
 | **Duplicates** | Groups of duplicate files by content hash; left = group names, middle = paths in the group. Run duplicate detection (Ctrl+d) to populate; tab appears when groups exist.          |
 
-Cycle tabs with **Shift+Tab** (Snapshot → Delta → Lenses → Duplicates → …).
+Cycle tabs with **Shift+Tab**.
 
 ## Panes overview
 
@@ -42,8 +42,6 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 - **Scroll in the preview** — **Ctrl+b** / **Ctrl+e** (jump to top/bottom), **Shift+↑** / **Shift+↓** or **Shift+K** / **Shift+J** (line by line).
 - **Viewer fullscreen** — **F** toggles fullscreen for the Viewer tab.
 - **Search** — **/** filters the category and content lists (left and middle) by substring; the right pane updates with the selected row. Press **Esc** to clear the search.
-
-**What each right-pane tab shows** (from [zahirscan](https://github.com/thicclatka/zahirscan) enrichment):
 
 | Tab           | Content                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

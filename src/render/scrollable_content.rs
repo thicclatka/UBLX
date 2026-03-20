@@ -6,6 +6,30 @@ use ratatui::widgets::ScrollbarState;
 
 use crate::layout::style;
 
+/// Region above the bottom padding strip (same geometry as the first split inside [`layout_scrollable_content`]).
+#[must_use]
+pub fn area_above_bottom_pad(area: Rect, bottom_pad: u16) -> Rect {
+    if area.height > bottom_pad {
+        let chunks =
+            style::split_vertical(area, &[Constraint::Min(0), Constraint::Length(bottom_pad)]);
+        chunks[0]
+    } else {
+        area
+    }
+}
+
+/// Text viewport width: full width of `padded`, or one column less when a vertical scrollbar is shown.
+#[must_use]
+pub fn viewport_text_width(padded: Rect, total_lines: usize) -> u16 {
+    let viewport = padded.height as usize;
+    let need_scrollbar = total_lines > viewport;
+    if need_scrollbar && padded.width > 1 {
+        padded.width - 1
+    } else {
+        padded.width
+    }
+}
+
 /// Result of laying out a scrollable content area: where to draw content, where to draw the scrollbar, and the clamped scroll offset.
 #[derive(Debug)]
 pub struct ScrollableLayout {
@@ -13,7 +37,7 @@ pub struct ScrollableLayout {
     pub content_rect: Rect,
     /// Rect for the scrollbar thumb (zero width/height when scrollbar not shown).
     pub scrollbar_rect: Rect,
-    /// Clamped scroll offset (0..= max_scroll). Caller should write this back to state.
+    /// Clamped scroll offset (0..= `max_scroll`). Caller should write this back to state.
     pub scroll_y: u16,
     /// Whether a scrollbar is being shown (content exceeds viewport).
     pub show_scrollbar: bool,
@@ -23,7 +47,7 @@ pub struct ScrollableLayout {
 /// Use for any panel (right pane viewer/metadata/writing/templates, or others) that shows content which may be longer than the area.
 ///
 /// * `area` – full content area (e.g. the pane body after tabs).
-/// * `total_lines` – total number of logical lines (or rows) of content (for viewer: wrapped line count; for kv_tables: `content_height`; etc.).
+/// * `total_lines` – total number of logical lines (or rows) of content (for viewer: wrapped line count; for `kv_tables`: `content_height`; etc.).
 /// * `scroll` – current scroll position; will be clamped to valid range and updated in place.
 /// * `bottom_pad` – number of lines to reserve at the bottom (e.g. `style::UI_CONSTANTS.v_pad`).
 pub fn layout_scrollable_content(

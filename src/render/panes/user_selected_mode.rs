@@ -8,7 +8,7 @@ use ratatui::widgets::ListItem;
 use crate::layout::setup;
 use crate::ui::UI_STRINGS;
 
-/// Draw the three panes for a list mode: left list from view.filtered_categories, middle paths with counter, right viewer.
+/// Draw the three panes for a list mode: left list from `view.filtered_categories`, middle paths with counter, right viewer.
 /// `chunks` must have at least 3 elements: [left, middle, right].
 fn draw_user_selected_mode_panes(
     f: &mut Frame,

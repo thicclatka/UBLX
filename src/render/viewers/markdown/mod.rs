@@ -1,11 +1,11 @@
 //! Parsed markdown as simple block types for the viewer.
 //!
-//! Use [parse_markdown] to get a [MarkdownDoc]; then call [MarkdownDoc::to_text] for ratatui
+//! Use [`parse_markdown`] to get a [`MarkdownDoc`]; then call [`MarkdownDoc::to_text`] for ratatui
 //! with styled headings/lists/tables.
 //!
 //! Paragraphs, headings, and list items capture inline **bold**, *italic*, ~~strikethrough~~,
 //! `<u>underline</u>`, and `` `inline code` `` (20% lightened background). Fenced code blocks
-//! use a 20% lightened background and no ``` delimiters in the viewer.
+//! use a 20% lightened background; Markdown fence delimiters are not shown in the viewer.
 //!
 //! **Inline:** `[links](url)` append a trailing glyph from [`UiGlyphs`](crate::ui::UiGlyphs)
 //! (`markdown_link`, or `markdown_attachment` for `.pdf`/archive/office-like paths in the URL);
@@ -17,8 +17,12 @@
 //! **Omitted** (pulldown can emit tags; we ignore today): footnotes, definition lists, superscript,
 //! subscript, YAML/metadata blocks, task-list markers, math.
 
-mod core;
+mod flow_wrap;
 mod md_tables;
+mod parse;
 mod rich_utils;
+mod to_text;
+mod types;
 
-pub use core::{is_markdown_path, parse_markdown, Block, MarkdownDoc, StyledLines};
+pub use types::{is_markdown_path, Block, MarkdownDoc, StyledLines};
+pub use parse::parse_markdown;

@@ -1,4 +1,4 @@
-//! Tests for config parsing (LayoutOverlay, UblxOverlay).
+//! Tests for config parsing (`LayoutOverlay`, `UblxOverlay`).
 
 use ublx::config::{LayoutOverlay, UblxOverlay};
 

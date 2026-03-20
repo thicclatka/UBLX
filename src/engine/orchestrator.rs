@@ -22,7 +22,7 @@ fn pre_run_setup(dir_to_ublx: &Path) -> PreRunSetup {
 /// Log nefax error and exit. Use in both sequential and stream error paths.
 fn on_nefax_error(dir_to_ublx: &Path, e: &impl std::fmt::Display) -> ! {
     let _ = error_writer::write_nefax_error_to_log(dir_to_ublx, e);
-    error!("nefax failed: {}", e);
+    error!("nefax failed: {e}");
     exit_error();
 }
 
@@ -63,12 +63,16 @@ fn paths_needing_zahir(
     }
 }
 
-/// Run the index → zahir pipeline. Mode (sequential vs stream) is derived from [UblxOpts].
+/// Run the index → zahir pipeline. Mode (sequential vs stream) is derived from [`UblxOpts`].
 /// Returns (added, modified, removed) counts for this run.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] only from I/O in the streaming path; the sequential path typically logs and exits on failure instead of returning `Err`.
 pub fn run(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: &Option<nefax_ops::NefaxResult>,
+    prior_nefax: Option<&nefax_ops::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let mode = RunMode::from_opts(ublx_opts);
     match mode {
@@ -77,16 +81,21 @@ pub fn run(
     }
 }
 
+/// Run nefax, then batch zahir on paths that need it, then write the snapshot DB.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] only if a propagated I/O error occurs; most failures log and exit the process instead.
 pub fn run_sequential(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: &Option<nefax_ops::NefaxResult>,
+    prior_nefax: Option<&nefax_ops::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let (dir_to_ublx_abs, prior_zahir_json) = pre_run_setup(dir_to_ublx);
     let (nefax, diff) = run_nefax_exiting::<fn(&nefax_ops::NefaxEntry)>(
         dir_to_ublx,
         ublx_opts,
-        prior_nefax.as_ref(),
+        prior_nefax,
         None,
     );
 
@@ -97,7 +106,7 @@ pub fn run_sequential(
         diff.removed.len(),
         diff.modified.len()
     );
-    let path_list = paths_needing_zahir(&nefax, prior_nefax.as_ref(), &dir_to_ublx_abs);
+    let path_list = paths_needing_zahir(&nefax, prior_nefax, &dir_to_ublx_abs);
 
     debug!(
         "zahir running on {} paths (mtime changed or new)",
@@ -110,12 +119,12 @@ pub fn run_sequential(
         let r = match zahir_ops::run_zahir_batch(&path_list, ublx_opts) {
             Ok(r) => r,
             Err(e) => {
-                error!("zahir (sequential) failed: {}", e);
+                error!("zahir (sequential) failed: {e}");
                 exit_error();
             }
         };
         if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &r) {
-            error!("failed to write zahir failures to ublx.log: {}", e);
+            error!("failed to write zahir failures to ublx.log: {e}");
         }
         Some(r)
     };
@@ -127,16 +136,21 @@ pub fn run_sequential(
         &ublx_opts.to_ublx_settings(),
         &prior_zahir_json,
     ) {
-        error!("failed to write snapshot: {}", e);
+        error!("failed to write snapshot: {e}");
         exit_error();
     }
     Ok((diff.added.len(), diff.modified.len(), diff.removed.len()))
 }
 
+/// Run nefax with streaming zahir output, then write the snapshot DB from the streamed channel.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] only if a propagated I/O error occurs; most failures log and exit the process instead.
 pub fn run_stream(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: &Option<nefax_ops::NefaxResult>,
+    prior_nefax: Option<&nefax_ops::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let (dir_to_ublx_abs, prior_zahir_json) = pre_run_setup(dir_to_ublx);
 
@@ -151,7 +165,7 @@ pub fn run_stream(
         )
     });
     let on_entry = |e: &nefax_ops::NefaxEntry| {
-        if e.size > 0 && zahir_ops::needs_zahir(prior_nefax.as_ref(), &e.path, e.mtime_ns) {
+        if e.size > 0 && zahir_ops::needs_zahir(prior_nefax, &e.path, e.mtime_ns) {
             let abs = dir_to_ublx_abs.join(&e.path).to_string_lossy().into_owned();
             let _ = path_tx.send(abs);
         }
@@ -159,7 +173,7 @@ pub fn run_stream(
     let (nefax, diff) = match nefax_ops::run_nefaxer(
         dir_to_ublx,
         ublx_opts,
-        prior_nefax.as_ref(),
+        prior_nefax,
         Some(on_entry),
     ) {
         Ok(result) => result,
@@ -177,25 +191,25 @@ pub fn run_stream(
         &nefax,
         &diff,
         &ublx_opts.to_ublx_settings(),
-        output_rx,
+        &output_rx,
         &prior_zahir_json,
     ) {
-        error!("failed to write snapshot: {}", e);
+        error!("failed to write snapshot: {e}");
         exit_error();
     }
 
     match zahir_handle.join() {
         Ok(Ok(r)) => {
             if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &r) {
-                error!("failed to write zahir failures to log: {}", e);
+                error!("failed to write zahir failures to log: {e}");
             }
         }
         Ok(Err(e)) => {
             if !e.to_string().contains("No file paths provided") {
-                error!("zahir (stream) failed: {}", e);
+                error!("zahir (stream) failed: {e}");
                 exit_error();
             }
-            debug!("zahir (stream) skipped: {}", e);
+            debug!("zahir (stream) skipped: {e}");
         }
         Err(_) => {
             error!("zahir thread panicked");

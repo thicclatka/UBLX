@@ -10,7 +10,7 @@ use ublx::fatal;
 use ublx::handlers::{core, nefax_ops};
 use ublx::layout::themes;
 use ublx::utils::notifications::{self, BumperBuffer};
-use ublx::utils::*;
+use ublx::utils::{build_logger_test_mode_no_tui, validate_dir};
 
 #[derive(Parser)]
 #[command(name = "ublx")]
@@ -21,7 +21,7 @@ struct Args {
     /// Do a test run, no TUI, write snapshot to .ublx
     #[arg(short = 't', long = "test")]
     test: bool,
-    /// Dev mode: tui-logger drain + move_events, trace-level default filter
+    /// Dev mode: tui-logger drain + `move_events` + trace-level default filter
     #[arg(long = "dev")]
     dev: bool,
 }
@@ -75,19 +75,17 @@ fn main() {
         cached_settings.as_ref(),
         &for_dir_config,
     );
-    debug!("UBLX CONFIG: {:#?}", ublx_opts);
+    debug!("UBLX CONFIG: {ublx_opts:#?}");
 
-    fatal!(
-        core::run_app(core::RunAppParams {
-            test_mode,
-            dir_to_ublx: &dir_to_ublx,
-            db_path: &db_path,
-            ublx_opts: &mut ublx_opts,
-            prior_nefax: &prior_nefax,
-            bumper: bumper.as_ref(),
-            dev: args.dev,
-            start_time,
-        }),
-        "{}"
-    );
+    let mut run_params = core::RunAppParams {
+        test_mode,
+        dir_to_ublx: &dir_to_ublx,
+        db_path: &db_path,
+        ublx_opts: &mut ublx_opts,
+        prior_nefax: prior_nefax.as_ref(),
+        bumper: bumper.as_ref(),
+        dev: args.dev,
+        start_time,
+    };
+    fatal!(core::run_app(&mut run_params), "{}");
 }

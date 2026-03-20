@@ -1,4 +1,4 @@
-//! TUI app loop and view building. The loop runs in [main_app_loop]; setup/teardown live in [crate::handlers::core::run_ublx].
+//! TUI app loop and view building. The loop runs in [`main_app_loop`]; setup/teardown live in [`crate::handlers::core::run_ublx`].
 
 mod app_loop;
 mod delta;

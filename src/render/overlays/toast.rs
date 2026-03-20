@@ -21,8 +21,10 @@ pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
         .messages
         .last()
         .and_then(|m| m.operation.as_deref())
-        .map(|s| UI_STRINGS.pad(s))
-        .unwrap_or_else(|| UI_STRINGS.pad(UI_STRINGS.notification_title));
+        .map_or_else(
+            || UI_STRINGS.pad(UI_STRINGS.notification_title),
+            |s| UI_STRINGS.pad(s),
+        );
     let lines: Vec<Line<'_>> = slot
         .messages
         .iter()
@@ -35,7 +37,7 @@ pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
                 .enumerate()
                 .map(|(i, seg)| {
                     let p = if i == 0 { prefix.as_str() } else { &indent };
-                    Line::from(Span::styled(format!("{}{}", p, seg), style))
+                    Line::from(Span::styled(format!("{p}{seg}"), style))
                 })
                 .collect::<Vec<_>>()
         })

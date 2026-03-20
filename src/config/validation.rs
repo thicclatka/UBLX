@@ -2,7 +2,7 @@
 
 use super::opts::UblxOverlay;
 
-/// Maximum value for layout pane percentages (left_pct, middle_pct, right_pct). Each must be 0–100 and they must sum to this.
+/// Maximum value for layout pane percentages (`left_pct`, `middle_pct`, `right_pct`). Each must be 0–100 and they must sum to this.
 pub const LAYOUT_PCT_MAX: u16 = 100;
 
 /// One validation failure: which field and a short message.
@@ -19,6 +19,7 @@ impl std::fmt::Display for HotReloadValidationError {
 }
 
 /// Format all validation errors for display (numbered, newline-separated). Used for startup and hot-reload toasts.
+#[must_use]
 pub fn first_validation_error_message(errors: &[HotReloadValidationError]) -> String {
     if errors.is_empty() {
         "invalid config".to_string()
@@ -30,7 +31,7 @@ pub fn first_validation_error_message(errors: &[HotReloadValidationError]) -> St
             .map(|(i, e)| format!("{}) {}", i + 1, e))
             .collect::<Vec<_>>()
             .join("\n");
-        format!("Found {} error(s):\n{}", n, numbered)
+        format!("Found {n} error(s):\n{numbered}")
     }
 }
 
@@ -44,7 +45,11 @@ pub struct ReloadResult {
 }
 
 /// Validates only the hot-reloadable parts of the overlay. Call before applying.
-/// `valid_theme_names`: allowed values for `theme` (e.g. from [crate::layout::themes::theme_options] display names).
+/// `valid_theme_names`: allowed values for `theme` (e.g. from [`crate::layout::themes::theme_options`] display names).
+///
+/// # Errors
+///
+/// Returns `Err(validation_errors)` when the overlay fails validation (theme, layout percentages, etc.).
 pub fn validate_hot_reload_overlay(
     overlay: &UblxOverlay,
     valid_theme_names: &[&str],
@@ -74,17 +79,18 @@ pub fn validate_hot_reload_overlay(
             if pct > LAYOUT_PCT_MAX {
                 errors.push(HotReloadValidationError {
                     field,
-                    message: format!("must be 0–{} (got {})", LAYOUT_PCT_MAX, pct),
+                    message: format!("must be 0–{LAYOUT_PCT_MAX} (got {pct})"),
                 });
             }
         }
-        let sum = layout.left_pct as u32 + layout.middle_pct as u32 + layout.right_pct as u32;
-        if errors.iter().all(|e| !e.field.starts_with("layout")) && sum != LAYOUT_PCT_MAX as u32 {
+        let sum =
+            u32::from(layout.left_pct) + u32::from(layout.middle_pct) + u32::from(layout.right_pct);
+        if errors.iter().all(|e| !e.field.starts_with("layout")) && sum != u32::from(LAYOUT_PCT_MAX)
+        {
             errors.push(HotReloadValidationError {
                 field: "layout",
                 message: format!(
-                    "left_pct + middle_pct + right_pct must = {} (got {})",
-                    LAYOUT_PCT_MAX, sum
+                    "left_pct + middle_pct + right_pct must = {LAYOUT_PCT_MAX} (got {sum})"
                 ),
             });
         }

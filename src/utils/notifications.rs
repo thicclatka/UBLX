@@ -1,7 +1,7 @@
-//! Log capture and toast data: bumper buffer, ToastSlot stack, show_toast_slot.
+//! Log capture and toast data: bumper buffer, `ToastSlot` stack, `show_toast_slot`.
 //!
-//! - **User mode**: toast (last N messages); rendering is in [crate::render::overlays::toast].
-//! - **Dev mode** (`--dev`): tui-logger drain + move_log_events(); trace-level default filter.
+//! - **User mode**: toast (last N messages); rendering is in [`crate::render::overlays::toast`].
+//! - **Dev mode** (`--dev`): tui-logger drain + `move_log_events()`; trace-level default filter.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
@@ -35,6 +35,7 @@ pub struct BumperBuffer {
 }
 
 impl BumperBuffer {
+    #[must_use]
     pub fn new(cap: usize) -> Self {
         Self {
             inner: std::sync::Arc::new(Mutex::new(VecDeque::with_capacity(cap))),
@@ -42,8 +43,8 @@ impl BumperBuffer {
         }
     }
 
-    pub fn push(&self, level: Level, text: String) {
-        self.push_with_operation(level, text, None::<String>);
+    pub fn push(&self, level: Level, text: impl AsRef<str>) {
+        self.push_with_operation(level, text.as_ref(), None::<String>);
     }
 
     /// Push a message with an operation name; the toast title uses the most recent message's operation.
@@ -51,11 +52,11 @@ impl BumperBuffer {
     pub fn push_with_operation(
         &self,
         level: Level,
-        text: String,
+        text: &str,
         operation: Option<impl Into<String>>,
     ) {
         let content_width = TOAST_CONFIG.content_width_for(false);
-        let text = wrap_text_to_width(&text, content_width);
+        let text = wrap_text_to_width(text, content_width);
         let mut g = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         if g.len() >= self.cap {
             g.pop_front();
@@ -108,6 +109,7 @@ pub struct ToastSlot {
 }
 
 /// Word-wrap `text` so no line exceeds `max_width` chars. Inserts `\n` at word boundaries; words longer than `max_width` are broken. Existing newlines are preserved (each line is wrapped separately).
+#[must_use]
 pub fn wrap_text_to_width(text: &str, max_width: usize) -> String {
     if max_width == 0 {
         return text.to_string();
@@ -160,6 +162,7 @@ fn wrap_single_line(line: &str, max_width: usize) -> String {
 }
 
 /// Number of content lines in a toast (one per message plus newlines within each message).
+#[must_use]
 pub fn toast_content_line_count(slot: &ToastSlot) -> usize {
     slot.messages
         .iter()
@@ -218,9 +221,9 @@ pub fn flush_bumper_to_stderr(bumper: &BumperBuffer) {
     let _ = out.flush();
 }
 
-/// Initialize logging: bumper buffer + env_logger. In dev, also feed tui_logger via its Drain.
-/// Call once at startup. Pass a clone of your BumperBuffer; keep the original for rendering.
-/// Default filter: dev = Trace, user = Warn; overridable with RUST_LOG.
+/// Initialize logging: bumper buffer + `env_logger`. In dev, also feed `tui_logger` via its Drain.
+/// Call once at startup. Pass a clone of your `BumperBuffer`; keep the original for rendering.
+/// Default filter: dev = Trace, user = Warn; overridable with `RUST_LOG`.
 pub fn init_logging(bumper: BumperBuffer, dev: bool) {
     let _ = BUMPER_FOR_LOG.set(bumper);
     if dev {
@@ -249,6 +252,7 @@ pub fn move_log_events() {
     tui_logger::move_events();
 }
 
+#[must_use]
 pub fn level_style(level: Level) -> Style {
     let colors = themes::DEFAULT_COLORS;
     let color = match level {
@@ -261,6 +265,7 @@ pub fn level_style(level: Level) -> Style {
     Style::default().fg(color)
 }
 
+#[must_use]
 pub fn level_short(level: Level) -> &'static str {
     match level {
         Level::Error => "E",

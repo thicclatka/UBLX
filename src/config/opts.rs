@@ -1,9 +1,9 @@
-//! Options for ublx, extending per-tool opts (e.g. NefaxOpts, zahirscan RuntimeConfig).
+//! Options for ublx, extending per-tool opts (e.g. `NefaxOpts`, zahirscan `RuntimeConfig`).
 //!
-//! Worker pool: [Self::max_workers_available] is derived from nefax tuning (drive-type aware).
-//! When >= [Self::SEQUENTIAL_THRESHOLD], workers are split by ratio (or overrides) across nefax, zahir, and ublx.
+//! Worker pool: [`Self::max_workers_available`] is derived from nefax tuning (drive-type aware).
+//! When >= [`Self::SEQUENTIAL_THRESHOLD`], workers are split by ratio (or overrides) across nefax, zahir, and ublx.
 //! When below threshold, sequential mode: run phases one after another, each using all available workers.
-//! For zahir-only (e.g. single file, no nefax), use [Self::for_zahir_only] with a chosen max (e.g. from tuning).
+//! For zahir-only (e.g. single file, no nefax), use [`Self::for_zahir_only`] with a chosen max (e.g. from tuning).
 //!
 //! Config overlay: global `~/.config/ublx/ublx.toml` (if present) is applied first, then local (`.ublx.toml` or `ublx.toml` in the indexed dir). Only keys present in each file override defaults.
 
@@ -25,7 +25,7 @@ use super::validation::{
 use crate::handlers::nefax_ops::{NefaxDriveType, pre_opts_for_nefaxer};
 use crate::utils::notifications::BumperBuffer;
 
-/// Parameters for config validation and optional bumper when loading opts in [UblxOpts::for_dir].
+/// Parameters for config validation and optional bumper when loading opts in [`UblxOpts::for_dir`].
 pub struct ForDirConfig<'a> {
     pub valid_theme_names: &'a [&'a str],
     pub bumper: Option<&'a BumperBuffer>,
@@ -42,6 +42,7 @@ pub struct UblxSettings {
 }
 
 /// Parse drive type string from DB/cache ("SSD", "HDD", "Network", "Unknown").
+#[must_use]
 pub fn parse_drive_type(s: &str) -> NefaxDriveType {
     match s {
         "SSD" => NefaxDriveType::SSD,
@@ -60,7 +61,7 @@ fn drive_type_to_string(d: NefaxDriveType) -> &'static str {
     }
 }
 
-/// At or above this many workers we set [UblxOpts::streaming] to true (callback path for nefax).
+/// At or above this many workers we set [`UblxOpts::streaming`] to true (callback path for nefax).
 pub const STREAMING_THRESHOLD: usize = 6;
 
 /// Layout pane percentages (0–100). Used for main 3-pane split: left (categories), middle (contents), right (preview).
@@ -84,11 +85,11 @@ impl Default for LayoutOverlay {
 
 /// Config overlay read from config files. Only present keys override; used for global + local overlay.
 /// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
-/// [theme], [transparent], [layout], [hash], and [show_hidden_files] are hot-reloadable; [exclude] is applied only at startup.
+/// [theme], [transparent], [layout], [hash], and [`show_hidden_files`] are hot-reloadable; [exclude] is applied only at startup.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UblxOverlay {
-    /// Extra paths/patterns to exclude from indexing (appended to nefax [NefaxOpts::exclude]). Startup-only; not hot-reloadable.
+    /// Extra paths/patterns to exclude from indexing (appended to nefax [`NefaxOpts::exclude`]). Startup-only; not hot-reloadable.
     pub exclude: Option<Vec<String>>,
     /// When true, show hidden files; when false, exclude ".*" and zahir skips hidden. Hot-reloadable.
     #[serde(rename = "show_hidden_files")]
@@ -113,7 +114,7 @@ impl UblxOverlay {
     /// Overlay with values from `other`; only fields set in `other` are applied (local overrides global when merging).
     pub fn merge_from(&mut self, other: &UblxOverlay) {
         if other.exclude.is_some() {
-            self.exclude = other.exclude.clone();
+            self.exclude.clone_from(&other.exclude);
         }
         if other.show_hidden_files.is_some() {
             self.show_hidden_files = other.show_hidden_files;
@@ -122,20 +123,21 @@ impl UblxOverlay {
             self.hash = other.hash;
         }
         if other.theme.is_some() {
-            self.theme = other.theme.clone();
+            self.theme.clone_from(&other.theme);
         }
         if other.transparent.is_some() {
             self.transparent = other.transparent;
         }
         if other.layout.is_some() {
-            self.layout = other.layout.clone();
+            self.layout.clone_from(&other.layout);
         }
         if other.editor_path.is_some() {
-            self.editor_path = other.editor_path.clone();
+            self.editor_path.clone_from(&other.editor_path);
         }
     }
 
     /// Merge global then local into one overlay (local wins). Used to apply once and to cache the effective config.
+    #[must_use]
     pub fn merge(global: Option<UblxOverlay>, local: Option<UblxOverlay>) -> UblxOverlay {
         let mut out = UblxOverlay::default();
         if let Some(g) = global {
@@ -150,16 +152,16 @@ impl UblxOverlay {
 
 const HIDDEN_EXCLUDE_PATTERN: &str = ".*";
 
-/// Options for ublx. Extends [NefaxOpts] and [RuntimeConfig]; owns worker-pool sizing and streaming.
+/// Options for ublx. Extends [`NefaxOpts`] and [`RuntimeConfig`]; owns worker-pool sizing and streaming.
 #[derive(Clone, Debug)]
 pub struct UblxOpts {
-    /// Options passed to the nefaxer indexer (base; use [Self::nefax_opts_with_workers] for run).
+    /// Options passed to the nefaxer indexer (base; use [`Self::nefax_opts_with_workers`] for run).
     pub nefax: NefaxOpts,
-    /// ZahirScan runtime config. Use [Self::zahir_runtime_config] to get config with ublx overrides applied.
+    /// `ZahirScan` runtime config. Use [`Self::zahir_runtime_config`] to get config with ublx overrides applied.
     pub zahir: RuntimeConfig,
-    /// Max workers suggested by tuning (drive-type aware). From nefax [tuning_for_path] in [Self::for_dir].
+    /// Max workers suggested by tuning (drive-type aware). From nefax [`tuning_for_path`] in [`Self::for_dir`].
     pub max_workers_available: usize,
-    /// Override workers for nefaxer. When unset and >= [SEQUENTIAL_THRESHOLD], uses share from 1:1:1 ratio.
+    /// Override workers for nefaxer. When unset and >= [`SEQUENTIAL_THRESHOLD`], uses share from 1:1:1 ratio.
     pub nefax_workers_override: Option<usize>,
     /// Override workers for zahirscan. When unset and >= threshold, uses share from ratio.
     pub zahir_workers_override: Option<usize>,
@@ -168,9 +170,9 @@ pub struct UblxOpts {
     pub ublx_workers_override: Option<usize>,
     /// Use streaming (callback) path for nefax when true.
     pub streaming: bool,
-    /// When global config exists: "local" | "global". Preserved from cached_settings for writing back to DB.
+    /// When global config exists: "local" | "global". Preserved from `cached_settings` for writing back to DB.
     pub config_source: Option<String>,
-    /// Theme name (e.g. "default"). From config overlay; used by layout::themes::get.
+    /// Theme name (e.g. "default"). From config overlay; used by `layout::themes::get`.
     pub theme: Option<String>,
     /// When true, skip painting app background so terminal default/transparency shows.
     pub transparent: bool,
@@ -181,8 +183,8 @@ pub struct UblxOpts {
 }
 
 impl UblxOpts {
-    /// Build ublx options for indexing `dir`. [Self::max_workers_available] comes from [tuning_for_path](nefaxer::tuning_for_path).
-    /// Zahir config is loaded with [RuntimeConfig::new]. [Self::streaming] is set true when workers >= [STREAMING_THRESHOLD].
+    /// Build ublx options for indexing `dir`. [`Self::max_workers_available`] comes from [`tuning_for_path`](nefaxer::tuning_for_path).
+    /// Zahir config is loaded with [`RuntimeConfig::new`]. [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
     /// Load overlay from a single toml file. Returns None if path is None, file missing, or parse error.
     fn load_ublx_toml(path: Option<std::path::PathBuf>) -> Option<UblxOverlay> {
         let path = path?;
@@ -197,11 +199,13 @@ impl UblxOpts {
     }
 
     /// Load the last applied overlay from cache (`cache_dir()/configs/[path_hex].toml`). Fallback when hot reload gets invalid config.
+    #[must_use]
     pub fn load_overlay_from_cache(ublx_paths: &UblxPaths) -> Option<UblxOverlay> {
         Self::load_ublx_toml(ublx_paths.last_applied_config_path())
     }
 
-    /// Load merged overlay (global then local). Same merge as [Self::for_dir]; used for hot reload.
+    /// Load merged overlay (global then local). Same merge as [`Self::for_dir`]; used for hot reload.
+    #[must_use]
     pub fn load_merged_overlay(ublx_paths: &UblxPaths) -> UblxOverlay {
         let global = Self::load_ublx_toml(ublx_paths.global_config());
         let local = Self::load_ublx_toml(ublx_paths.toml_path());
@@ -209,6 +213,7 @@ impl UblxOpts {
     }
 
     /// Load overlay from a single toml file path. Returns default if path is None, file missing, or parse error.
+    #[must_use]
     pub fn load_overlay_from_path(path: Option<PathBuf>) -> UblxOverlay {
         Self::load_ublx_toml(path).unwrap_or_default()
     }
@@ -230,20 +235,20 @@ impl UblxOpts {
                     warn!("could not write cache config {}: {}", path.display(), e);
                 }
             }
-            Err(e) => warn!("could not serialize overlay for cache: {}", e),
+            Err(e) => warn!("could not serialize overlay for cache: {e}"),
         }
     }
 
     /// Apply full overlay at startup (exclude + hot-reloadable fields). [exclude] is only applied here.
-    fn apply_overlay(&mut self, overlay: UblxOverlay) {
+    fn apply_overlay(&mut self, overlay: &UblxOverlay) {
         if let Some(ref extra) = overlay.exclude {
             self.nefax.exclude.extend(extra.iter().cloned());
         }
-        self.apply_hot_reload_overlay(&overlay);
+        self.apply_hot_reload_overlay(overlay);
     }
 
-    /// Apply only hot-reloadable fields: theme, transparent, layout, hash, show_hidden_files. Used when reloading config without restart.
-    /// On invalid config from disk, caller should fall back to [Self::load_overlay_from_cache] and pass that overlay here.
+    /// Apply only hot-reloadable fields: theme, transparent, layout, hash, `show_hidden_files`. Used when reloading config without restart.
+    /// On invalid config from disk, caller should fall back to [`Self::load_overlay_from_cache`] and pass that overlay here.
     pub fn apply_hot_reload_overlay(&mut self, overlay: &UblxOverlay) {
         if let Some(show_hidden) = overlay.show_hidden_files {
             if show_hidden {
@@ -265,7 +270,7 @@ impl UblxOpts {
             self.nefax.with_hash = hash;
         }
         if overlay.theme.is_some() {
-            self.theme = overlay.theme.clone();
+            self.theme.clone_from(&overlay.theme);
         }
         if overlay.transparent.is_some() {
             self.transparent = overlay.transparent.unwrap_or(false);
@@ -274,23 +279,23 @@ impl UblxOpts {
             self.layout = overlay.layout.clone().unwrap_or_default();
         }
         if overlay.editor_path.is_some() {
-            self.editor_path = overlay.editor_path.clone();
+            self.editor_path.clone_from(&overlay.editor_path);
         }
     }
 
     /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
     /// Validates before applying; on validation failure the overlay is not applied and errors are returned.
-    /// `valid_theme_names`: allowed theme values (e.g. from [crate::layout::themes::theme_options] display names).
+    /// `valid_theme_names`: allowed theme values (e.g. from [`crate::layout::themes::theme_options`] display names).
     pub fn reload_hot_config(
         &mut self,
         ublx_paths: &UblxPaths,
         valid_theme_names: &[&str],
     ) -> ReloadResult {
         let from_disk = Self::load_merged_overlay(ublx_paths);
-        let to_apply = if from_disk != UblxOverlay::default() {
-            from_disk
-        } else {
+        let to_apply = if from_disk == UblxOverlay::default() {
             Self::load_overlay_from_cache(ublx_paths).unwrap_or_default()
+        } else {
+            from_disk
         };
         if to_apply == UblxOverlay::default() {
             return ReloadResult::default();
@@ -322,11 +327,12 @@ impl UblxOpts {
         )
     }
 
-    /// Build ublx options for indexing `dir`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [tuning_for_path](nefaxer::tuning_for_path).
-    /// Zahir config is loaded with [RuntimeConfig::new]. [Self::streaming] is set true when workers >= [STREAMING_THRESHOLD].
+    /// Build ublx options for indexing `dir`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [`tuning_for_path`](nefaxer::tuning_for_path).
+    /// Zahir config is loaded with [`RuntimeConfig::new`]. [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
     /// If a config file exists (`paths.toml_path()`: `.ublx.toml` or `ublx.toml`), only keys present in it overlay these opts.
     /// Merged overlay is validated; if invalid, cache (or default) is applied and not saved.
     /// When validation fails, if `config.bumper` is provided, pushes a warning so the user sees "using cache" (e.g. toast in TUI).
+    #[must_use]
     pub fn for_dir(
         dir_to_ublx: &Path,
         ublx_paths: &UblxPaths,
@@ -361,16 +367,16 @@ impl UblxOpts {
         let merged = UblxOverlay::merge(global, local);
         match validate_hot_reload_overlay(&merged, config.valid_theme_names) {
             Ok(()) => {
-                opts.apply_overlay(merged.clone());
+                opts.apply_overlay(&merged);
                 Self::save_overlay_to_cache(ublx_paths, &merged);
             }
             Err(validation_errors) => {
                 let cached = Self::load_overlay_from_cache(ublx_paths).unwrap_or_default();
-                opts.apply_overlay(cached);
+                opts.apply_overlay(&cached);
                 if let Some(b) = config.bumper {
                     b.push_with_operation(
                         log::Level::Warn,
-                        Self::startup_validation_fallback_message(&validation_errors),
+                        Self::startup_validation_fallback_message(&validation_errors).as_str(),
                         Some(OPERATION_NAME.ublx_settings()),
                     );
                 }
@@ -379,24 +385,24 @@ impl UblxOpts {
         opts
     }
 
-    /// Build [UblxSettings] from this opts for writing to the ublx DB (so next run can skip disk check).
+    /// Build [`UblxSettings`] from this opts for writing to the ublx DB (so next run can skip disk check).
     pub fn to_ublx_settings(&self) -> UblxSettings {
         UblxSettings {
             num_threads: self.max_workers_available,
             drive_type: self
                 .nefax
                 .drive_type
-                .map(drive_type_to_string)
-                .unwrap_or("Unknown")
+                .map_or("Unknown", drive_type_to_string)
                 .to_string(),
             parallel_walk: self.nefax.use_parallel_walk.unwrap_or(false),
             config_source: self.config_source.clone(),
         }
     }
 
-    /// Build opts when running zahir only (e.g. single file, no nefax). You supply [Self::max_workers_available] (e.g. from tuning on a path); all are used for zahir.
-    /// [Self::streaming] is set true when workers >= [STREAMING_THRESHOLD].
+    /// Build opts when running zahir only (e.g. single file, no nefax). You supply [`Self::max_workers_available`] (e.g. from tuning on a path); all are used for zahir.
+    /// [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
     #[allow(dead_code)]
+    #[must_use]
     pub fn for_zahir_only(max_workers_available: usize, zahir: RuntimeConfig) -> Self {
         let nefax = NefaxOpts::default();
         let streaming = max_workers_available >= STREAMING_THRESHOLD;
@@ -416,7 +422,8 @@ impl UblxOpts {
         }
     }
 
-    /// True when [Self::max_workers_available] < [SEQUENTIAL_THRESHOLD]: run phases sequentially, each phase using all workers.
+    /// True when [`Self::max_workers_available`] < [`SEQUENTIAL_THRESHOLD`]: run phases sequentially, each phase using all workers.
+    #[must_use]
     pub fn is_sequential_mode(&self) -> bool {
         self.max_workers_available < STREAMING_THRESHOLD
     }
@@ -456,13 +463,15 @@ impl UblxOpts {
             .min(self.max_workers_available)
     }
 
-    /// Workers to use for nefaxer. Sequential mode: all [Self::max_workers_available]; else override or ratio share.
+    /// Workers to use for nefaxer. Sequential mode: all [`Self::max_workers_available`]; else override or ratio share.
+    #[must_use]
     pub fn effective_nefax_workers(&self) -> usize {
         let (n, _, _) = self.default_share();
         self.effective_workers_for(self.nefax_workers_override, n)
     }
 
     /// Workers to use for zahirscan. Sequential mode: all available; else override or ratio share.
+    #[must_use]
     pub fn effective_zahir_workers(&self) -> usize {
         let (_, z, _) = self.default_share();
         self.effective_workers_for(self.zahir_workers_override, z)
@@ -470,27 +479,31 @@ impl UblxOpts {
 
     /// Workers reserved for ublx (main process / other work). Sequential mode: all available; else override or remainder.
     #[allow(dead_code)]
+    #[must_use]
     pub fn effective_ublx_workers(&self) -> usize {
         let (_, _, u) = self.default_share();
         self.effective_workers_for(self.ublx_workers_override, u)
     }
 
-    /// Reference to the inner [NefaxOpts] (base, no worker override applied).
+    /// Reference to the inner [`NefaxOpts`] (base, no worker override applied).
     #[allow(dead_code)]
+    #[must_use]
     pub fn nefax_opts(&self) -> &NefaxOpts {
         &self.nefax
     }
 
-    /// [NefaxOpts] with [Self::effective_nefax_workers] applied to `num_threads` for use with [nefax_ops::run_nefaxer].
+    /// [`NefaxOpts`] with [`Self::effective_nefax_workers`] applied to `num_threads` for use with [`nefax_ops::run_nefaxer`].
     #[allow(dead_code)]
+    #[must_use]
     pub fn nefax_opts_with_workers(&self) -> NefaxOpts {
         let mut opts = self.nefax.clone();
         opts.num_threads = Some(self.effective_nefax_workers());
         opts
     }
 
-    /// ZahirScan runtime config with ublx overrides: [OutputMode::Templates], [Self::effective_zahir_workers] for `max_workers`.
+    /// `ZahirScan` runtime config with ublx overrides: [`OutputMode::Templates`], [`Self::effective_zahir_workers`] for `max_workers`.
     #[allow(dead_code)]
+    #[must_use]
     pub fn zahir_runtime_config(&self) -> RuntimeConfig {
         let mut config = self.zahir.clone();
         // config.output_mode = OutputMode::Full;
@@ -500,7 +513,7 @@ impl UblxOpts {
     }
 }
 
-/// Write local config with `theme = "display_name"`. Uses existing file at [UblxPaths::toml_path] if present, otherwise creates `.ublx.toml`. Preserves other keys from existing file or default. Logs and ignores errors.
+/// Write local config with `theme = "display_name"`. Uses existing file at [`UblxPaths::toml_path`] if present, otherwise creates `.ublx.toml`. Preserves other keys from existing file or default. Logs and ignores errors.
 pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
     let path = paths.toml_path().unwrap_or_else(|| paths.hidden_toml());
     let mut overlay = UblxOpts::load_overlay_from_path(Some(path.clone()));
@@ -517,6 +530,6 @@ pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
                 warn!("could not write theme to {}: {}", path.display(), e);
             }
         }
-        Err(e) => warn!("could not serialize overlay: {}", e),
+        Err(e) => warn!("could not serialize overlay: {e}"),
     }
 }

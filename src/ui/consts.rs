@@ -104,6 +104,7 @@ impl StringObjTraits for UiStrings {
 }
 
 impl UiStrings {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             categories: "Categories",
@@ -171,6 +172,7 @@ impl UiStrings {
     }
 
     /// Toast when config is reloaded by file watcher (save).
+    #[must_use]
     pub fn config_reload_triggered_by_save(&self) -> String {
         format!("{} (triggered by save)", self.config_reloaded)
     }
@@ -200,6 +202,7 @@ impl Default for UiConstants {
 }
 
 impl UiConstants {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             h_pad: 1,
@@ -216,7 +219,8 @@ impl UiConstants {
         }
     }
 
-    /// Main area (min 1 row) + status line. Derived from [Self::status_line_height].
+    /// Main area (min 1 row) + status line. Derived from [`Self::status_line_height`].
+    #[must_use]
     pub fn status_line_constraints(&self) -> [Constraint; 2] {
         [
             Constraint::Min(1),
@@ -224,12 +228,14 @@ impl UiConstants {
         ]
     }
 
-    /// Tab row (Snapshot|Delta) + body. Derived from [Self::tab_row_height].
+    /// Tab row (Snapshot|Delta) + body. Derived from [`Self::tab_row_height`].
+    #[must_use]
     pub fn tab_row_constraints(&self) -> [Constraint; 2] {
         [Constraint::Length(self.tab_row_height), Constraint::Min(1)]
     }
 
-    /// Tabs (flex) + brand block. Derived from [Self::brand_block_width].
+    /// Tabs (flex) + brand block. Derived from [`Self::brand_block_width`].
+    #[must_use]
     pub fn brand_block_constraints(&self) -> [Constraint; 2] {
         [
             Constraint::Min(0),
@@ -237,6 +243,7 @@ impl UiConstants {
         ]
     }
 
+    #[must_use]
     pub fn get_empty_span(&self, style: Style) -> Span<'static> {
         Span::styled(self.empty_space, style)
     }
@@ -273,12 +280,13 @@ impl StringObjTraits for UiGlyphs {
 }
 
 impl UiGlyphs {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             round_left: '\u{e0b6}',
             round_right: '\u{e0b4}',
             swatch_block: '\u{2588}',
-            markdown_link: '\u{2197}',     // ↗
+            markdown_link: '\u{2197}',        // ↗
             markdown_attachment: '\u{1f4ce}', // 📎
             markdown_image: '\u{1f5bc}',      // 🖼 (framed picture)
         }
@@ -306,6 +314,7 @@ impl Default for TreeChars {
 }
 
 impl TreeChars {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             branch: "├─ ",

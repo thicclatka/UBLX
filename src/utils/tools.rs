@@ -8,6 +8,7 @@ use crate::utils::exit_error;
 
 /// Validate that a path is a directory and return the canonicalized path.
 /// Symlinks are resolved (e.g. `~/Dropbox` → `~/Library/CloudStorage/...` on macOS).
+#[must_use]
 pub fn validate_dir(path: &std::path::Path) -> PathBuf {
     if path.exists() && !path.is_dir() {
         error!("'{}' is not a directory", path.display());
@@ -23,6 +24,7 @@ pub fn validate_dir(path: &std::path::Path) -> PathBuf {
     })
 }
 
+#[must_use]
 pub fn canonicalize_dir_to_ublx(dir_to_ublx: &Path) -> PathBuf {
     dir_to_ublx
         .canonicalize()
@@ -31,7 +33,7 @@ pub fn canonicalize_dir_to_ublx(dir_to_ublx: &Path) -> PathBuf {
 
 /// Color the level of the log message.
 fn level_colored(level: Level) -> String {
-    let s = format!("{}", level);
+    let s = format!("{level}");
     match level {
         Level::Error => s.red().to_string(),
         Level::Warn => s.yellow().to_string(),
@@ -67,12 +69,13 @@ pub fn build_logger_test_mode_no_tui() {
 }
 
 /// Format byte count as "B", "KB", "MB", "GB" etc.
+#[must_use]
 pub fn format_bytes(n: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
     if n < KB {
-        format!("{} B", n)
+        format!("{n} B")
     } else if n < MB {
         format!("{:.2} KB", n as f64 / KB as f64)
     } else if n < GB {

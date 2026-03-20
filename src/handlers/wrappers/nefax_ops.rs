@@ -1,4 +1,4 @@
-use nefaxer::*;
+use nefaxer::{Nefax, NefaxOpts, Result, nefax_dir, tuning_for_path};
 use std::path::Path;
 
 use log::{debug, error};
@@ -24,11 +24,12 @@ fn nefax_opts_with_tuning(
         use_parallel_walk: Some(use_parallel_walk),
         ..NefaxOpts::default()
     };
-    opts.exclude.extend(exclude.iter().map(|s| s.to_string()));
+    opts.exclude.extend(exclude.iter().map(ToString::to_string));
     opts
 }
 
-/// Build NefaxOpts for indexing `dir` with `exclude`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [tuning_for_path](nefaxer::tuning_for_path).
+/// Build `NefaxOpts` for indexing `dir` with `exclude`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [`tuning_for_path`](nefaxer::tuning_for_path).
+#[must_use]
 pub fn pre_opts_for_nefaxer(
     dir_to_ublx: &Path,
     exclude: &[String],
@@ -50,6 +51,10 @@ fn extract_nefax_opts_from_ublx_opts(opts: &UblxOpts) -> NefaxOpts {
 }
 
 /// Run nefaxer; on success return `(nefax, diff)`, on error log and exit. Use when no cleanup is needed (e.g. sequential).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] when indexing fails (I/O, walk errors, etc.).
 pub fn run_nefaxer<F>(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
@@ -64,6 +69,7 @@ where
 }
 
 /// Load prior Nefax at startup. Exits the process on DB error; returns `None` when no prior snapshot exists.
+#[must_use]
 pub fn load_prior_nefax_or_exit(dir_to_ublx: &Path, db_path: &Path) -> Option<NefaxResult> {
     match db_ops::load_nefax_from_db(dir_to_ublx, db_path) {
         Ok(Some(nefax)) => {
@@ -72,7 +78,7 @@ pub fn load_prior_nefax_or_exit(dir_to_ublx: &Path, db_path: &Path) -> Option<Ne
         }
         Ok(None) => None,
         Err(e) => {
-            error!("failed to load snapshot: {}", e);
+            error!("failed to load snapshot: {e}");
             crate::utils::exit_error();
         }
     }

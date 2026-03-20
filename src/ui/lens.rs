@@ -15,11 +15,11 @@ use crate::utils::notifications;
 pub fn show_lens_toast(
     state: &mut UblxState,
     params: &RunUblxParams<'_>,
-    message: impl Into<String>,
+    message: impl AsRef<str>,
 ) {
     if let Some(b) = params.bumper {
         let op = OPERATION_NAME.op("lens");
-        b.push_with_operation(log::Level::Info, message.into(), Some(&op));
+        b.push_with_operation(log::Level::Info, message.as_ref(), Some(&op));
         notifications::show_toast_slot(
             &mut state.toasts.slots,
             b,
@@ -55,9 +55,9 @@ pub fn handle_lens_name_input(
                         params.lens_names.push(name_trimmed.clone());
                     }
                     let msg = if created {
-                        format!("Created lens \"{}\" and added file", name_trimmed)
+                        format!("Created lens \"{name_trimmed}\" and added file")
                     } else {
-                        format!("Added to lens \"{}\"", name_trimmed)
+                        format!("Added to lens \"{name_trimmed}\"")
                     };
                     show_lens_toast(state, params, msg);
                 }
@@ -94,9 +94,9 @@ pub fn handle_lens_rename_input(
                 && lens_applet::rename_lens(params.db_path, &target_name, &new_name).is_ok()
             {
                 if let Some(i) = params.lens_names.iter().position(|n| n == &target_name) {
-                    params.lens_names[i] = new_name.clone();
+                    params.lens_names[i].clone_from(&new_name);
                 }
-                show_lens_toast(state, params, format!("Renamed lens to \"{}\"", new_name));
+                show_lens_toast(state, params, format!("Renamed lens to \"{new_name}\""));
             }
         }
         KeyCode::Esc => {}
@@ -132,7 +132,7 @@ pub fn handle_lens_delete_confirm(
                 && lens_applet::delete_lens(params.db_path, &name).is_ok()
             {
                 params.lens_names.retain(|n| n != &name);
-                show_lens_toast(state, params, format!("Deleted lens \"{}\"", name));
+                show_lens_toast(state, params, format!("Deleted lens \"{name}\""));
             }
         }
         _ => {}
@@ -166,7 +166,7 @@ pub fn handle_lens_menu(
                     params.lens_names.get(state.lens_menu.selected_index - 1)
                 {
                     if lens_applet::add_path_to_lens(params.db_path, lens_name, path).is_ok() {
-                        show_lens_toast(state, params, format!("Added to lens \"{}\"", lens_name));
+                        show_lens_toast(state, params, format!("Added to lens \"{lens_name}\""));
                     }
                     state.close_lens_menu();
                 }
@@ -177,7 +177,7 @@ pub fn handle_lens_menu(
     true
 }
 
-/// If action is LensMenu and a file is selected, open the lens menu. Returns true if opened.
+/// If action is `LensMenu` and a file is selected, open the lens menu. Returns true if opened.
 pub fn try_open_lens_menu(
     state: &mut UblxState,
     right_content: &RightPaneContent,

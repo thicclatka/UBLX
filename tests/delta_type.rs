@@ -1,4 +1,4 @@
-//! Tests for engine::db_ops::DeltaType index mapping.
+//! Tests for `engine::db_ops::DeltaType` index mapping.
 
 use ublx::engine::db_ops::{DELTA_CATEGORY_COUNT, DeltaType};
 

@@ -1,4 +1,4 @@
-//! JSON map walk: root and nested object → sections (flat KV, schema, sheet_stats, common_pivots, csv_metadata, entries).
+//! JSON map walk: root and nested object → sections (flat KV, schema, `sheet_stats`, `common_pivots`, `csv_metadata`, entries).
 
 use serde_json::{Map, Value};
 use std::collections::HashSet;
@@ -41,8 +41,8 @@ fn object_array_to_contents_data(arr: &[Value]) -> Option<(Vec<String>, Vec<Stri
     Some((column_keys, columns, entries))
 }
 
-fn push_contents_from_entries(sections: &mut Vec<Section>, arr: Vec<Value>) {
-    if let Some((column_keys, columns, entries)) = object_array_to_contents_data(&arr) {
+fn push_contents_from_entries(sections: &mut Vec<Section>, arr: &[Value]) {
+    if let Some((column_keys, columns, entries)) = object_array_to_contents_data(arr) {
         sections.push(Section::Contents(ContentsSection {
             title: UI_STRINGS.contents_table_title.to_string(),
             columns,
@@ -53,14 +53,15 @@ fn push_contents_from_entries(sections: &mut Vec<Section>, arr: Vec<Value>) {
     }
 }
 
-/// Same as [push_root_parts] but returns a new vec. Used when parsing blobs in parallel.
+/// Same as [`push_root_parts`] but returns a new vec. Used when parsing blobs in parallel.
+#[must_use]
 pub fn root_parts_sections(map: &Map<String, Value>) -> Vec<Section> {
     let mut sections = Vec::new();
     push_root_parts(&mut sections, map);
     sections
 }
 
-/// Walk root map once; push sections in order (flat KV, schema, sheet_stats, common_pivots, csv_metadata, then each nested, then entries). Uses JSON key names (SectionKeys) in the match.
+/// Walk root map once; push sections in order (flat KV, schema, `sheet_stats`, `common_pivots`, `csv_metadata`, then each nested, then entries). Uses JSON key names (`SectionKeys`) in the match.
 pub fn push_root_parts(sections: &mut Vec<Section>, map: &Map<String, Value>) {
     let mut flat = Vec::new();
     let mut nested = Vec::new();
@@ -71,7 +72,7 @@ pub fn push_root_parts(sections: &mut Vec<Section>, map: &Map<String, Value>) {
     let mut csv_metadata = None;
     let mut tables_arr = None::<&Vec<Value>>;
 
-    for (k, v) in map.iter() {
+    for (k, v) in map {
         match k.as_str() {
             SectionKeys::ENTRIES => entries = v.as_array().cloned(),
             SectionKeys::SCHEMA => schema_val = Some(v.clone()),
@@ -148,11 +149,11 @@ pub fn push_root_parts(sections: &mut Vec<Section>, map: &Map<String, Value>) {
         process_nested_map(sections, &key, &m);
     }
     if let Some(arr) = entries {
-        push_contents_from_entries(sections, arr);
+        push_contents_from_entries(sections, &arr);
     }
 }
 
-/// Push one KV section per table object (e.g. sqlite_metadata.tables). Title from each object’s "name"; rows are all key-value pairs from that object (arrays/objects formatted for display).
+/// Push one KV section per table object (e.g. `sqlite_metadata.tables`). Title from each object’s `"name"`; rows are all key-value pairs from that object (arrays/objects formatted for display).
 const COLUMNS_KEY: &str = "columns";
 
 fn push_tables_sections(sections: &mut Vec<Section>, arr: &[Value]) {
@@ -160,8 +161,7 @@ fn push_tables_sections(sections: &mut Vec<Section>, arr: &[Value]) {
         let table_name = v
             .get("name")
             .and_then(Value::as_str)
-            .map(String::from)
-            .unwrap_or_else(|| "Table".to_string());
+            .map_or_else(|| "Table".to_string(), String::from);
         let rows = map_to_kv_rows(v, Some(COLUMNS_KEY));
         if !rows.is_empty() {
             sections.push(Section::KeyValue(KvSection {
@@ -194,9 +194,8 @@ fn push_column_stats_sections(
         let col_name = col
             .get("name")
             .and_then(Value::as_str)
-            .map(String::from)
-            .unwrap_or_else(|| "column".to_string());
-        for (stats_key, stats_val) in col.iter() {
+            .map_or_else(|| "column".to_string(), String::from);
+        for (stats_key, stats_val) in col {
             if stats_key == "name" {
                 continue;
             }
@@ -219,7 +218,7 @@ fn push_column_stats_sections(
     }
 }
 
-/// Walk nested map once (only entries, schema, common_pivots, tables are special; rest is flat KV). Push sections in order.
+/// Walk nested map once (only entries, schema, `common_pivots`, tables are special; rest is flat KV). Push sections in order.
 pub fn process_nested_map(
     sections: &mut Vec<Section>,
     section_key: &str,
@@ -231,7 +230,7 @@ pub fn process_nested_map(
     let mut common_pivots: Option<Vec<String>> = None;
     let mut tables_arr = None::<&Vec<Value>>;
 
-    for (k, v) in map.iter() {
+    for (k, v) in map {
         match k.as_str() {
             SectionKeys::ENTRIES => entries = v.as_array().cloned(),
             SectionKeys::SCHEMA => schema_val = Some(v.clone()),
@@ -272,7 +271,7 @@ pub fn process_nested_map(
         }));
     }
     if let Some(arr) = entries {
-        push_contents_from_entries(sections, arr);
+        push_contents_from_entries(sections, &arr);
     }
     if let Some(arr) = tables_arr {
         push_tables_sections(sections, arr);

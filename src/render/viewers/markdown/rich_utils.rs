@@ -8,6 +8,12 @@ type StyledLines = Vec<Line<'static>>;
 
 const INLINE_CODE_BG_PCT: f32 = 0.20;
 
+/// Extensions treated as “attachment” links for trailing glyph selection.
+const ATTACH_EXT: &[&str] = &[
+    ".pdf", ".zip", ".gz", ".tar", ".tgz", ".bz2", ".7z", ".rar", ".doc", ".docx", ".xls",
+    ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".rtf",
+];
+
 pub fn link_trailing_glyph_for_dest(dest: &str) -> char {
     glyph_for_markdown_link_dest(dest)
 }
@@ -18,10 +24,6 @@ fn glyph_for_markdown_link_dest(dest: &str) -> char {
         .next()
         .unwrap_or(dest);
     let lower = path.to_ascii_lowercase();
-    const ATTACH_EXT: &[&str] = &[
-        ".pdf", ".zip", ".gz", ".tar", ".tgz", ".bz2", ".7z", ".rar", ".doc", ".docx", ".xls",
-        ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".rtf",
-    ];
     for ext in ATTACH_EXT {
         if lower.ends_with(ext) {
             return UI_GLYPHS.markdown_attachment;
@@ -82,9 +84,8 @@ impl RichBuilder {
     fn base_style(&self) -> Style {
         let t = themes::current();
         match self.kind {
-            RichKind::Paragraph => Style::default().fg(t.text),
+            RichKind::Paragraph | RichKind::Item => Style::default().fg(t.text),
             RichKind::Heading { level } => Self::heading_style(level),
-            RichKind::Item => Style::default().fg(t.text),
         }
     }
 
@@ -144,7 +145,9 @@ impl RichBuilder {
 
     pub fn end_link(&mut self) {
         self.link_depth = self.link_depth.saturating_sub(1);
-        if self.link_depth == 0 && let Some(ch) = self.link_pending_glyph.take() {
+        if self.link_depth == 0
+            && let Some(ch) = self.link_pending_glyph.take()
+        {
             self.append_link_trailing_glyph(ch);
         }
     }

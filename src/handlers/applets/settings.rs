@@ -12,10 +12,10 @@ const CONFIG_SELF_WRITE_WINDOW_MS: u64 = 800;
 
 /// Show ublx-settings toast on first tick (e.g. config loaded / validation message from startup).
 pub fn on_first_tick(state: &mut UblxState, params: &RunUblxParams<'_>) {
-    if !state.first_tick {
+    if !state.session.first_tick {
         return;
     }
-    state.first_tick = false;
+    state.session.first_tick = false;
     if let Some(b) = params.bumper {
         notifications::show_toast_slot(
             &mut state.toasts.slots,
@@ -62,13 +62,13 @@ pub fn apply_config_reload(
     let result = ublx_opts.reload_hot_config(&paths, &valid_themes);
 
     if result.applied {
-        params.theme = ublx_opts.theme.clone();
+        params.theme.clone_from(&ublx_opts.theme);
         params.transparent = ublx_opts.transparent;
         params.layout = ublx_opts.layout.clone();
         if let Some(msg) = message {
             let op = OPERATION_NAME.ublx_settings();
             if let Some(b) = params.bumper {
-                b.push_with_operation(log::Level::Info, msg.as_ref().to_string(), Some(op.clone()));
+                b.push_with_operation(log::Level::Info, msg.as_ref(), Some(op.clone()));
                 notifications::show_toast_slot(
                     &mut state.toasts.slots,
                     b,
@@ -78,15 +78,16 @@ pub fn apply_config_reload(
             }
         }
     } else if !result.validation_errors.is_empty() {
-        params.theme = ublx_opts.theme.clone();
+        params.theme.clone_from(&ublx_opts.theme);
         params.transparent = ublx_opts.transparent;
         params.layout = ublx_opts.layout.clone();
         let op = OPERATION_NAME.ublx_settings();
         if let Some(b) = params.bumper {
             let msg = first_validation_error_message(&result.validation_errors);
+            let warn_msg = format!("Config validation: {msg}");
             b.push_with_operation(
                 log::Level::Warn,
-                format!("Config validation: {}", msg),
+                warn_msg.as_str(),
                 Some(op.clone()),
             );
             notifications::show_toast_slot(

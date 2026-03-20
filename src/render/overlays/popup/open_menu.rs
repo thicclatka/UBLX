@@ -24,7 +24,7 @@ pub fn render_open_menu(
     };
     render_list_popup(
         f,
-        ListPopupParams {
+        &ListPopupParams {
             title: POPUP_MENU.open_title,
             items,
             selected_index: sel,

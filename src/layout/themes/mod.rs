@@ -72,12 +72,14 @@ pub fn set_current(name: Option<&str>) {
 }
 
 /// Current theme for this frame. Use in style functions.
+#[must_use]
 pub fn current() -> &'static Theme {
     let name = CURRENT_THEME_NAME.with(|cell| cell.borrow().clone());
     get(name.as_deref())
 }
 
-/// Resolve config theme to the theme name to use. When config is `None`, empty, or `"default"`, returns [DEFAULT_THEME_NAME]. Otherwise returns the config value. Use before passing to [set_current] or [get].
+/// Resolve config theme to the theme name to use. When config is `None`, empty, or `"default"`, returns [`DEFAULT_THEME_NAME`]. Otherwise returns the config value. Use before passing to [`set_current`] or [get].
+#[must_use]
 pub fn theme_name_from_config(config_theme: Option<&str>) -> &str {
     match config_theme {
         None => DEFAULT_THEME.display_name,
@@ -92,7 +94,8 @@ pub fn theme_name_from_config(config_theme: Option<&str>) -> &str {
     }
 }
 
-/// Resolve theme by name. Uses [theme_name_from_config] so `None` / empty / `"default"` use [default_theme]; then looks up by id or display name.
+/// Resolve theme by name. Uses [`theme_name_from_config`] so `None` / empty / `"default"` use [`default_theme`]; then looks up by id or display name.
+#[must_use]
 pub fn get(name: Option<&str>) -> &'static Theme {
     let n = theme_name_from_config(name);
     if n == DEFAULT_THEME.display_name {
@@ -101,6 +104,5 @@ pub fn get(name: Option<&str>) -> &'static Theme {
     all_ublx_themes()
         .iter()
         .find(|(id, t)| *id == n || t.name == n)
-        .map(|(_, t)| *t)
-        .unwrap_or(DEFAULT_THEME.theme)
+        .map_or(DEFAULT_THEME.theme, |(_, t)| *t)
 }

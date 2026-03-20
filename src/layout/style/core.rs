@@ -9,13 +9,15 @@ use crate::layout::themes;
 use crate::ui::UI_CONSTANTS;
 
 /// Viewer scrollbar: vertical right, no begin/end symbols (track + thumb only).
+#[must_use]
 pub fn viewer_scrollbar() -> Scrollbar<'static> {
     Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(None)
         .end_symbol(None)
 }
 
-/// Split a tab row area into [left pad, content, right pad] using [UI_CONSTANTS](super::UI_CONSTANTS).h_pad.
+/// Split a tab row area into [left pad, content, right pad] using [`UI_CONSTANTS`](super::UI_CONSTANTS).`h_pad`.
+#[must_use]
 pub fn tab_row_padded(area: Rect) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Horizontal)
@@ -28,6 +30,7 @@ pub fn tab_row_padded(area: Rect) -> Rc<[Rect]> {
 }
 
 /// Vertical layout split. Reusable so call sites don't repeat `Layout::default().direction(Vertical).constraints(...).split(area)`.
+#[must_use]
 pub fn split_vertical(area: Rect, constraints: &[Constraint]) -> Rc<[Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
@@ -36,6 +39,7 @@ pub fn split_vertical(area: Rect, constraints: &[Constraint]) -> Rc<[Rect]> {
 }
 
 /// Centered popup rect: inner content size plus padding (e.g. for borders/title), clamped to area.
+#[must_use]
 pub fn centered_popup_rect(
     area: Rect,
     content_w: usize,
@@ -50,7 +54,8 @@ pub fn centered_popup_rect(
     Rect::new(x, y, w, h)
 }
 
-/// Return a rect inset by [UI_CONSTANTS](super::UI_CONSTANTS).h_pad on left and right. Use for table (or other) content that should have horizontal padding.
+/// Return a rect inset by [`UI_CONSTANTS`](super::UI_CONSTANTS).`h_pad` on left and right. Use for table (or other) content that should have horizontal padding.
+#[must_use]
 pub fn rect_with_h_pad(area: Rect) -> Rect {
     let pad = UI_CONSTANTS.h_pad;
     let width = area.width.saturating_sub(2 * pad);
@@ -63,12 +68,13 @@ pub fn rect_with_h_pad(area: Rect) -> Rect {
 }
 
 /// Trait that provides a theme and default implementations for all theme-derived styles.
-/// One implementor ([CurrentTheme]) uses the frame's current theme; others could use a fixed theme or snapshot.
+/// One implementor ([`CurrentTheme`]) uses the frame's current theme; others could use a fixed theme or snapshot.
 pub trait ThemeStyles {
     fn palette() -> &'static themes::Theme
     where
         Self: Sized;
 
+    #[must_use]
     fn panel_focused() -> Style
     where
         Self: Sized,
@@ -79,6 +85,7 @@ pub trait ThemeStyles {
             .add_modifier(Modifier::BOLD)
     }
 
+    #[must_use]
     fn panel_unfocused() -> Style
     where
         Self: Sized,
@@ -86,6 +93,7 @@ pub trait ThemeStyles {
         Style::default()
     }
 
+    #[must_use]
     fn text_style() -> Style
     where
         Self: Sized,
@@ -93,6 +101,7 @@ pub trait ThemeStyles {
         Style::default().fg(Self::palette().text)
     }
 
+    #[must_use]
     fn tab_active() -> Style
     where
         Self: Sized,
@@ -104,6 +113,7 @@ pub trait ThemeStyles {
             .add_modifier(Modifier::BOLD)
     }
 
+    #[must_use]
     fn tab_inactive() -> Style
     where
         Self: Sized,
@@ -111,6 +121,7 @@ pub trait ThemeStyles {
         Style::default().bg(Self::palette().tab_inactive_bg)
     }
 
+    #[must_use]
     fn search_text() -> Style
     where
         Self: Sized,
@@ -119,6 +130,7 @@ pub trait ThemeStyles {
         Style::default().fg(t.search_text)
     }
 
+    #[must_use]
     fn hint_text() -> Style
     where
         Self: Sized,
@@ -127,6 +139,7 @@ pub trait ThemeStyles {
         Style::default().fg(t.hint).bg(t.popup_bg)
     }
 
+    #[must_use]
     fn delta_added() -> Style
     where
         Self: Sized,
@@ -134,6 +147,7 @@ pub trait ThemeStyles {
         Style::default().fg(Self::palette().delta_added)
     }
 
+    #[must_use]
     fn delta_mod() -> Style
     where
         Self: Sized,
@@ -141,6 +155,7 @@ pub trait ThemeStyles {
         Style::default().fg(Self::palette().delta_mod)
     }
 
+    #[must_use]
     fn delta_removed() -> Style
     where
         Self: Sized,
@@ -148,6 +163,7 @@ pub trait ThemeStyles {
         Style::default().fg(Self::palette().delta_removed)
     }
 
+    #[must_use]
     fn title_brand() -> Style
     where
         Self: Sized,
@@ -156,7 +172,7 @@ pub trait ThemeStyles {
     }
 }
 
-/// Uses the current frame theme (set at draw start). Implements [ThemeStyles].
+/// Uses the current frame theme (set at draw start). Implements [`ThemeStyles`].
 pub struct CurrentTheme;
 
 impl ThemeStyles for CurrentTheme {
@@ -166,11 +182,12 @@ impl ThemeStyles for CurrentTheme {
 }
 
 /// List item highlight (selected row).
+#[must_use]
 pub fn list_highlight() -> Style {
     Style::default().add_modifier(Modifier::REVERSED)
 }
 
-/// Theme-derived style wrappers: each calls [CurrentTheme] with the same name. Call these from widgets; they use the theme set at frame start.
+/// Theme-derived style wrappers: each calls [`CurrentTheme`] with the same name. Call these from widgets; they use the theme set at frame start.
 macro_rules! theme_style_fn {
     ($name:ident) => {
         pub fn $name() -> Style {
@@ -179,7 +196,7 @@ macro_rules! theme_style_fn {
     };
 }
 
-/// Expand to [theme_style_fn!] for each name; add new theme style functions here.
+/// Expand to [`theme_style_fn`!] for each name; add new theme style functions here.
 macro_rules! theme_style_fn_thru_list {
     ($($name:ident),* $(,)?) => {
         $( theme_style_fn!($name); )*

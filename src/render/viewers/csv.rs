@@ -7,12 +7,18 @@ use std::io::Cursor;
 
 use crate::render::viewers::pretty_tables;
 
-/// Path is treated as CSV if it ends with this extension.
-pub fn is_csv_path(path: &str) -> bool {
-    path.ends_with(".csv")
+crate::define_path_ext_predicate! {
+    /// Path is treated as CSV if it ends with this extension.
+    pub fn is_csv_path(path: &str) -> bool {
+        "csv"
+    }
 }
 
-/// Parse raw CSV string into a grid (first row = header). Returns error on parse failure.
+/// Parse raw CSV string into a grid (first row = header).
+///
+/// # Errors
+///
+/// Returns [`csv::Error`] when a row cannot be read or parsed (invalid CSV).
 pub fn parse_csv(raw: &str) -> Result<Vec<Vec<String>>, csv::Error> {
     let mut rows = Vec::new();
     let mut rdr = csv::ReaderBuilder::new()
@@ -27,6 +33,7 @@ pub fn parse_csv(raw: &str) -> Result<Vec<Vec<String>>, csv::Error> {
 
 /// Build a comfy-table string from parsed rows: UTF8 box-drawing style, cells truncated.
 /// First row is the header; `content_width` constrains table width; cells capped at `max_cell_chars`.
+#[must_use]
 pub fn table_string_with_max_cell(
     rows: &[Vec<String>],
     content_width: u16,
@@ -35,8 +42,9 @@ pub fn table_string_with_max_cell(
     pretty_tables::table_string_with_max_cell(rows, content_width, max_cell_chars)
 }
 
-/// Like [table_string_with_max_cell] but treats every row as a body row (no set_header).
+/// Like [`table_string_with_max_cell`] but treats every row as a body row (no `set_header`).
 /// Use for markdown tables so header and data each get their own line.
+#[must_use]
 pub fn table_string_rows_only(
     rows: &[Vec<String>],
     content_width: u16,
@@ -56,22 +64,26 @@ pub fn table_string(rows: &[Vec<String>], content_width: u16) -> String {
     pretty_tables::table_string_header_body_smart_wrap(&header, &rows, content_width)
 }
 
-/// Table as styled [Text] for the viewer, using [themes::current] text color for the whole table.
+/// Table as styled [`Text`] for the viewer, using [`crate::layout::themes::current`] text color for the whole table.
+#[must_use]
 pub fn table_to_text(rows: &[Vec<String>], content_width: u16) -> Text<'static> {
     table_string_to_text(&table_string(rows, content_width))
 }
 
 /// Turn a pre-rendered table string into styled [Text] (for cache path).
+#[must_use]
 pub fn table_string_to_text(table_str: &str) -> Text<'static> {
     pretty_tables::table_string_to_text(table_str)
 }
 
 /// Number of lines the table string will occupy (for scroll height).
+#[must_use]
 pub fn table_line_count(rows: &[Vec<String>], content_width: u16) -> usize {
     table_string(rows, content_width).lines().count()
 }
 
 /// Build table string and line count in one pass (for caching).
+#[must_use]
 pub fn table_string_and_line_count(rows: &[Vec<String>], content_width: u16) -> (String, usize) {
     let s = table_string(rows, content_width);
     let count = s.lines().count();

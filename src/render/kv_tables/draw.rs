@@ -3,13 +3,13 @@
 use ratatui::layout::Rect;
 
 use super::consts::TABLE_GAP;
+use super::ratatui_table;
 use super::sections;
 use super::sections::Section;
 use crate::layout::style;
-use super::ratatui_table;
 use crate::ui::UI_STRINGS;
 
-/// Visible line range for a section: (skip_lines, take_lines) or None if section is off-screen.
+/// Visible line range for a section: (`skip_lines`, `take_lines`) or None if section is off-screen.
 fn visible_section_window(
     section_start: u16,
     section_height: u16,
@@ -25,7 +25,7 @@ fn visible_section_window(
     Some((skip_lines, take_lines))
 }
 
-/// Draw a section title line when it falls in the visible window. If `sub_title` is true, use subordinate style (e.g. for "TableName · Columns").
+/// Draw a section title line when it falls in the visible window. If `sub_title` is true, use subordinate style (e.g. for "`TableName` · Columns").
 fn draw_section_title(
     f: &mut ratatui::Frame,
     title: &str,
@@ -59,7 +59,7 @@ fn draw_section_title(
     }
 }
 
-/// Rect for content at `y_offset` (from table_area.y) with height clamped so it doesn't exceed the viewport.
+/// Rect for content at `y_offset` (from `table_area.y`) with height clamped so it doesn't exceed the viewport.
 fn rect_in_viewport(table_area: Rect, y_offset: u16, height: u16, viewport: u16) -> Rect {
     let max_h = viewport.saturating_sub(y_offset);
     Rect {
@@ -122,7 +122,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
         }
         match section {
             Section::KeyValue(kv) => {
-                let table_start_line = section_start + if title_opt.is_some() { 1 } else { 0 };
+                let table_start_line = section_start + u16::from(title_opt.is_some());
                 let skip =
                     (visible_start.saturating_sub(table_start_line)).min(num_rows as u16) as usize;
                 let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
@@ -171,7 +171,12 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
                     let y_offset = table_start.saturating_sub(visible_start);
                     let rect = rect_in_viewport(table_area, y_offset, take as u16, viewport);
                     f.render_widget(
-                        ratatui_table::single_column_list_to_table(list, row_offset, skip, skip + take),
+                        ratatui_table::single_column_list_to_table(
+                            list,
+                            row_offset,
+                            skip,
+                            skip + take,
+                        ),
                         rect,
                     );
                 }

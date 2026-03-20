@@ -9,7 +9,10 @@ use crate::layout::{
 };
 use crate::ui::{
     consts::UI_CONSTANTS,
-    keymap::{UblxAction, key_action_setup, search_consumes},
+    keymap::{
+        KeyActionContext, KeyOptionalTabs, KeySearchState, UblxAction, key_action_setup,
+        search_consumes,
+    },
     lens, menu,
 };
 
@@ -20,7 +23,8 @@ pub struct MainTabFlags {
     pub has_lenses: bool,
 }
 
-/// Key event and resolved action passed into modal handlers (keeps [dispatch_modal_handlers] under clippy’s arg limit).
+/// Key event and resolved action passed into modal handlers (keeps [`dispatch_modal_handlers`] under clippy’s arg limit).
+#[derive(Clone, Copy)]
 struct ModalInput {
     e: KeyEvent,
     action: UblxAction,
@@ -63,8 +67,8 @@ fn dispatch_modal_handlers(
         applets::theme_selector::handle_key(state, params, theme_ctx, action);
         return true;
     }
-    if state.help_visible {
-        state.help_visible = false;
+    if state.chrome.help_visible {
+        state.chrome.help_visible = false;
         return true;
     }
     if menu::handle_open_menu(state, params, ublx_opts, action) {
@@ -82,6 +86,13 @@ fn dispatch_modal_handlers(
     false
 }
 
+/// Poll for one key event, map it to a [`UblxAction`], run modal handlers, then apply the action to state.
+/// Returns `Ok(true)` when the event was handled and the main loop should skip further processing for this tick;
+/// `Ok(false)` when there was no key, a non-key event, or the event was consumed without requesting quit semantics.
+///
+/// # Errors
+///
+/// Returns [`io::Error`] when `crossterm` fails to poll or read the next event (`event::poll` / `event::read`).
 pub fn handle_ublx_input(
     state: &mut UblxState,
     view: &ViewData,
@@ -100,11 +111,17 @@ pub fn handle_ublx_input(
     let has_search_filter = !state.search.query.is_empty();
     let result = key_action_setup(
         e,
-        state.search.active,
-        has_search_filter,
-        state.last_key_for_double,
-        tabs.has_duplicates,
-        tabs.has_lenses,
+        &KeyActionContext {
+            search: KeySearchState {
+                active: state.search.active,
+                has_filter: has_search_filter,
+            },
+            last_key_for_double: state.last_key_for_double,
+            tabs: KeyOptionalTabs {
+                duplicates: tabs.has_duplicates,
+                lenses: tabs.has_lenses,
+            },
+        },
     );
     state.last_key_for_double = result.last_key_for_double;
     let action = result.action;

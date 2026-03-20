@@ -1,5 +1,5 @@
 //! Pure filtering for snapshot view: categories and content indices by search and category.
-//! No state mutation; used by the event loop to build [super::setup::ViewData].
+//! No state mutation; used by the event loop to build [`super::setup::ViewData`].
 
 use rayon::prelude::*;
 
@@ -8,7 +8,8 @@ use super::setup::TuiRow;
 
 /// Categories that have at least one row matching the search query.
 /// If `search_query` is empty, returns all categories.
-/// Uses parallel iteration when there are many categories (≥ [PARALLEL.categories_for_search]) and search is non-empty.
+/// Uses parallel iteration when there are many categories (≥ [`PARALLEL.categories_for_search`]) and search is non-empty.
+#[must_use]
 pub fn categories_for_search(
     categories: &[String],
     all_rows: &[TuiRow],
@@ -33,7 +34,8 @@ pub fn categories_for_search(
 /// Indices into `all_rows` for the current category and search (no row copy).
 /// When `selected_category` is `None`, all rows are considered; otherwise only rows in that category.
 /// Search filter is applied when `search_query` is non-empty.
-/// Uses parallel iteration when `all_rows.len()` exceeds [PARALLEL.content_indices].
+/// Uses parallel iteration when `all_rows.len()` exceeds [`PARALLEL.content_indices`].
+#[must_use]
 pub fn content_indices_for_view(
     all_rows: &[TuiRow],
     selected_category: Option<&str>,
@@ -64,8 +66,9 @@ pub fn content_indices_for_view(
     }
 }
 
-/// Filter raw delta rows (created_ns, path) by path containing query. Keeps dates when building display lines.
-/// Uses parallel iteration when row count exceeds [PARALLEL.delta_rows].
+/// Filter raw delta rows (`created_ns`, path) by path containing query. Keeps dates when building display lines.
+/// Uses parallel iteration when row count exceeds [`PARALLEL.delta_rows`].
+#[must_use]
 pub fn filter_delta_rows(rows: &[(i64, String)], search_query: &str) -> Vec<(i64, String)> {
     let q = search_query.trim();
     if q.is_empty() {

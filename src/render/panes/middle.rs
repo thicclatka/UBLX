@@ -14,6 +14,7 @@ use crate::ui::UI_STRINGS;
 pub const MAX_SELECTION_INDEX: usize = 99_999;
 
 /// Format "current/total" for the middle-pane counter (right-aligned, fixed width).
+#[must_use]
 pub fn format_selection_counter(current: usize, total: usize) -> String {
     format!(
         "{:>5}/{:>5}",
@@ -23,6 +24,7 @@ pub fn format_selection_counter(current: usize, total: usize) -> String {
 }
 
 /// Styled bottom line for the middle panel: current/total, right-aligned.
+#[must_use]
 pub fn counter_line(current: usize, total: usize) -> Line<'static> {
     style::node_line(
         &format_selection_counter(current, total),
@@ -30,11 +32,11 @@ pub fn counter_line(current: usize, total: usize) -> Line<'static> {
     )
 }
 
-/// Bottom line for the middle panel from list state: pass selected index (from content_state.selected()) and content length.
+/// Bottom line for the middle panel from list state: pass selected index (from `content_state.selected()`) and content length.
+#[must_use]
 pub fn line_for(selected_index: Option<usize>, content_len: usize) -> Line<'static> {
     let current = selected_index
-        .map(|i| i + 1)
-        .unwrap_or(0)
+        .map_or(0, |i| i + 1)
         .min(MAX_SELECTION_INDEX);
     let total = content_len.min(MAX_SELECTION_INDEX);
     counter_line(current, total)

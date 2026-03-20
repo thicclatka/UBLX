@@ -1,4 +1,4 @@
-/// Chars to subtract from toast width for borders + level prefix (e.g. " [W] ") when word-wrapping bumper messages.
+/// Chars to subtract from toast width for borders + level prefix (e.g. ` [W] `) when word-wrapping bumper messages.
 pub const TOAST_CONTENT_WIDTH_OFFSET: usize = 7;
 
 pub struct ToastConfig {
@@ -25,7 +25,7 @@ pub struct ToastConfig {
     pub toast_stack_gap: u16,
 }
 
-/// Pick `dev_val` when `dev` is true, else `normal`. Used by ToastConfig `*_for(dev)` methods.
+/// Pick `dev_val` when `dev` is true, else `normal`. Used by `ToastConfig` `*_for(dev)` methods.
 fn pick<T>(dev: bool, normal: T, dev_val: T) -> T {
     if dev { dev_val } else { normal }
 }
@@ -37,6 +37,7 @@ impl Default for ToastConfig {
 }
 
 impl ToastConfig {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             width: 44,
@@ -57,28 +58,34 @@ impl ToastConfig {
         }
     }
 
+    #[must_use]
     pub fn bumper_cap_for(&self, dev: bool) -> usize {
         pick(dev, self.bumper_cap, self.dev_bumper_cap)
     }
 
+    #[must_use]
     pub fn width_for(&self, dev: bool) -> u16 {
         pick(dev, self.width, self.dev_width)
     }
 
+    #[must_use]
     pub fn height_for(&self, dev: bool) -> u16 {
         pick(dev, self.height, self.dev_height)
     }
 
+    #[must_use]
     pub fn display_lines_for(&self, dev: bool) -> usize {
         pick(dev, self.display_lines, self.dev_display_lines)
     }
 
-    /// Number of bumper messages to show in a toast. Height is derived from content (see [crate::utils::notifications::toast_content_line_count]).
+    /// Number of bumper messages to show in a toast. Height is derived from content (see [`crate::utils::notifications::toast_content_line_count`]).
+    #[must_use]
     pub fn display_lines_for_operation(&self, dev: bool, _operation: Option<&str>) -> usize {
         self.display_lines_for(dev)
     }
 
-    /// Width available for message text when wrapping (width minus [TOAST_CONTENT_WIDTH_OFFSET]).
+    /// Width available for message text when wrapping (width minus [`TOAST_CONTENT_WIDTH_OFFSET`]).
+    #[must_use]
     pub fn content_width_for(&self, dev: bool) -> usize {
         (self.width_for(dev) as usize).saturating_sub(TOAST_CONTENT_WIDTH_OFFSET)
     }
@@ -98,28 +105,33 @@ impl Default for OperationName {
 }
 
 impl OperationName {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             executable: env!("CARGO_PKG_NAME"),
         }
     }
 
+    #[must_use]
     pub fn snapshot(&self) -> String {
         format!("{}-snapshot", self.executable)
     }
 
     /// Hot-reload config toast: e.g. "ublx-settings".
+    #[must_use]
     pub fn ublx_settings(&self) -> String {
         format!("{}-settings", self.executable)
     }
 
     /// Theme selector toast: operation name is just "theme-selector" (no executable prefix).
+    #[must_use]
     pub fn theme_selector(&self) -> &'static str {
         "theme-selector"
     }
 
     /// For future operations: e.g. `op("export")` → "ublx-export".
     #[allow(dead_code)]
+    #[must_use]
     pub fn op(&self, name: &str) -> String {
         format!("{}-{}", self.executable, name)
     }

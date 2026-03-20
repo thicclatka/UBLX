@@ -1,4 +1,4 @@
-//! Lens (playlist) tables and operations: path, lens, lens_path.
+//! Lens (playlist) tables and operations: path, lens, `lens_path`.
 //! One file can be in multiple lenses; path table normalizes path strings.
 
 use std::path::Path;
@@ -9,6 +9,10 @@ use super::SnapshotTuiRow;
 use super::consts::UblxDbStatements;
 
 /// Load lens names in id order for the TUI left bar. Returns empty if DB missing or no lenses.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_lens_names(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
     if !db_path.exists() {
         return Ok(Vec::new());
@@ -22,6 +26,10 @@ pub fn load_lens_names(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
 }
 
 /// Load (path, category, size) rows for a lens by name, ordered by position. Returns empty if lens not found or DB missing.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_lens_paths(
     db_path: &Path,
     lens_name: &str,
@@ -45,13 +53,17 @@ pub fn load_lens_paths(
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
-            size.max(0) as u64,
+            size.max(0).cast_unsigned(),
         ))
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 /// Create a lens by name. Returns the new lens id. Errors if name already exists.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` errors (e.g. unique constraint if the name exists).
 pub fn create_lens(db_path: &Path, name: &str) -> Result<i64, anyhow::Error> {
     let conn = Connection::open(db_path)?;
     conn.execute(UblxDbStatements::INSERT_LENS, [name])?;
@@ -67,7 +79,11 @@ fn get_or_create_path_id(conn: &Connection, path: &str) -> Result<i64, anyhow::E
     Ok(id)
 }
 
-/// Add a path to a lens at the given position. Creates path in path table if needed. Replaces any existing (lens_id, path_id) with new position.
+/// Add a path to a lens at the given position. Creates path in path table if needed. Replaces any existing (`lens_id`, `path_id`) with new position.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` errors (e.g. lens not found).
 pub fn add_path_to_lens(
     db_path: &Path,
     lens_name: &str,
@@ -89,6 +105,10 @@ pub fn add_path_to_lens(
 }
 
 /// Remove a path from a lens. No-op if the path is not in the lens.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/execute errors.
 pub fn remove_path_from_lens(
     db_path: &Path,
     lens_name: &str,
@@ -103,6 +123,10 @@ pub fn remove_path_from_lens(
 }
 
 /// Rename a lens. Errors if new name is empty or already exists.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] if the new name is empty, the old lens is missing, or `SQLite` reports a conflict.
 pub fn rename_lens(db_path: &Path, old_name: &str, new_name: &str) -> Result<(), anyhow::Error> {
     if new_name.trim().is_empty() {
         return Err(anyhow::anyhow!("lens name cannot be empty"));
@@ -110,12 +134,16 @@ pub fn rename_lens(db_path: &Path, old_name: &str, new_name: &str) -> Result<(),
     let conn = Connection::open(db_path)?;
     let changed = conn.execute(UblxDbStatements::UPDATE_LENS_NAME, (old_name, new_name))?;
     if changed == 0 {
-        return Err(anyhow::anyhow!("lens not found: {}", old_name));
+        return Err(anyhow::anyhow!("lens not found: {old_name}"));
     }
     Ok(())
 }
 
-/// Delete a lens and all its path associations (lens_path rows removed by CASCADE).
+/// Delete a lens and all its path associations (`lens_path` rows removed by CASCADE).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/execute errors.
 pub fn delete_lens(db_path: &Path, lens_name: &str) -> Result<(), anyhow::Error> {
     if !db_path.exists() {
         return Ok(());

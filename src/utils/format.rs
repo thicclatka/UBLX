@@ -12,6 +12,7 @@ impl Epsilon {
 }
 
 /// If `s` is longer than `max_len`, replace the middle with "..." so the result shows start and end (total length `max_len`). Uses character count.
+#[must_use]
 pub fn truncate_middle(s: &str, max_len: usize) -> String {
     const ELLIPSIS: &str = "...";
     let ellipsis_len = ELLIPSIS.chars().count();
@@ -28,6 +29,7 @@ pub fn truncate_middle(s: &str, max_len: usize) -> String {
 }
 
 /// Format Unix timestamp in nanoseconds as local date-time (e.g. "2025-02-06 14:30:00").
+#[must_use]
 pub fn format_timestamp_ns(ns: i64) -> String {
     const NS_PER_S: i64 = 1_000_000_000;
     let secs = ns / NS_PER_S;
@@ -37,16 +39,18 @@ pub fn format_timestamp_ns(ns: i64) -> String {
             let local = utc.with_timezone(&Local);
             local.format("%Y-%m-%d %H:%M:%S").to_string()
         }
-        None => format!("{} (invalid)", ns),
+        None => format!("{ns} (invalid)"),
     }
 }
 
 /// Clamp a selection index to a list length. Returns `idx` if in range, or the last valid index (`len.saturating_sub(1)`), or 0 when `len == 0`.
+#[must_use]
 pub fn clamp_selection(idx: usize, len: usize) -> usize {
     idx.min(len.saturating_sub(1))
 }
 
-/// Like [clamp_selection] but returns [None] when `len == 0` so callers can pass through to `select(None)`.
+/// Like [`clamp_selection`] but returns [None] when `len == 0` so callers can pass through to `select(None)`.
+#[must_use]
 pub fn clamp_selection_opt(idx: usize, len: usize) -> Option<usize> {
     if len == 0 {
         None
@@ -56,11 +60,12 @@ pub fn clamp_selection_opt(idx: usize, len: usize) -> Option<usize> {
 }
 
 /// Pads a string with spaces for block/popup titles, e.g. `" Delta "`.
+#[must_use]
 pub fn frame_string_with_spaces(s: &str) -> String {
-    format!(" {} ", s)
+    format!(" {s} ")
 }
 
-/// Types that can pad a string for block/popup titles (e.g. `" Delta "`). Shared by [crate::ui::consts::UiStrings] and [crate::ui::consts::UiGlyphs].
+/// Types that can pad a string for block/popup titles (e.g. `" Delta "`). Shared by [`crate::ui::consts::UiStrings`] and [`crate::ui::consts::UiGlyphs`].
 pub trait StringObjTraits {
     fn new() -> Self
     where

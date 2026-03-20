@@ -28,6 +28,7 @@ const SIZE_OPTIMIZATION_COLUMN_THRESHOLD: usize = 3;
 /// Natural width per column is typically max(header len, max cell len in column).
 /// If total natural fits, use natural (capped by available); otherwise scale down
 /// proportionally. Distribute any remainder so sum equals available. Each column gets at least 1.
+#[must_use]
 pub fn balanced_column_widths(
     natural: &[usize],
     available_width: usize,
@@ -52,7 +53,7 @@ pub fn balanced_column_widths(
         })
         .collect();
     let mut remainder = available.saturating_sub(widths.iter().map(|&w| w as usize).sum::<usize>());
-    for w in widths.iter_mut() {
+    for w in &mut widths {
         if remainder == 0 {
             break;
         }
@@ -62,13 +63,13 @@ pub fn balanced_column_widths(
     widths
 }
 
+#[must_use]
 pub fn entry_cell(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> String {
-    obj.get(key)
-        .map(|v| format::format_value(v, key))
-        .unwrap_or_else(|| "—".to_string())
+    obj.get(key).map_or_else(|| "—".to_string(), |v| format::format_value(v, key))
 }
 
 /// Build key/value table for one section.
+#[must_use]
 pub fn section_to_table(section: &KvSection, row_offset: usize) -> Table<'_> {
     let header = Row::new(vec![
         UI_STRINGS.table_header_key,
@@ -132,7 +133,7 @@ fn contents_row(
 
 /// Natural width (chars) per column: max of header length and max cell length in visible window.
 /// Column names (headers) are always included so they are never squeezed.
-/// Uses parallel iteration when visible row count exceeds [PARALLEL.contents_natural_widths].
+/// Uses parallel iteration when visible row count exceeds [`PARALLEL.contents_natural_widths`].
 fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) -> Vec<usize> {
     let keys = &section.column_keys;
     let cols = &section.columns;
@@ -195,6 +196,7 @@ fn contents_header_widths(section: &ContentsSection) -> Vec<u16> {
 
 /// Build multi-column table for a Contents section, only for entry indices [start, end) (for virtualization).
 /// Column widths are derived from content (header + visible rows), balanced against `table_width`.
+#[must_use]
 pub fn contents_to_table_window(
     section: &ContentsSection,
     row_offset: usize,
@@ -270,7 +272,8 @@ pub fn contents_to_table_window(
         .style(style::text_style())
 }
 
-/// Build a single-column table with no header (e.g. common_pivots list). Only rows [start, end) are included.
+/// Build a single-column table with no header (e.g. `common_pivots` list). Only rows [start, end) are included.
+#[must_use]
 pub fn single_column_list_to_table(
     section: &SingleColumnListSection,
     row_offset: usize,

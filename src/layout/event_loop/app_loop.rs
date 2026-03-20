@@ -20,9 +20,13 @@ use super::snapshot::load_snapshot_for_tui;
 use super::user_selected::{view_data_for_duplicates_mode, view_data_for_lenses_mode};
 use super::view_data::{build_view_data, clamp_two_pane_selection};
 
-/// Runs until the user quits. Call from [crate::handlers::core::run_ublx] after terminal setup.
+/// Runs until the user quits. Call from [`crate::handlers::core::run_ublx`] after terminal setup.
 ///
 /// Per-tick: prune toasts → handle snapshot request/done → build view + right content → draw → input (quit breaks).
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] when terminal draw, input, or snapshot I/O fails.
 pub fn main_app_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     state: &mut setup::UblxState,
@@ -114,8 +118,8 @@ fn run_tick(
         params,
         ublx_opts,
     )?;
-    if state.refresh_terminal_after_editor {
-        state.refresh_terminal_after_editor = false;
+    if state.session.refresh_terminal_after_editor {
+        state.session.refresh_terminal_after_editor = false;
         reapply_terminal_after_editor()?;
         terminal.clear()?;
         let draw_inputs = DrawInputs {
@@ -140,12 +144,12 @@ struct DrawInputs<'a> {
 }
 
 /// Draw one frame using current view and right content. Used for the normal tick draw and for the post-editor refresh.
-fn draw_one_frame<'a>(
+fn draw_one_frame(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     state: &mut setup::UblxState,
     view: &setup::ViewData,
     right_content: &setup::RightPaneContent,
-    draw_inputs: &DrawInputs<'a>,
+    draw_inputs: &DrawInputs<'_>,
 ) -> io::Result<()> {
     let draw_args = build_draw_args(
         draw_inputs.params,
@@ -159,7 +163,7 @@ fn draw_one_frame<'a>(
         .map(|_| ())
 }
 
-/// Build [DrawFrameArgs] from params and per-tick values.
+/// Build [`DrawFrameArgs`] from params and per-tick values.
 fn build_draw_args<'a>(
     params: &'a RunUblxParams<'_>,
     delta_data: Option<&'a setup::DeltaViewData>,
@@ -197,7 +201,7 @@ fn prune_toasts(state: &mut setup::UblxState) {
 }
 
 fn handle_snapshot_request(state: &mut setup::UblxState, params: &RunUblxParams<'_>) {
-    if !state.snapshot_requested {
+    if !state.snapshot_bg.requested {
         return;
     }
     snapshot::spawn_snapshot_from_dir_db(
@@ -206,8 +210,8 @@ fn handle_snapshot_request(state: &mut setup::UblxState, params: &RunUblxParams<
         params.snapshot_done_tx.as_ref(),
         params.bumper,
     );
-    state.snapshot_requested = false;
-    state.snapshot_done_received = false; // start polling .ublx_tmp for live progress
+    state.snapshot_bg.requested = false;
+    state.snapshot_bg.done_received = false; // start polling .ublx_tmp for live progress
 }
 
 fn handle_snapshot_done(
@@ -227,8 +231,8 @@ fn handle_snapshot_done(
         load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
     *categories = c;
     *all_rows = r;
-    state.snapshot_poll_deadline = None;
-    state.snapshot_done_received = true;
+    state.snapshot_bg.poll_deadline = None;
+    state.snapshot_bg.done_received = true;
     // Duplicates are lazy-loaded when user switches to that tab; don't block here.
 
     if let Some(b) = params.bumper {
@@ -243,7 +247,7 @@ fn handle_snapshot_done(
     }
 }
 
-/// When a background snapshot is running, periodically reload from the DB (e.g. .ublx_tmp) so the TUI shows live progress.
+/// When a background snapshot is running, periodically reload from the DB (e.g. .`ublx_tmp`) so the TUI shows live progress.
 fn poll_snapshot_if_due(
     state: &mut setup::UblxState,
     categories: &mut Vec<String>,
@@ -253,11 +257,14 @@ fn poll_snapshot_if_due(
     let Some(ref _rx) = params.snapshot_done_rx else {
         return;
     };
-    if state.snapshot_done_received {
+    if state.snapshot_bg.done_received {
         return;
     }
     let now = Instant::now();
-    let due = state.snapshot_poll_deadline.is_none_or(|d| now >= d);
+    let due = state
+        .snapshot_bg
+        .poll_deadline
+        .is_none_or(|d| now >= d);
     if !due {
         return;
     }
@@ -266,7 +273,7 @@ fn poll_snapshot_if_due(
         *categories = c;
         *all_rows = r;
     }
-    state.snapshot_poll_deadline = Some(now + SNAPSHOT_POLL_INTERVAL);
+    state.snapshot_bg.poll_deadline = Some(now + SNAPSHOT_POLL_INTERVAL);
 }
 
 /// Shared path for Duplicates and Lenses: clamp selection on `view`, then resolve right-pane content. Caller builds `view` first so no closure captures `state` (avoids E0502).
@@ -287,7 +294,7 @@ fn build_view_and_right_for_user_selected_mode(
     (view, right_content)
 }
 
-/// Expands to: build view from `$view`, then [build_view_and_right_for_user_selected_mode]; returns `(view, right_content, None)`.
+/// Expands to: build view from `$view`, then [`build_view_and_right_for_user_selected_mode`]; returns `(view, right_content, None)`.
 macro_rules! build_view_and_right_user_selected_mode {
     ($state:expr, $params:expr, $db_path:expr, $view:expr) => {{
         let view = $view;
@@ -297,7 +304,7 @@ macro_rules! build_view_and_right_user_selected_mode {
     }};
 }
 
-/// Build view data and right-pane content for the current mode (Snapshot, Delta, Duplicates, Lenses). Returns (view, right_content, delta_data for draw, rows slice for draw).
+/// Build view data and right-pane content for the current mode (Snapshot, Delta, Duplicates, Lenses). Returns (view, `right_content`, `delta_data` for draw, rows slice for draw).
 fn build_view_and_right_content<'a>(
     state: &mut setup::UblxState,
     categories: &[String],
@@ -328,7 +335,7 @@ fn build_view_and_right_content<'a>(
         (view, right_content, Some(d), None)
     } else {
         let db_path_for_read =
-            db_ops::snapshot_read_path_for_tui(params.db_path, !state.snapshot_done_received);
+            db_ops::snapshot_read_path_for_tui(params.db_path, !state.snapshot_bg.done_received);
         let (view, right_content, rows_for_draw) = if state.main_mode == setup::MainMode::Duplicates
         {
             build_view_and_right_user_selected_mode!(

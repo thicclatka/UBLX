@@ -22,7 +22,7 @@ pub fn render_lens_menu(
         .collect();
     render_list_popup(
         f,
-        ListPopupParams {
+        &ListPopupParams {
             title: POPUP_MENU.lens_title,
             items: &items,
             selected_index,

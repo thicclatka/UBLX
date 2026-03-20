@@ -5,14 +5,13 @@ use crate::layout::{filter, setup};
 use crate::ui::UI_STRINGS;
 use crate::utils::format::{clamp_selection, clamp_selection_opt, format_timestamp_ns};
 
-/// Load delta_log data for Delta mode: overview text (snapshot count + timestamps) and paths per type.
+/// Load `delta_log` data for Delta mode: overview text (snapshot count + timestamps) and paths per type.
 pub fn build_delta_view_data(db_path: &std::path::Path) -> setup::DeltaViewData {
     let timestamps = db_ops::load_delta_log_snapshot_timestamps(db_path).unwrap_or_default();
     let snapshot_count = timestamps.len();
     let overview_lines: Vec<String> = std::iter::once(String::new())
         .chain(std::iter::once(format!(
-            "{} snapshot(s) (sorted by time; newest first):",
-            snapshot_count
+            "{snapshot_count} snapshot(s) (sorted by time; newest first):"
         )))
         .chain(std::iter::once(String::new()))
         .chain(
@@ -43,7 +42,7 @@ fn build_delta_display_lines(rows: Vec<(i64, String)>) -> Vec<String> {
             current_ns = Some(ns);
             lines.push(format_timestamp_ns(ns));
         }
-        lines.push(format!("  {}", path));
+        lines.push(format!("  {path}"));
     }
     lines
 }
@@ -72,7 +71,7 @@ fn delta_category_label(t: DeltaType) -> &'static str {
     }
 }
 
-/// ViewData for Delta mode. Search filters by path; display lines keep timestamp groupings (dates preserved).
+/// `ViewData` for Delta mode. Search filters by path; display lines keep timestamp groupings (dates preserved).
 pub fn view_data_for_delta_mode(
     state: &setup::UblxState,
     delta: &setup::DeltaViewData,

@@ -41,7 +41,7 @@ pub fn draw_delta_placeholder(f: &mut Frame, chunks: &[Rect]) {
     );
 }
 
-/// Parameters for [draw_delta_panes] (avoids too many arguments).
+/// Parameters for [`draw_delta_panes`] (avoids too many arguments).
 pub struct DrawDeltaPanesParams<'a> {
     pub state: &'a mut setup::UblxState,
     pub delta: &'a setup::DeltaViewData,
@@ -74,8 +74,7 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
         .map(|(i, s)| {
             let style = labels
                 .get(i)
-                .map(|(_, st)| *st)
-                .unwrap_or(style::text_style());
+                .map_or(style::text_style(), |(_, st)| *st);
             let span = ratatui::text::Span::styled(s.as_str(), style);
             ListItem::new(Line::from(span))
         })

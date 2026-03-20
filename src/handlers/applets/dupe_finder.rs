@@ -18,7 +18,7 @@ pub fn on_groups_received(
         if let Some(b) = params.bumper {
             b.push_with_operation(
                 log::Level::Info,
-                UI_STRINGS.no_duplicates.to_string(),
+                UI_STRINGS.no_duplicates,
                 Some(&op),
             );
             notifications::show_toast_slot(
@@ -36,13 +36,13 @@ pub fn on_groups_received(
 
 /// If duplicate load was requested and no load is in progress, spawn the background load and clear the request flag.
 pub fn spawn_if_requested(state: &mut setup::UblxState, params: &mut RunUblxParams<'_>) {
-    if !state.duplicate_load_requested
+    if !state.duplicate_load.requested
         || !params.duplicate_groups.is_empty()
         || params.duplicate_groups_rx.is_some()
     {
         return;
     }
-    state.duplicate_load_requested = false;
+    state.duplicate_load.requested = false;
     let db_path = params.db_path.to_path_buf();
     let dir_to_ublx = params.dir_to_ublx.to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel();

@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS snapshot (
 ";
 
     /// Settings table: single row storing disk/tuning so we can skip disk check when .ublx exists.
-    /// config_source: 'local' | 'global' when global config exists; which config to use (stored in .ublx).
+    /// `config_source`: 'local' | 'global' when global config exists; which config to use (stored in .ublx).
     pub const CREATE_SETTINGS: &'static str = "
 CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS lens (
 );
 ";
 
-    /// Which paths are in which lens, and in what order (lens_id, path_id, position).
+    /// Which paths are in which lens, and in what order (`lens_id`, `path_id`, position).
     pub const CREATE_LENS_PATH: &'static str = "
 CREATE TABLE IF NOT EXISTS lens_path (
     lens_id INTEGER NOT NULL REFERENCES lens(id) ON DELETE CASCADE,
@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS lens_path (
 CREATE INDEX IF NOT EXISTS idx_lens_path_lens_position ON lens_path (lens_id, position);
 ";
 
-    /// SQL to create all ublx tables (snapshot, settings, delta_log, path, lens, lens_path). Use when opening or creating the DB.
+    /// SQL to create all ublx tables (snapshot, settings, `delta_log`, path, lens, `lens_path`). Use when opening or creating the DB.
+    #[must_use]
     pub fn create_ublx_db_sql() -> String {
         format!(
             "{}{}{}{}{}{}",
@@ -92,7 +93,7 @@ pub struct UblxDbStatements;
 impl UblxDbStatements {
     pub const INSERT_SNAPSHOT: &'static str = "INSERT OR REPLACE INTO snapshot (path, mtime_ns, size, hash, category, zahir_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
 
-    /// Update category and zahir_json for an existing snapshot row (streaming write).
+    /// Update category and `zahir_json` for an existing snapshot row (streaming write).
     pub const UPDATE_SNAPSHOT_ZAHIR: &'static str =
         "UPDATE snapshot SET category = ?1, zahir_json = ?2 WHERE path = ?3";
 
@@ -109,7 +110,7 @@ impl UblxDbStatements {
     pub const SELECT_COUNT_DELTA_LOG_ROWS: &'static str =
         "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='delta_log'";
 
-    /// Check if old DB has lens table (so we can copy path/lens/lens_path).
+    /// Check if old DB has lens table (so we can copy `path/lens/lens_path`).
     pub const SELECT_LENS_TABLE_EXISTS: &'static str =
         "SELECT COUNT(*) FROM old.sqlite_master WHERE type='table' AND name='lens'";
     /// Copy path strings from old DB; new path ids are assigned in main.
@@ -118,36 +119,36 @@ impl UblxDbStatements {
     /// Copy lens names from old DB; new lens ids are assigned in main.
     pub const COPY_PREVIOUS_LENS: &'static str =
         "INSERT INTO main.lens(name) SELECT name FROM old.lens";
-    /// Copy lens_path rows, mapping old lens_id/path_id to new ids by matching name/path.
+    /// Copy `lens_path` rows, mapping old `lens_id/path_id` to new ids by matching name/path.
     pub const COPY_PREVIOUS_LENS_PATH: &'static str = "INSERT INTO main.lens_path(lens_id, path_id, position) SELECT (SELECT id FROM main.lens WHERE name = (SELECT name FROM old.lens WHERE id = old.lens_path.lens_id)), (SELECT id FROM main.path WHERE path = (SELECT path FROM old.path WHERE id = old.lens_path.path_id)), position FROM old.lens_path WHERE (SELECT id FROM main.lens WHERE name = (SELECT name FROM old.lens WHERE id = old.lens_path.lens_id)) IS NOT NULL AND (SELECT id FROM main.path WHERE path = (SELECT path FROM old.path WHERE id = old.lens_path.path_id)) IS NOT NULL";
 
-    /// (path, zahir_json) for paths that have non-empty zahir_json. Used for prior-zahir reuse.
+    /// (path, `zahir_json`) for paths that have non-empty `zahir_json`. Used for prior-zahir reuse.
     pub const SELECT_SNAPSHOT_PATH_ZAHIR_JSON: &'static str =
         "SELECT path, zahir_json FROM snapshot WHERE zahir_json IS NOT NULL AND zahir_json != ''";
 
     /// Distinct categories for TUI left bar.
     pub const SELECT_SNAPSHOT_CATEGORIES: &'static str = "SELECT DISTINCT category FROM snapshot WHERE category IS NOT NULL AND category != '' ORDER BY category";
 
-    /// Distinct created_ns from delta_log, newest first (for Delta mode).
+    /// Distinct `created_ns` from `delta_log`, newest first (for Delta mode).
     pub const SELECT_DELTA_LOG_SNAPSHOT_TIMESTAMPS: &'static str =
         "SELECT DISTINCT created_ns FROM delta_log ORDER BY created_ns DESC";
 
-    /// (created_ns, path) for a given delta_type, newest first then path.
+    /// (`created_ns`, path) for a given `delta_type`, newest first then path.
     pub const SELECT_DELTA_LOG_ROWS_BY_TYPE: &'static str = "SELECT created_ns, path FROM delta_log WHERE delta_type = ?1 ORDER BY created_ns DESC, path";
 
-    /// (path, category, size) for TUI list; zahir_json loaded on demand for selected row.
+    /// (path, category, size) for TUI list; `zahir_json` loaded on demand for selected row.
     pub const SELECT_SNAPSHOT_ROWS_FOR_TUI_BY_CATEGORY: &'static str =
         "SELECT path, category, size FROM snapshot WHERE category = ?1 ORDER BY path";
 
-    /// (path, category, size) for TUI list; zahir_json loaded on demand for selected row.
+    /// (path, category, size) for TUI list; `zahir_json` loaded on demand for selected row.
     pub const SELECT_SNAPSHOT_ROWS_FOR_TUI_ALL: &'static str =
         "SELECT path, category, size FROM snapshot ORDER BY category, path";
 
-    /// zahir_json for a single path (for right-pane on-demand load).
+    /// `zahir_json` for a single path (for right-pane on-demand load).
     pub const SELECT_SNAPSHOT_ZAHIR_JSON_BY_PATH: &'static str =
         "SELECT zahir_json FROM snapshot WHERE path = ?1";
 
-    /// mtime_ns for a single path (for viewer footer last-modified).
+    /// `mtime_ns` for a single path (for viewer footer last-modified).
     pub const SELECT_SNAPSHOT_MTIME_BY_PATH: &'static str =
         "SELECT mtime_ns FROM snapshot WHERE path = ?1";
 
@@ -161,7 +162,7 @@ impl UblxDbStatements {
     /// Lens id by name (for loading paths).
     pub const SELECT_LENS_ID_BY_NAME: &'static str = "SELECT id FROM lens WHERE name = ?1";
 
-    /// Path id by path string (for lens_path).
+    /// Path id by path string (for `lens_path`).
     pub const SELECT_PATH_ID_BY_PATH: &'static str = "SELECT id FROM path WHERE path = ?1";
 
     /// Insert path, return id (use INSERT OR IGNORE then SELECT id).
@@ -169,7 +170,7 @@ impl UblxDbStatements {
 
     pub const INSERT_LENS: &'static str = "INSERT INTO lens (name) VALUES (?1)";
 
-    /// (path_id, position) for a lens, ordered by position. Join with path to get path string.
+    /// (`path_id`, position) for a lens, ordered by position. Join with path to get path string.
     pub const SELECT_LENS_PATH_IDS: &'static str =
         "SELECT path_id, position FROM lens_path WHERE lens_id = ?1 ORDER BY position";
 
@@ -180,10 +181,10 @@ impl UblxDbStatements {
     pub const DELETE_LENS_PATH_ROW: &'static str = "DELETE FROM lens_path WHERE lens_id = (SELECT id FROM lens WHERE name = ?1) AND path_id = (SELECT id FROM path WHERE path = ?2)";
     /// Rename a lens.
     pub const UPDATE_LENS_NAME: &'static str = "UPDATE lens SET name = ?2 WHERE name = ?1";
-    /// Delete a lens (lens_path rows removed by FK CASCADE).
+    /// Delete a lens (`lens_path` rows removed by FK CASCADE).
     pub const DELETE_LENS: &'static str = "DELETE FROM lens WHERE name = ?1";
 
-    /// (path, category, size) for TUI list for a lens; joins lens_path, path, and snapshot for category/size.
+    /// (path, category, size) for TUI list for a lens; joins `lens_path`, path, and snapshot for category/size.
     pub const SELECT_LENS_ROWS_FOR_TUI: &'static str = "
         SELECT p.path, COALESCE(s.category, ''), COALESCE(s.size, 0)
         FROM lens_path lp
@@ -192,17 +193,19 @@ impl UblxDbStatements {
         WHERE lp.lens_id = ?1
         ORDER BY lp.position";
 
+    #[must_use]
     pub fn create_query_for_nefax_from_db(table_name: &str) -> String {
-        format!("SELECT path, mtime_ns, size, hash FROM {}", table_name)
+        format!("SELECT path, mtime_ns, size, hash FROM {table_name}")
     }
 
+    #[must_use]
     pub fn create_query_for_settings_from_db() -> String {
         "SELECT num_threads, drive_type, parallel_walk, config_source FROM settings WHERE id = 1"
             .to_string()
     }
 }
 
-/// Delta type for the delta_log table. Order (0 = Added, 1 = Mod, 2 = Removed) is used for TUI category index.
+/// Delta type for the `delta_log` table. Order (0 = Added, 1 = Mod, 2 = Removed) is used for TUI category index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeltaType {
     Added,
@@ -214,6 +217,7 @@ pub enum DeltaType {
 pub const DELTA_CATEGORY_COUNT: usize = 3;
 
 impl DeltaType {
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             DeltaType::Added => "added",
@@ -224,6 +228,7 @@ impl DeltaType {
 
     /// Index for TUI left-pane category (0 = Added, 1 = Mod, 2 = Removed).
     #[allow(dead_code)]
+    #[must_use]
     pub const fn as_index(self) -> usize {
         match self {
             DeltaType::Added => 0,
@@ -233,6 +238,7 @@ impl DeltaType {
     }
 
     /// Delta type for the given TUI category index. Out-of-range maps to Removed.
+    #[must_use]
     pub const fn from_index(idx: usize) -> Self {
         match idx {
             0 => DeltaType::Added,
@@ -246,7 +252,7 @@ impl DeltaType {
     }
 }
 
-/// Category for ublx db: ublx-defined variants plus all [ZahirFileType] via [UblxDbCategory::Zahir].
+/// Category for ublx db: ublx-defined variants plus all [`ZahirFileType`] via [`UblxDbCategory::Zahir`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UblxDbCategory {
     UblxSettings,
@@ -255,12 +261,13 @@ pub enum UblxDbCategory {
     // Hidden,
     Directory,
     File,
-    /// All zahirscan file types; use [ZahirFileType::as_metadata_name] for the display string.
+    /// All zahirscan file types; use [`ZahirFileType::as_metadata_name`] for the display string.
     #[allow(dead_code)]
     Zahir(ZahirFileType),
 }
 
 impl UblxDbCategory {
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             UblxDbCategory::UblxSettings => "UBLX Settings",
@@ -274,6 +281,7 @@ impl UblxDbCategory {
     }
 
     /// Get the category for a given path.
+    #[must_use]
     pub fn get_category_for_path(
         path_ref: &Path,
         ublx_paths: Option<&UblxPaths>,
@@ -317,7 +325,7 @@ impl UblxDbCategory {
         path_ref
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with("."))
+            .is_some_and(|n| n.starts_with('.'))
     }
 
     #[inline]

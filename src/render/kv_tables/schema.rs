@@ -14,16 +14,13 @@ fn schema_node_lines(
     label: &str,
 ) -> Vec<String> {
     let mut out = Vec::new();
-    let map = match value {
-        Value::Object(m) => m,
-        _ => {
-            out.push(format::prefixed_label_with_value(
-                line_prefix,
-                label,
-                &format::value_to_string(value),
-            ));
-            return out;
-        }
+    let Value::Object(map) = value else {
+        out.push(format::prefixed_label_with_value(
+            line_prefix,
+            label,
+            &format::value_to_string(value),
+        ));
+        return out;
     };
 
     if map.is_empty() {
@@ -121,7 +118,7 @@ fn schema_value_to_list(value: &Value) -> Vec<String> {
     }
 }
 
-/// Push a single schema tree section (SingleColumnList) onto `sections`.
+/// Push a single schema tree section (`SingleColumnList`) onto `sections`.
 pub fn push_schema_section(sections: &mut Vec<Section>, value: &Value) {
     let mut lines = schema_value_to_list(value);
     if lines.is_empty() {

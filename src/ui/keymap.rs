@@ -51,7 +51,7 @@ pub enum UblxAction {
     TakeSnapshot,
     /// Open theme selector popup (j/k to preview, Enter to pick and save to local .ublx.toml, Esc to revert).
     ThemeSelector,
-    /// Reload hot-reloadable config (theme, transparent, layout, hash, show_hidden) from disk. Ctrl+R.
+    /// Reload hot-reloadable config (theme, transparent, layout, hash, `show_hidden`) from disk. Ctrl+R.
     ReloadConfig,
     /// Open menu (Shift+O): Open (Terminal) or Open (GUI). Only when selection is a non-binary file.
     OpenMenu,
@@ -69,19 +69,35 @@ pub struct KeyActionResult {
     pub last_key_for_double: Option<char>,
 }
 
+/// Search bar state for key resolution (`/` open, typed query, Esc behavior).
+#[derive(Clone, Copy, Debug)]
+pub struct KeySearchState {
+    pub active: bool,
+    pub has_filter: bool,
+}
+
+/// Whether optional main tabs (Duplicates, Lenses) exist for digit keys and toggle.
+#[derive(Clone, Copy, Debug)]
+pub struct KeyOptionalTabs {
+    pub duplicates: bool,
+    pub lenses: bool,
+}
+
+/// UI snapshot needed to resolve keys: search mode, filter, gg tracking, which optional tabs exist.
+#[derive(Clone, Copy, Debug)]
+pub struct KeyActionContext {
+    pub search: KeySearchState,
+    pub last_key_for_double: Option<char>,
+    pub tabs: KeyOptionalTabs,
+}
+
 /// Map a key event to a vanilla TUI action. Call only when `event.kind == KeyEventKind::Press`.
-/// Esc yields SearchClear when the search bar is open or when a filter is active (so Esc clears
+/// Esc yields `SearchClear` when the search bar is open or when a filter is active (so Esc clears
 /// search instead of quitting). Only when not searching at all does Esc mean Quit.
-/// Pass `last_key_for_double` from state to detect gg (two g's) for ListTop.
-/// Pass `has_duplicates` / `has_lenses` so keys 3/4 and MainModeToggle switch only when the tab exists.
-pub fn key_action_setup(
-    event: KeyEvent,
-    search_active: bool,
-    has_search_filter: bool,
-    last_key_for_double: Option<char>,
-    has_duplicates: bool,
-    has_lenses: bool,
-) -> KeyActionResult {
+/// Use `last_key_for_double` in `ctx` to detect gg (two g's) for `ListTop`.
+/// Use `tabs.duplicates` / `tabs.lenses` so keys 3/9 and `MainModeToggle` switch only when the tab exists.
+#[must_use]
+pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResult {
     if event.kind != KeyEventKind::Press {
         return KeyActionResult {
             action: UblxAction::Noop,
@@ -91,26 +107,28 @@ pub fn key_action_setup(
     let shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
     let (action, last_key) = match event.code {
-        KeyCode::Esc if search_active || has_search_filter => (UblxAction::SearchClear, None),
+        KeyCode::Esc if ctx.search.active || ctx.search.has_filter => {
+            (UblxAction::SearchClear, None)
+        }
         KeyCode::Char('q') | KeyCode::Esc => (UblxAction::Quit, None),
         KeyCode::Char('?') => (UblxAction::Help, None),
-        KeyCode::Char('/') if !search_active => (UblxAction::SearchStart, None),
-        KeyCode::Char(c) if search_active => (UblxAction::SearchChar(c), None),
+        KeyCode::Char('/') if !ctx.search.active => (UblxAction::SearchStart, None),
+        KeyCode::Char(c) if ctx.search.active => (UblxAction::SearchChar(c), None),
         KeyCode::Char('s' | 'S') if shift => (UblxAction::TakeSnapshot, None),
         KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
         KeyCode::Char('o' | 'O') if shift => (UblxAction::OpenMenu, None),
         KeyCode::Char('l' | 'L') if shift => (UblxAction::LensMenu, None),
         KeyCode::Char('v' | 'V') if shift => (UblxAction::CycleRightPane, None),
         KeyCode::Char('t' | 'T') if ctrl => (UblxAction::ThemeSelector, None),
-        KeyCode::Char('J') if shift => (UblxAction::ScrollPreviewDown, None),
-        KeyCode::Char('K') if shift => (UblxAction::ScrollPreviewUp, None),
+        KeyCode::Char('J') | KeyCode::Down if shift => (UblxAction::ScrollPreviewDown, None),
+        KeyCode::Char('K') | KeyCode::Up if shift => (UblxAction::ScrollPreviewUp, None),
         KeyCode::Char('b' | 'B') if ctrl => (UblxAction::PreviewTop, None),
         KeyCode::Char('d' | 'D') if ctrl => (UblxAction::LoadDuplicates, None),
         KeyCode::Char('e' | 'E') if ctrl => (UblxAction::PreviewBottom, None),
         KeyCode::Char('r' | 'R') if ctrl => (UblxAction::ReloadConfig, None),
         KeyCode::Char('G') if shift => (UblxAction::ListBottom, None),
         KeyCode::Char('g') if !shift && !ctrl => {
-            if last_key_for_double == Some('g') {
+            if ctx.last_key_for_double == Some('g') {
                 (UblxAction::ListTop, None)
             } else {
                 (UblxAction::Noop, Some('g'))
@@ -122,8 +140,8 @@ pub fn key_action_setup(
                 ' ' => UblxAction::SpaceMenu,
                 '1' => UblxAction::MainModeSnapshot,
                 '2' => UblxAction::MainModeDelta,
-                '9' if has_duplicates => UblxAction::MainModeDuplicates,
-                '3' if has_lenses => UblxAction::MainModeLenses,
+                '9' if ctx.tabs.duplicates => UblxAction::MainModeDuplicates,
+                '3' if ctx.tabs.lenses => UblxAction::MainModeLenses,
                 'v' => UblxAction::RightPaneViewer,
                 't' => UblxAction::RightPaneTemplates,
                 'm' => UblxAction::RightPaneMetadata,
@@ -140,8 +158,6 @@ pub fn key_action_setup(
         }
         KeyCode::Enter => (UblxAction::SearchSubmit, None),
         KeyCode::Backspace => (UblxAction::SearchBackspace, None),
-        KeyCode::Up if shift => (UblxAction::ScrollPreviewUp, None),
-        KeyCode::Down if shift => (UblxAction::ScrollPreviewDown, None),
         KeyCode::Up => (UblxAction::MoveUp, None),
         KeyCode::Down => (UblxAction::MoveDown, None),
         KeyCode::Left => (UblxAction::FocusCategories, None),
@@ -157,6 +173,7 @@ pub fn key_action_setup(
 }
 
 /// Returns true if the action was handled by the search bar (main loop should skip navigation).
+#[must_use]
 pub fn search_consumes(action: UblxAction) -> bool {
     matches!(
         action,

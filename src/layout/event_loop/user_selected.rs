@@ -12,7 +12,7 @@ use crate::utils::format::clamp_selection;
 
 use super::view_data;
 
-/// Mode-specific data for building [ViewData]. Handlers in [view_data_for_user_selected_mode] differentiate behavior.
+/// Mode-specific data for building [`ViewData`]. Handlers in [`view_data_for_user_selected_mode`] differentiate behavior.
 pub enum UserSelectedSource<'a> {
     Duplicates {
         groups: &'a [DuplicateGroup],
@@ -23,14 +23,14 @@ pub enum UserSelectedSource<'a> {
     },
 }
 
-/// Build [ViewData] for Duplicates or Lenses from [UserSelectedSource]. Single general path; source decides category names and content rows.
+/// Build [`ViewData`] for Duplicates or Lenses from [`UserSelectedSource`]. Single general path; source decides category names and content rows.
 pub fn view_data_for_user_selected_mode(
     state: &setup::UblxState,
-    source: UserSelectedSource<'_>,
+    source: &UserSelectedSource<'_>,
 ) -> setup::ViewData {
     let search_query = state.search.query.trim();
 
-    let filtered_names: Vec<String> = match &source {
+    let filtered_names: Vec<String> = match source {
         UserSelectedSource::Duplicates { groups } => {
             if search_query.is_empty() {
                 groups
@@ -104,15 +104,15 @@ pub fn view_data_for_user_selected_mode(
     view_data::build_user_selected_mode_view_data(filtered_names, contents)
 }
 
-/// ViewData for Duplicates mode (delegates to [view_data_for_user_selected_mode]).
+/// `ViewData` for Duplicates mode (delegates to [`view_data_for_user_selected_mode`]).
 pub fn view_data_for_duplicates_mode(
     state: &setup::UblxState,
     groups: &[DuplicateGroup],
 ) -> setup::ViewData {
-    view_data_for_user_selected_mode(state, UserSelectedSource::Duplicates { groups })
+    view_data_for_user_selected_mode(state, &UserSelectedSource::Duplicates { groups })
 }
 
-/// ViewData for Lenses mode (delegates to [view_data_for_user_selected_mode]).
+/// `ViewData` for Lenses mode (delegates to [`view_data_for_user_selected_mode`]).
 pub fn view_data_for_lenses_mode(
     state: &setup::UblxState,
     lens_names: &[String],
@@ -120,7 +120,7 @@ pub fn view_data_for_lenses_mode(
 ) -> setup::ViewData {
     view_data_for_user_selected_mode(
         state,
-        UserSelectedSource::Lenses {
+        &UserSelectedSource::Lenses {
             lens_names,
             db_path,
         },

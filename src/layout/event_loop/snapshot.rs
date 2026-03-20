@@ -11,6 +11,7 @@ fn sort_categories_and_rows(categories: &mut [String], all_rows: &mut [setup::Tu
 }
 
 /// Load snapshot categories and rows for the TUI, sorted. Path is chosen by `preference` (e.g. prefer `.ublx` at startup, prefer `.ublx_tmp` when polling).
+#[must_use]
 pub fn load_snapshot_for_tui(
     db_path: &Path,
     preference: db_ops::SnapshotReaderPreference,

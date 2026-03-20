@@ -1,4 +1,32 @@
-//! Right pane: tabs, viewer/templates/metadata/writing content, fullscreen.
+//! Right pane: tabs, viewer / templates / metadata / writing content, fullscreen.
+//!
+//! ## Viewer pipeline (width, wrap, cache)
+//!
+//! 1. **Text width** — After vertical padding, [`scrollable_content::area_above_bottom_pad`], we
+//!    iterate (up to 6 times): estimate total lines at width `text_w` →
+//!    [`scrollable_content::viewport_text_width`] may shrink width to reserve space for a vertical
+//!    scrollbar → repeat until stable. All layout and line counting for the viewer must use this
+//!    final `text_w`.
+//! 2. **CSV cache** — [`ensure_viewer_csv_cache`] fills [`UblxState::viewer_csv_cache`] for viewer
+//!    mode + CSV paths: `(path, content_width)` → prebuilt table string + line count so we do not
+//!    parse/build more than once per frame when width is stable.
+//! 3. **Total lines** — [`viewer_total_lines`] must match what is actually drawn (scrollbar height).
+//!    Branches: JSON metadata/writing → [`kv_tables::content_height`]; CSV → cache or
+//!    [`csv::table_line_count`]; otherwise plain text → [`wrapped_line_count`].
+//! 4. **Scroll** — [`scrollable_content::layout_scrollable_content`] + [`scrollable_content::draw_scrollbar`].
+//! 5. **Draw** — If metadata/writing JSON is present, [`kv_tables::draw_tables`] (no `Paragraph`).
+//!    Else [`content_display_text`] → `Paragraph` with optional ratatui [`Wrap`].
+//!
+//! **Preformatted layout:** [`viewer_uses_preformatted_layout`] is true for Markdown and for CSV
+//! that parsed to a non-empty table. Those paths already produce viewport-width lines; ratatui must
+//! *not* wrap again ([`ratatui_wrap_right_paragraph`]). Plain text and failed/empty CSV still use
+//! `Wrap`.
+//!
+//! ## Adding another path-based viewer
+//!
+//! Keep display, line count, and wrap flag aligned: extend [`viewer_display_text`] and
+//! [`viewer_total_lines`], and set whether [`viewer_uses_preformatted_layout`] should skip `Wrap`.
+//! Add a cache in state only if you need `(path, width)` reuse like CSV.
 
 use ratatui::layout::{Constraint, Rect};
 use ratatui::text::{Line, Span};
@@ -77,12 +105,35 @@ fn viewer_total_lines(
             right_content
                 .viewer
                 .as_deref()
-                .map(|t| wrapped_line_count(t, content_width) as usize)
-                .unwrap_or(0)
+                .map_or(0, |t| wrapped_line_count(t, content_width) as usize)
         }
         (RightPaneMode::Templates, _) => right_content.templates.lines().count(),
-        (RightPaneMode::Writing, _) | (RightPaneMode::Metadata, _) => 0,
+        (RightPaneMode::Writing | RightPaneMode::Metadata, _) => 0,
     }
+}
+
+/// Markdown and successful CSV tables are fully laid out to the viewport; ratatui must not re-wrap.
+fn viewer_uses_preformatted_layout(state: &UblxState, right_content: &RightPaneContent) -> bool {
+    if state.right_pane_mode != RightPaneMode::Viewer {
+        return false;
+    }
+    let Some(path) = right_content.viewer_path.as_deref() else {
+        return false;
+    };
+    if markdown::is_markdown_path(path) {
+        return true;
+    }
+    if !csv::is_csv_path(path) {
+        return false;
+    }
+    let Some(raw) = right_content.viewer.as_deref() else {
+        return false;
+    };
+    csv::parse_csv(raw).map(|r| !r.is_empty()).unwrap_or(false)
+}
+
+fn ratatui_wrap_right_paragraph(state: &UblxState, right_content: &RightPaneContent) -> bool {
+    !viewer_uses_preformatted_layout(state, right_content)
 }
 
 fn wrapped_line_count(text: &str, width: u16) -> u16 {
@@ -232,13 +283,24 @@ pub fn draw_right_pane(
 
     let content_area = content_chunks[1];
     let bottom_pad = UI_CONSTANTS.v_pad;
-    ensure_viewer_csv_cache(state, right_content, content_area.width);
+    let padded = scrollable_content::area_above_bottom_pad(content_area, bottom_pad);
     let use_kv_tables = match state.right_pane_mode {
         RightPaneMode::Metadata => right_content.metadata.as_deref(),
         RightPaneMode::Writing => right_content.writing.as_deref(),
         _ => None,
     };
-    let total_lines = viewer_total_lines(right_content, content_area.width, use_kv_tables, state);
+    let mut text_w = padded.width;
+    for _ in 0..6 {
+        ensure_viewer_csv_cache(state, right_content, text_w);
+        let guess_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+        let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
+        if w_next == text_w {
+            break;
+        }
+        text_w = w_next;
+    }
+    ensure_viewer_csv_cache(state, right_content, text_w);
+    let total_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
     let layout = scrollable_content::layout_scrollable_content(
         content_area,
         total_lines,
@@ -249,13 +311,13 @@ pub fn draw_right_pane(
     if let Some(json) = use_kv_tables {
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
-        f.render_widget(
-            Paragraph::new(content_display_text(state, right_content, text_rect.width))
-                .style(style::text_style())
-                .wrap(Wrap { trim: false })
-                .scroll((layout.scroll_y, 0)),
-            text_rect,
-        );
+        let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
+            .style(style::text_style())
+            .scroll((layout.scroll_y, 0));
+        if ratatui_wrap_right_paragraph(state, right_content) {
+            paragraph = paragraph.wrap(Wrap { trim: false });
+        }
+        f.render_widget(paragraph, text_rect);
     }
     scrollable_content::draw_scrollbar(f, &layout, total_lines);
 }
@@ -294,13 +356,24 @@ pub fn draw_right_pane_fullscreen(
     };
     let inner = block.inner(area);
     let bottom_pad = UI_CONSTANTS.v_pad;
-    ensure_viewer_csv_cache(state, right_content, inner.width);
+    let padded = scrollable_content::area_above_bottom_pad(inner, bottom_pad);
     let use_kv_tables = match state.right_pane_mode {
         RightPaneMode::Metadata => right_content.metadata.as_deref(),
         RightPaneMode::Writing => right_content.writing.as_deref(),
         _ => None,
     };
-    let total_lines = viewer_total_lines(right_content, inner.width, use_kv_tables, state);
+    let mut text_w = padded.width;
+    for _ in 0..6 {
+        ensure_viewer_csv_cache(state, right_content, text_w);
+        let guess_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+        let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
+        if w_next == text_w {
+            break;
+        }
+        text_w = w_next;
+    }
+    ensure_viewer_csv_cache(state, right_content, text_w);
+    let total_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
     let layout = scrollable_content::layout_scrollable_content(
         inner,
         total_lines,
@@ -312,13 +385,13 @@ pub fn draw_right_pane_fullscreen(
     if let Some(json) = use_kv_tables {
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
-        f.render_widget(
-            Paragraph::new(content_display_text(state, right_content, text_rect.width))
-                .style(style::text_style())
-                .wrap(Wrap { trim: false })
-                .scroll((layout.scroll_y, 0)),
-            text_rect,
-        );
+        let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
+            .style(style::text_style())
+            .scroll((layout.scroll_y, 0));
+        if ratatui_wrap_right_paragraph(state, right_content) {
+            paragraph = paragraph.wrap(Wrap { trim: false });
+        }
+        f.render_widget(paragraph, text_rect);
     }
     scrollable_content::draw_scrollbar(f, &layout, total_lines);
 }

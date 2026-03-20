@@ -1,7 +1,7 @@
 //! 3-panel TUI: categories (left), contents (middle), preview (right).
 //!
 //! `run_ublx` is split into four phases per tick (see classification below).
-//! Action application (key → state changes) lives in [crate::handlers::state_transitions].
+//! Action application (key → state changes) lives in [`crate::handlers::state_transitions`].
 
 use std::collections::HashMap;
 
@@ -11,10 +11,10 @@ use ratatui::widgets::ListState;
 use super::style;
 
 use crate::engine::db_ops::DeltaType;
-/// Row for TUI list: (path, category, size_bytes). Same as [crate::engine::db_ops::SnapshotTuiRow]; zahir_json is loaded on demand for the selected row.
+/// Row for TUI list: (path, category, `size_bytes`). Same as [`crate::engine::db_ops::SnapshotTuiRow`]; `zahir_json` is loaded on demand for the selected row.
 pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
 
-/// Category string for directories in the snapshot (matches [crate::engine::db_ops::UblxDbCategory]).
+/// Category string for directories in the snapshot (matches [`crate::engine::db_ops::UblxDbCategory`]).
 pub const CATEGORY_DIRECTORY: &str = "Directory";
 
 /// List panels: categories, contents, focus, preview scroll, and highlight style.
@@ -98,6 +98,42 @@ pub struct LensConfirmState {
     pub delete_selected: usize,
 }
 
+/// Help overlay and fullscreen right-pane preview.
+#[derive(Default)]
+pub struct ViewerChrome {
+    pub help_visible: bool,
+    pub viewer_fullscreen: bool,
+}
+
+/// Background snapshot: user request, poll `.ublx_tmp` while running, and completion.
+#[derive(Default)]
+pub struct BackgroundSnapshot {
+    pub requested: bool,
+    pub poll_deadline: Option<std::time::Instant>,
+    pub done_received: bool,
+}
+
+/// Lazy-load duplicate groups when the user opens the Duplicates tab.
+#[derive(Default)]
+pub struct DuplicateLoadGate {
+    pub requested: bool,
+}
+
+/// One-shot session flags: initial tick and redraw after external editor.
+pub struct SessionFlow {
+    pub first_tick: bool,
+    pub refresh_terminal_after_editor: bool,
+}
+
+impl Default for SessionFlow {
+    fn default() -> Self {
+        Self {
+            first_tick: true,
+            refresh_terminal_after_editor: false,
+        }
+    }
+}
+
 /// Top-level TUI state. Menu and UI sub-states are grouped into nested structs.
 pub struct UblxState {
     pub main_mode: MainMode,
@@ -110,19 +146,15 @@ pub struct UblxState {
     pub lens_menu: LensMenuState,
     pub space_menu: SpaceMenuState,
     pub lens_confirm: LensConfirmState,
-    pub help_visible: bool,
+    pub chrome: ViewerChrome,
     pub cached_tree: Option<(String, String)>,
-    /// CSV viewer: (path, content_width, table_string, line_count) to avoid re-parsing every frame.
+    /// CSV viewer: (path, `content_width`, `table_string`, `line_count`) to avoid re-parsing every frame.
     pub viewer_csv_cache: Option<(String, u16, String, usize)>,
-    pub snapshot_requested: bool,
-    pub viewer_fullscreen: bool,
     pub last_key_for_double: Option<char>,
-    pub snapshot_poll_deadline: Option<std::time::Instant>,
-    pub snapshot_done_received: bool,
-    pub duplicate_load_requested: bool,
+    pub snapshot_bg: BackgroundSnapshot,
+    pub duplicate_load: DuplicateLoadGate,
     pub config_written_by_us_at: Option<std::time::Instant>,
-    pub first_tick: bool,
-    pub refresh_terminal_after_editor: bool,
+    pub session: SessionFlow,
 }
 
 impl Default for UblxState {
@@ -132,6 +164,7 @@ impl Default for UblxState {
 }
 
 impl UblxState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             main_mode: MainMode::default(),
@@ -144,18 +177,14 @@ impl UblxState {
             lens_menu: LensMenuState::default(),
             space_menu: SpaceMenuState::default(),
             lens_confirm: LensConfirmState::default(),
-            help_visible: false,
+            chrome: ViewerChrome::default(),
             cached_tree: None,
             viewer_csv_cache: None,
-            snapshot_requested: false,
-            viewer_fullscreen: false,
             last_key_for_double: None,
-            snapshot_poll_deadline: None,
-            snapshot_done_received: false,
-            duplicate_load_requested: false,
+            snapshot_bg: BackgroundSnapshot::default(),
+            duplicate_load: DuplicateLoadGate::default(),
             config_written_by_us_at: None,
-            first_tick: true,
-            refresh_terminal_after_editor: false,
+            session: SessionFlow::default(),
         }
     }
 
@@ -174,7 +203,7 @@ impl UblxState {
         self.open_menu.selected_index = 0;
     }
 
-    /// Reset lens menu state (Esc or after adding to lens). Does not clear [LensMenuState::name_input].
+    /// Reset lens menu state (Esc or after adding to lens). Does not clear [`LensMenuState::name_input`].
     pub fn close_lens_menu(&mut self) {
         self.lens_menu.visible = false;
         self.lens_menu.path = None;
@@ -228,16 +257,14 @@ pub enum MainMode {
 }
 
 impl MainMode {
-    /// Cycle Snapshot → Delta → Lenses (when available) → Duplicates (when available) → Snapshot. Used for MainModeToggle (Shift+Tab).
+    /// Cycle Snapshot → Delta → Lenses (when available) → Duplicates (when available) → Snapshot. Used for `MainModeToggle` (Shift+Tab).
+    #[must_use]
     pub fn next(self, has_duplicates: bool, has_lenses: bool) -> MainMode {
         match self {
             MainMode::Snapshot => MainMode::Delta,
             MainMode::Delta if has_lenses => MainMode::Lenses,
-            MainMode::Delta if has_duplicates => MainMode::Duplicates,
-            MainMode::Delta => MainMode::Snapshot,
-            MainMode::Lenses if has_duplicates => MainMode::Duplicates,
-            MainMode::Lenses => MainMode::Snapshot,
-            MainMode::Duplicates => MainMode::Snapshot,
+            MainMode::Delta | MainMode::Lenses if has_duplicates => MainMode::Duplicates,
+            MainMode::Delta | MainMode::Lenses | MainMode::Duplicates => MainMode::Snapshot,
         }
     }
 }
@@ -253,12 +280,12 @@ pub enum PanelFocus {
 /// Which variant of the spacebar context menu is open (determines items and Enter behavior).
 #[derive(Clone, Debug)]
 pub enum SpaceMenuKind {
-    /// File actions: path is the selected file (relative). can_open_in_terminal: when true, Open shows Terminal+GUI; else GUI only.
+    /// File actions: path is the selected file (relative). `can_open_in_terminal`: when true, Open shows Terminal+GUI; else GUI only.
     FileActions {
         path: String,
         can_open_in_terminal: bool,
     },
-    /// Lens panel actions: lens_name is the selected lens. Options: Rename, Delete.
+    /// Lens panel actions: `lens_name` is the selected lens. Options: Rename, Delete.
     LensPanelActions { lens_name: String },
 }
 
@@ -272,14 +299,14 @@ pub struct SectionedPreview {
 /// Snapshot mode: indices into the single in-memory list (no copy). Delta mode: small owned vec.
 #[derive(Clone)]
 pub enum ViewContents {
-    /// Indices into the caller's all_rows slice (snapshot mode — one copy of list).
+    /// Indices into the caller's `all_rows` slice (snapshot mode — one copy of list).
     SnapshotIndices(Vec<usize>),
     /// Owned rows for delta mode (added/mod/removed paths; typically small).
     DeltaRows(Vec<TuiRow>),
 }
 
 /// Derived list data for this tick: filtered categories and contents (by index or owned), lengths for navigation.
-/// Scalability: snapshot mode uses [ViewContents::SnapshotIndices] so we keep a single copy of the list; no cloned row vec.
+/// Scalability: snapshot mode uses [`ViewContents::SnapshotIndices`] so we keep a single copy of the list; no cloned row vec.
 pub struct ViewData {
     pub filtered_categories: Vec<String>,
     pub contents: ViewContents,
@@ -288,7 +315,8 @@ pub struct ViewData {
 }
 
 impl ViewData {
-    /// Row at content index `i`. For [ViewContents::SnapshotIndices], pass `Some(all_rows)`; for [ViewContents::DeltaRows], pass `None`.
+    /// Row at content index `i`. For [`ViewContents::SnapshotIndices`], pass `Some(all_rows)`; for [`ViewContents::DeltaRows`], pass `None`.
+    #[must_use]
     pub fn row_at<'a>(&'a self, i: usize, all_rows: Option<&'a [TuiRow]>) -> Option<&'a TuiRow> {
         match &self.contents {
             ViewContents::SnapshotIndices(indices) => indices
@@ -298,7 +326,8 @@ impl ViewData {
         }
     }
 
-    /// Iterate over content rows. For [ViewContents::SnapshotIndices], pass `Some(all_rows)`; for [ViewContents::DeltaRows], pass `None`.
+    /// Iterate over content rows. For [`ViewContents::SnapshotIndices`], pass `Some(all_rows)`; for [`ViewContents::DeltaRows`], pass `None`.
+    #[must_use]
     pub fn iter_contents<'a>(
         &'a self,
         all_rows: Option<&'a [TuiRow]>,
@@ -315,10 +344,10 @@ impl ViewData {
     }
 }
 
-/// Raw delta row: (created_ns, path) from delta_log. Used to build display lines with dates preserved when filtering.
+/// Raw delta row: (`created_ns`, path) from `delta_log`. Used to build display lines with dates preserved when filtering.
 pub type DeltaRow = (i64, String);
 
-/// Data for Delta mode: snapshot overview text and raw (created_ns, path) rows per delta type.
+/// Data for Delta mode: snapshot overview text and raw (`created_ns`, path) rows per delta type.
 pub struct DeltaViewData {
     pub overview_text: String,
     pub added_rows: Vec<DeltaRow>,
@@ -327,7 +356,8 @@ pub struct DeltaViewData {
 }
 
 impl DeltaViewData {
-    /// Raw rows for the given category index. Uses [DeltaType::from_index].
+    /// Raw rows for the given category index. Uses [`DeltaType::from_index`].
+    #[must_use]
     pub fn rows_by_index(&self, idx: usize) -> &[DeltaRow] {
         match DeltaType::from_index(idx) {
             DeltaType::Added => &self.added_rows,
@@ -351,12 +381,13 @@ pub struct RightPaneContent {
     pub viewer_mtime_ns: Option<i64>,
     /// When true, the viewed file is non-binary and can be opened (Shift+O: Open Terminal / Open GUI).
     pub viewer_can_open: bool,
-    /// Label for the open hint node in the footer (e.g. "↗", "↗ (Terminal)", "↗ (GUI)"). Set by caller when viewer_can_open.
+    /// Label for the open hint node in the footer (e.g. "↗", "↗ (Terminal)", "↗ (GUI)"). Set by caller when `viewer_can_open`.
     pub open_hint_label: Option<String>,
 }
 
 impl RightPaneContent {
     /// Empty right-pane content (e.g. Delta mode has no selection-based viewer).
+    #[must_use]
     pub fn empty() -> Self {
         Self::default()
     }

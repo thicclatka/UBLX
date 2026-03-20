@@ -37,7 +37,7 @@ pub fn draw_categories_pane(
     );
 }
 
-/// Map UBLX Settings path to "Local"/"Global" when dir_to_ublx is set; otherwise return path as-is.
+/// Map UBLX Settings path to "Local"/"Global" when `dir_to_ublx` is set; otherwise return path as-is.
 fn contents_display_label(
     path: &str,
     category: &str,

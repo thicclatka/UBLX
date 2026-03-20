@@ -13,7 +13,7 @@ impl SectionKeys {
     pub const SHEET_STATS: &'static str = "sheet_stats";
     pub const COMMON_PIVOTS: &'static str = "common_pivots";
     pub const CSV_METADATA: &'static str = "csv_metadata";
-    /// Array of table objects (e.g. sqlite_metadata.tables); each object becomes its own KV section with title from "name".
+    /// Array of table objects (e.g. `sqlite_metadata.tables`); each object becomes its own KV section with title from "name".
     pub const TABLES: &'static str = "tables";
 }
 
@@ -23,21 +23,25 @@ impl SchemaKeys {
     pub const ATTRIBUTES: &'static str = "attributes";
     pub const CHILDREN: &'static str = "children";
 
+    #[must_use]
     pub fn has_attributes(map: &Map<String, Value>) -> bool {
         map.contains_key(SchemaKeys::ATTRIBUTES)
     }
 
+    #[must_use]
     pub fn has_children(map: &Map<String, Value>) -> bool {
         map.contains_key(SchemaKeys::CHILDREN)
     }
 
     #[inline]
+    #[must_use]
     pub fn has_children_or_attributes(map: &Map<String, Value>) -> bool {
         SchemaKeys::has_attributes(map) || SchemaKeys::has_children(map)
     }
 }
 
-/// Returns (branch_line_prefix, continuation_prefix) for the next level. Use branch for the current line, continuation for recursing.
+/// Returns (`branch_line_prefix`, `continuation_prefix`) for the next level. Use branch for the current line, continuation for recursing.
+#[must_use]
 pub fn tree_prefixes(continuation: &str, is_last: bool) -> (String, String) {
     let branch = if is_last {
         TREE_CHARS.last_branch

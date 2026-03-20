@@ -61,12 +61,15 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
 ];
 
 pub fn render_help_box(f: &mut Frame) {
-    let key_width = HELP_ENTRIES
-        .iter()
-        .map(|(k, _)| k.len())
-        .max()
-        .unwrap_or(0)
-        .min(WIDTH_LIMIT) as u16;
+    let key_width = u16::try_from(
+        HELP_ENTRIES
+            .iter()
+            .map(|(k, _)| k.len())
+            .max()
+            .unwrap_or(0)
+            .min(WIDTH_LIMIT),
+    )
+    .unwrap_or(0);
     let desc_max = HELP_ENTRIES.iter().map(|(_, d)| d.len()).max().unwrap_or(0);
     let content_w = key_width as usize + 1 + desc_max;
     let content_h = 1 + HELP_ENTRIES.len();
@@ -106,7 +109,7 @@ pub fn render_help_box(f: &mut Frame) {
         data_rows,
         [
             Constraint::Length(key_width),
-            Constraint::Min(DESC_MIN_WIDTH as u16),
+            Constraint::Min(u16::try_from(DESC_MIN_WIDTH).unwrap_or(0)),
         ],
     )
     .header(header)

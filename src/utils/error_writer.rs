@@ -8,7 +8,7 @@ use crate::handlers::zahir_ops::ZahirResult;
 /// Exit code for error/failure. Used when validation fails, index fails, or a fatal error is logged. Shared so scripting and callers get consistent values.
 pub const EXIT_ERROR: i32 = 1;
 
-/// Exits the process with [EXIT_ERROR]. Use after logging a fatal error instead of calling `std::process::exit` directly.
+/// Exits the process with [`EXIT_ERROR`]. Use after logging a fatal error instead of calling `std::process::exit` directly.
 pub fn exit_error() -> ! {
     std::process::exit(EXIT_ERROR)
 }
@@ -37,14 +37,18 @@ fn append_failures_zahirscan(
     header: &str,
     failures: &[(&String, &String)],
 ) -> std::io::Result<()> {
-    writeln!(f, "{}", header)?;
+    writeln!(f, "{header}")?;
     for (p, e) in failures {
-        writeln!(f, "  {}: {}", p, e)?;
+        writeln!(f, "  {p}: {e}")?;
     }
     Ok(())
 }
 
 /// If `zahir_result.phase1_failed` or `phase2_failed` are non-empty, append them to `dir_to_ublx/ublx.log`.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] when creating or writing the log file fails.
 pub fn write_zahir_failures_to_log(
     dir_to_ublx: &Path,
     zahir_result: &ZahirResult,
@@ -60,12 +64,16 @@ pub fn write_zahir_failures_to_log(
 }
 
 /// Append a nefaxer error to `dir_to_ublx/ublx.log`.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] when creating or writing the log file fails.
 pub fn write_nefax_error_to_log(
     dir_to_ublx: &Path,
     err: &impl std::fmt::Display,
 ) -> std::io::Result<()> {
     let mut f = create_log_file(dir_to_ublx)?;
-    writeln!(f, "Nefaxer failure: {}", err)?;
+    writeln!(f, "Nefaxer failure: {err}")?;
     Ok(())
 }
 

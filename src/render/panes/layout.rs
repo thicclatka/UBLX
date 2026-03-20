@@ -7,6 +7,7 @@ use crate::layout::style;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 
 /// Split content area into main area and one status line (Latest Snapshot + Search:).
+#[must_use]
 pub fn split_main_and_status(content_area: Rect) -> (Rect, Rect) {
     let vertical = style::split_vertical(content_area, &UI_CONSTANTS.status_line_constraints());
     (vertical[0], vertical[1])
@@ -25,15 +26,17 @@ pub fn panel_block<'a, T: Into<ratatui::text::Line<'a>>>(title: T, focused: bool
 }
 
 /// Builds a panel block title: `" Label "` or `" ► Label "` when focused.
+#[must_use]
 pub fn set_title(label: &str, focused: bool) -> String {
     if focused {
-        format!(" ► {} ", label)
+        format!(" ► {label} ")
     } else {
-        format!(" {} ", label)
+        format!(" {label} ")
     }
 }
 
 /// Builds a styled list with items, block, and highlight style.
+#[must_use]
 pub fn styled_list<'a>(
     items: Vec<ListItem<'a>>,
     block: Block<'a>,

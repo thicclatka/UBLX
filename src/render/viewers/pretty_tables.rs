@@ -6,14 +6,12 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span, Text};
 use rayon::prelude::*;
 
+use crate::config::PARALLEL;
 use crate::layout::themes;
 
 // -----------------------------------------------------------------------------
 // Truncation helpers (legacy explicit max, parallel path)
 // -----------------------------------------------------------------------------
-
-/// Minimum row count to use parallel truncation (avoids rayon overhead on small tables).
-const PARALLEL_TRUNCATE_THRESHOLD: usize = 100;
 
 fn truncate_cell(s: &str, max: usize) -> String {
     let s = s.trim();
@@ -31,7 +29,7 @@ fn truncate_all_cells(rows: &[Vec<String>], max_chars: usize) -> Vec<Vec<String>
             .map(|c| truncate_cell(c, max_chars))
             .collect::<Vec<_>>()
     };
-    if rows.len() >= PARALLEL_TRUNCATE_THRESHOLD {
+    if rows.len() >= PARALLEL.csv_truncate {
         rows.par_iter().map(truncate_row).collect()
     } else {
         rows.iter().map(truncate_row).collect()
@@ -43,6 +41,7 @@ fn truncate_all_cells(rows: &[Vec<String>], max_chars: usize) -> Vec<Vec<String>
 /// Comfy-table still receives `set_width(content_width)`; this limits how much text we keep per
 /// cell before `"..."` so wide many-column tables don’t over‑truncate when the pane is narrow,
 /// and single-column views can use more of a wide pane (up to `ceiling`).
+#[must_use]
 pub fn max_cell_chars_for_viewport(
     content_width: u16,
     col_count: usize,
@@ -109,6 +108,9 @@ pub fn column_wrap_widths(viewport: u16, col_count: usize, max_lens: &[usize]) -
     let inner = w.saturating_sub(border_overhead).max(cols * MIN_WRAP);
     let weights: Vec<usize> = max_lens.iter().copied().map(|m| m.max(1)).collect();
     let sum_w: usize = weights.iter().sum();
+    if sum_w == 0 {
+        return vec![MIN_WRAP; cols];
+    }
     let mut widths: Vec<usize> = weights
         .iter()
         .map(|&wt| (inner * wt / sum_w).max(MIN_WRAP))
@@ -135,9 +137,18 @@ pub fn column_wrap_widths(viewport: u16, col_count: usize, max_lens: &[usize]) -
     widths
 }
 
-/// Word-wrap at whitespace; lines are at most `max_chars` Unicode scalar characters.
-#[must_use]
-pub fn word_wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+/// Outcome of [`prepare_cell_text_for_wrap`]: either final lines (ellipsis / short column) or text to run through wrap.
+enum CellPrep {
+    Done(Vec<String>),
+    Wrap(String),
+}
+
+/// Shared whitespace wrap: `break_long` splits a single overlong whitespace-token (no spaces inside).
+fn word_wrap_core(
+    text: &str,
+    max_chars: usize,
+    break_long: impl Fn(&str, usize) -> Vec<String>,
+) -> Vec<String> {
     let text = text.trim();
     if text.is_empty() {
         return vec![String::new()];
@@ -158,7 +169,7 @@ pub fn word_wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     for word in text.split_whitespace() {
         let wl = word.chars().count();
         let cur_len = current.chars().count();
-        let with_space = if cur_len > 0 { 1 } else { 0 };
+        let with_space = usize::from(cur_len > 0);
         let needed = with_space + wl;
 
         if cur_len + needed <= max_chars {
@@ -169,15 +180,13 @@ pub fn word_wrap_text(text: &str, max_chars: usize) -> Vec<String> {
         } else {
             flush(&mut current, &mut lines);
             if wl > max_chars {
-                let mut remaining: String = word.to_string();
-                while !remaining.is_empty() {
-                    let chunk: String = remaining.chars().take(max_chars).collect();
-                    let n = chunk.chars().count();
-                    remaining = remaining.chars().skip(n).collect();
-                    if remaining.is_empty() {
-                        current = chunk;
-                    } else {
+                let chunks = break_long(word, max_chars);
+                let mut it = chunks.into_iter().peekable();
+                while let Some(chunk) = it.next() {
+                    if it.peek().is_some() {
                         lines.push(chunk);
+                    } else {
+                        current = chunk;
                     }
                 }
             } else {
@@ -192,25 +201,177 @@ pub fn word_wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     lines
 }
 
+/// Word-wrap at whitespace; lines are at most `max_chars` Unicode scalar characters.
+#[must_use]
+pub fn word_wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+    word_wrap_core(text, max_chars, hard_break_scalar_chunks)
+}
+
+/// Hard-break `text` into lines of at most `max_chars` Unicode scalars (no hyphen / space logic).
+/// Linear in `text` length (single pass over chars).
+fn hard_break_scalar_chunks(text: &str, max_chars: usize) -> Vec<String> {
+    if max_chars == 0 {
+        return vec![text.to_string()];
+    }
+    let mut lines = Vec::new();
+    let mut iter = text.chars();
+    loop {
+        let mut chunk = String::new();
+        for _ in 0..max_chars {
+            if let Some(c) = iter.next() {
+                chunk.push(c);
+            } else {
+                break;
+            }
+        }
+        if chunk.is_empty() {
+            break;
+        }
+        lines.push(chunk);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+/// Concatenate `tokens` without spaces, breaking lines so each line is at most `max_chars` scalars.
+fn pack_concatenated_tokens(tokens: &[String], max_chars: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for t in tokens {
+        let tl = t.chars().count();
+        let cl = cur.chars().count();
+        if tl > max_chars {
+            if !cur.is_empty() {
+                lines.push(std::mem::take(&mut cur));
+            }
+            lines.extend(hard_break_scalar_chunks(t, max_chars));
+            continue;
+        }
+        if cur.is_empty() {
+            cur.clone_from(t);
+            continue;
+        }
+        if cl + tl <= max_chars {
+            cur.push_str(t);
+        } else {
+            lines.push(std::mem::take(&mut cur));
+            cur.clone_from(t);
+        }
+    }
+    if !cur.is_empty() {
+        lines.push(cur);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+/// Split `word` on `-` and pack as `part0`, `-part1`, `-part2`, … so line breaks prefer hyphens
+/// (e.g. `2025-10-25` → `2025` / `-10` / `-25` instead of `2025` / `-10-` / `25`).
+fn wrap_hyphenated_token(word: &str, max_chars: usize) -> Vec<String> {
+    let parts: Vec<&str> = word.split('-').filter(|p| !p.is_empty()).collect();
+    if parts.len() <= 1 {
+        return hard_break_scalar_chunks(word, max_chars);
+    }
+    let mut tokens: Vec<String> = Vec::with_capacity(parts.len());
+    tokens.push(parts[0].to_string());
+    for p in parts.iter().skip(1) {
+        tokens.push(format!("-{p}"));
+    }
+    pack_concatenated_tokens(&tokens, max_chars)
+}
+
+/// Like [`word_wrap_text`], but treats `-` as a break opportunity inside long whitespace-tokens
+/// (e.g. ISO dates in CSV cells).
+#[must_use]
+pub fn word_wrap_cell_text(text: &str, max_chars: usize) -> Vec<String> {
+    word_wrap_core(text, max_chars, |word, m| {
+        if word.contains('-') {
+            wrap_hyphenated_token(word, m)
+        } else {
+            hard_break_scalar_chunks(word, m)
+        }
+    })
+}
+
+/// Collapsed cell text: either final [`CellPrep::Done`] lines (ellipsis / short column) or
+/// [`CellPrep::Wrap`] for header/body wrap.
+fn prepare_cell_text_for_wrap(
+    text: &str,
+    wrap_width: usize,
+    column_max_content_chars: usize,
+) -> CellPrep {
+    let t = collapse_viewer_cell_whitespace(text);
+    let len = t.chars().count();
+    if len > VIEWER_TABLE_ELLIPSIS_CELL_CHARS {
+        let cap = wrap_width.max(8);
+        return CellPrep::Done(vec![truncate_cell(&t, cap)]);
+    }
+    if column_max_content_chars <= VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS {
+        return CellPrep::Done(if t.is_empty() {
+            vec![String::new()]
+        } else {
+            vec![t]
+        });
+    }
+    CellPrep::Wrap(t)
+}
+
+/// **Header / column name only:** one token (or whole title with no spaces). Tokens no longer than
+/// [`VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS`] stay on **one** line even when `wrap_width` is tiny
+/// (e.g. `"Completion"` not sliced to 4); longer tokens use [`word_wrap_cell_text`].
+fn wrap_header_name_token(word: &str, wrap_width: usize) -> Vec<String> {
+    let wc = word.chars().count();
+    if wc <= wrap_width || wc <= VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS {
+        vec![word.to_string()]
+    } else {
+        word_wrap_cell_text(word, wrap_width)
+    }
+}
+
+/// Body cell lines. Short columns stay one line; otherwise [`word_wrap_cell_text`] on the whole cell
+/// (whitespace-aware wrap inside that — no “one line per word” preprocessing).
 fn cell_display_lines(
     text: &str,
     wrap_width: usize,
     column_max_content_chars: usize,
 ) -> Vec<String> {
-    let t = collapse_viewer_cell_whitespace(text);
-    let len = t.chars().count();
-    if len > VIEWER_TABLE_ELLIPSIS_CELL_CHARS {
-        let cap = wrap_width.max(8);
-        return vec![truncate_cell(&t, cap)];
+    match prepare_cell_text_for_wrap(text, wrap_width, column_max_content_chars) {
+        CellPrep::Done(lines) => lines,
+        CellPrep::Wrap(t) => word_wrap_cell_text(&t, wrap_width),
     }
-    if column_max_content_chars <= VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS {
-        return if t.is_empty() {
-            vec![String::new()]
-        } else {
-            vec![t]
-        };
+}
+
+/// Column header cell: same early rules as body; then short tokens (≤ [`VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS`])
+/// are never hard-wrapped to `wrap_width` — only for **names**, not body cells.
+fn header_cell_display_lines(
+    text: &str,
+    wrap_width: usize,
+    column_max_content_chars: usize,
+) -> Vec<String> {
+    match prepare_cell_text_for_wrap(text, wrap_width, column_max_content_chars) {
+        CellPrep::Done(lines) => lines,
+        CellPrep::Wrap(t) => {
+            if t.contains(' ') {
+                let mut out: Vec<String> = Vec::new();
+                for word in t.split_whitespace() {
+                    if word.is_empty() {
+                        continue;
+                    }
+                    out.extend(wrap_header_name_token(word, wrap_width));
+                }
+                if out.is_empty() {
+                    out.push(String::new());
+                }
+                out
+            } else {
+                wrap_header_name_token(&t, wrap_width)
+            }
+        }
     }
-    word_wrap_text(&t, wrap_width)
 }
 
 fn pad_row_cells(wrapped: Vec<Vec<String>>, target_lines: usize) -> Vec<String> {
@@ -234,31 +395,35 @@ pub fn prepare_multiline_grid(
 ) -> (Vec<String>, Vec<Vec<String>>) {
     let col_count = header
         .len()
-        .max(body.iter().map(|r| r.len()).max().unwrap_or(0))
+        .max(body.iter().map(Vec::len).max().unwrap_or(0))
         .max(1);
 
     let header_cells = pad_row_to_cols(header, col_count);
     let body: Vec<Vec<String>> = body.iter().map(|r| pad_row_to_cols(r, col_count)).collect();
 
-    let max_lens: Vec<usize> = (0..col_count)
-        .map(|j| {
-            let h_len = collapse_viewer_cell_whitespace(
-                header_cells.get(j).map(String::as_str).unwrap_or(""),
-            )
+    let max_lens_at = |j: usize| -> usize {
+        let h_len = collapse_viewer_cell_whitespace(header_cells.get(j).map_or("", String::as_str))
             .chars()
             .count();
-            let b_len = body
-                .iter()
-                .map(|r| {
-                    collapse_viewer_cell_whitespace(r[j].as_str())
-                        .chars()
-                        .count()
-                })
-                .max()
-                .unwrap_or(0);
-            h_len.max(b_len)
-        })
-        .collect();
+        let b_len = body
+            .iter()
+            .map(|r| {
+                collapse_viewer_cell_whitespace(r[j].as_str())
+                    .chars()
+                    .count()
+            })
+            .max()
+            .unwrap_or(0);
+        h_len.max(b_len)
+    };
+
+    let use_par_maxlens = col_count >= PARALLEL.pretty_tables_prep_maxlens_min_cols
+        && body.len() >= PARALLEL.pretty_tables_prep_maxlens_min_body_rows;
+    let max_lens: Vec<usize> = if use_par_maxlens {
+        (0..col_count).into_par_iter().map(max_lens_at).collect()
+    } else {
+        (0..col_count).map(max_lens_at).collect()
+    };
 
     let lens_for_widths: Vec<usize> = max_lens
         .iter()
@@ -271,21 +436,26 @@ pub fn prepare_multiline_grid(
     let header_wrapped: Vec<Vec<String>> = header_cells
         .iter()
         .enumerate()
-        .map(|(j, s)| cell_display_lines(s, wrap_widths[j], max_lens[j]))
+        .map(|(j, s)| header_cell_display_lines(s, wrap_widths[j], max_lens[j]))
         .collect();
-    let header_h = header_wrapped.iter().map(|v| v.len()).max().unwrap_or(1);
+    let header_h = header_wrapped.iter().map(Vec::len).max().unwrap_or(1);
     let comfy_header = pad_row_cells(header_wrapped, header_h);
 
-    let mut comfy_body: Vec<Vec<String>> = Vec::with_capacity(body.len());
-    for row in &body {
+    let process_body_row = |row: &Vec<String>| {
         let wrapped: Vec<Vec<String>> = row
             .iter()
             .enumerate()
             .map(|(j, s)| cell_display_lines(s, wrap_widths[j], max_lens[j]))
             .collect();
-        let row_h = wrapped.iter().map(|v| v.len()).max().unwrap_or(1);
-        comfy_body.push(pad_row_cells(wrapped, row_h));
-    }
+        let row_h = wrapped.iter().map(Vec::len).max().unwrap_or(1);
+        pad_row_cells(wrapped, row_h)
+    };
+
+    let comfy_body: Vec<Vec<String>> = if body.len() >= PARALLEL.pretty_tables_prep_body_rows {
+        body.par_iter().map(process_body_row).collect()
+    } else {
+        body.iter().map(process_body_row).collect()
+    };
 
     (comfy_header, comfy_body)
 }
@@ -295,6 +465,7 @@ pub fn prepare_multiline_grid(
 // -----------------------------------------------------------------------------
 
 /// Build a comfy-table string from parsed rows (first row as header), truncating cells.
+#[must_use]
 pub fn table_string_with_max_cell(
     rows: &[Vec<String>],
     content_width: u16,
@@ -327,6 +498,7 @@ pub fn table_string_header_body_smart_wrap(
 
 /// Build a comfy-table from a header row and body rows without truncating. Cells may contain
 /// `\n` for multi-line content; comfy-table expands row height and aligns columns.
+#[must_use]
 pub fn table_string_multiline(
     header: Vec<String>,
     body: &[Vec<String>],
@@ -343,6 +515,7 @@ pub fn table_string_multiline(
 }
 
 /// Build a comfy-table string from parsed rows, treating all rows as body rows (no header).
+#[must_use]
 pub fn table_string_rows_only(
     rows: &[Vec<String>],
     content_width: u16,
@@ -360,6 +533,7 @@ pub fn table_string_rows_only(
 }
 
 /// Convert a pre-rendered table string into lines styled with theme text color.
+#[must_use]
 pub fn table_string_to_lines(table_str: &str) -> Vec<Line<'static>> {
     let style = Style::default().fg(themes::current().text);
     table_str
@@ -369,6 +543,7 @@ pub fn table_string_to_lines(table_str: &str) -> Vec<Line<'static>> {
 }
 
 /// Convert a pre-rendered table string into styled text.
+#[must_use]
 pub fn table_string_to_text(table_str: &str) -> Text<'static> {
     Text::from(table_string_to_lines(table_str))
 }

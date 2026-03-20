@@ -19,6 +19,7 @@ pub enum SnapshotReaderPreference {
 }
 
 /// Path to use for reading the snapshot. Returns `None` when neither `.ublx` nor `.ublx_tmp` exists.
+#[must_use]
 pub fn snapshot_reader_path_with(
     db_path: &Path,
     preference: SnapshotReaderPreference,
@@ -39,7 +40,8 @@ pub fn snapshot_reader_path_with(
     }
 }
 
-/// Path the TUI should use for reading snapshot data (list rows, zahir_json, mtime). When `prefer_tmp` is true (e.g. snapshot still running), prefers `.ublx_tmp` so the UI shows live progress; otherwise prefers `.ublx`. Falls back to `db_path` if neither exists.
+/// Path the TUI should use for reading snapshot data (list rows, `zahir_json`, mtime). When `prefer_tmp` is true (e.g. snapshot still running), prefers `.ublx_tmp` so the UI shows live progress; otherwise prefers `.ublx`. Falls back to `db_path` if neither exists.
+#[must_use]
 pub fn snapshot_read_path_for_tui(db_path: &Path, prefer_tmp: bool) -> PathBuf {
     let preference = if prefer_tmp {
         SnapshotReaderPreference::PreferTmp

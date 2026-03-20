@@ -1,5 +1,5 @@
-//! CSV metadata: one table per column type (string, date, boolean, etc.) from zahir csv_metadata.
-//! Column keys and display labels come from the zahir JSON keys (e.g. column_names, null_percentages).
+//! CSV metadata: one table per column type (string, date, boolean, etc.) from zahir `csv_metadata`.
+//! Column keys and display labels come from the zahir JSON keys (e.g. `column_names`, `null_percentages`).
 
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashSet};
@@ -8,7 +8,7 @@ use super::consts::SectionKeys;
 use super::format;
 use super::sections::{ContentsSection, KvSection, Section};
 
-/// Keys inside date_stats objects (span_days, min, max).
+/// Keys inside `date_stats` objects (`span_days`, min, max).
 struct DateStatsKeys;
 impl DateStatsKeys {
     const SPAN_DAYS: &'static str = "span_days";
@@ -16,10 +16,10 @@ impl DateStatsKeys {
     const MAX: &'static str = "max";
 }
 
-/// Key inside boolean_stats objects for true percentage.
+/// Key inside `boolean_stats` objects for true percentage.
 const BOOLEAN_STATS_TRUE_PCT: &str = "true_percentage";
 
-/// Column type from csv_metadata column_types array; drives which table/section we build.
+/// Column type from `csv_metadata` `column_types` array; drives which table/section we build.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ColumnType {
     String,
@@ -50,7 +50,7 @@ impl ColumnType {
 
 const TYPE_UNKNOWN: &str = "unknown";
 
-/// Keys in csv_metadata that are arrays (we build tables from them); scalars are shown as KV.
+/// Keys in `csv_metadata` that are arrays (we build tables from them); scalars are shown as KV.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetadataArrayKey {
     ColumnNames,
@@ -63,6 +63,7 @@ pub enum MetadataArrayKey {
 }
 
 impl MetadataArrayKey {
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ColumnNames => "column_names",
@@ -75,6 +76,7 @@ impl MetadataArrayKey {
         }
     }
 
+    #[must_use]
     pub const fn all() -> &'static [MetadataArrayKey; 7] {
         &[
             Self::ColumnNames,
@@ -130,7 +132,7 @@ fn contents_section(
     })
 }
 
-/// True if `obj` looks like csv_metadata (has column_names and column_types arrays of same length).
+/// True if `obj` looks like `csv_metadata` (has `column_names` and `column_types` arrays of same length).
 pub fn is_csv_metadata(obj: &Map<String, Value>) -> bool {
     let names = obj
         .get(MetadataArrayKey::ColumnNames.as_str())
@@ -146,19 +148,17 @@ pub fn is_csv_metadata(obj: &Map<String, Value>) -> bool {
 
 /// Build one table per column type: "String columns", "Date columns", "Boolean columns", etc.
 pub fn csv_metadata_to_sections(map: &Map<String, Value>) -> Vec<Section> {
-    let names = match map
+    let Some(names) = map
         .get(MetadataArrayKey::ColumnNames.as_str())
         .and_then(Value::as_array)
-    {
-        Some(a) => a,
-        None => return vec![],
+    else {
+        return vec![];
     };
-    let types = match map
+    let Some(types) = map
         .get(MetadataArrayKey::ColumnTypes.as_str())
         .and_then(Value::as_array)
-    {
-        Some(a) => a,
-        None => return vec![],
+    else {
+        return vec![];
     };
     let n = names.len();
     if n != types.len() {
@@ -331,7 +331,7 @@ fn table_boolean(
     )
 }
 
-/// Collect numeric_stats keys in JSON order: first object’s keys in order, then any keys from other objects not yet seen.
+/// Collect `numeric_stats` keys in JSON order: first object’s keys in order, then any keys from other objects not yet seen.
 fn numeric_stats_keys(num_stats: Option<&Vec<Value>>) -> Vec<String> {
     let mut order = Vec::new();
     let mut seen = HashSet::new();
@@ -385,7 +385,7 @@ fn csv_flat_kv(csv_map: &Map<String, Value>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Push flat KV section (if any) then all array-based tables. Shared by root CSV blob and nested csv_metadata.
+/// Push flat KV section (if any) then all array-based tables. Shared by root CSV blob and nested `csv_metadata`.
 fn push_csv_flat_and_tables(
     sections: &mut Vec<Section>,
     title: Option<String>,
@@ -402,7 +402,7 @@ fn push_csv_flat_and_tables(
     sections.extend(csv_metadata_to_sections(csv_map));
 }
 
-/// Push flat KV section for csv_metadata scalars, then all array-based tables from `csv_metadata_to_sections`.
+/// Push flat KV section for `csv_metadata` scalars, then all array-based tables from `csv_metadata_to_sections`.
 pub fn push_csv_metadata_sections(
     sections: &mut Vec<Section>,
     section_key: &str,
@@ -412,6 +412,7 @@ pub fn push_csv_metadata_sections(
 }
 
 /// Build sections when the root object is CSV metadata (one KV table + array tables).
+#[must_use]
 pub fn sections_from_csv_root(map: &Map<String, Value>) -> Vec<Section> {
     let mut out = Vec::new();
     push_csv_flat_and_tables(

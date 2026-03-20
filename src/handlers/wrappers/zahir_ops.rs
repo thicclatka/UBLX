@@ -1,4 +1,4 @@
-//! ZahirScan integration: batch (sequential) and stream entry points.
+//! `ZahirScan` integration: batch (sequential) and stream entry points.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,6 +19,7 @@ pub type ZahirOutputSink = OutputSink;
 pub type ZahirFileType = FileType;
 
 /// True if we should run zahir on this path (new or mtime changed). Skip when prior exists and mtime is unchanged.
+#[must_use]
 pub fn needs_zahir(
     prior_nefax: Option<&nefax_ops::NefaxResult>,
     path: &PathBuf,
@@ -34,7 +35,11 @@ fn extract_zahir_opts_from_ublx_opts(opts: &UblxOpts) -> RuntimeConfig {
     opts.zahir_runtime_config()
 }
 
-/// Run zahir on a full set of paths (sequential mode). Uses [OutputMode::Full] and the given config.
+/// Run zahir on a full set of paths (sequential mode). Uses [`OutputMode::Full`] and the given config.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] when the zahir scan fails.
 pub fn run_zahir_batch(
     paths: &[impl AsRef<Path>],
     ublx_opts: &UblxOpts,
@@ -55,6 +60,10 @@ pub fn run_zahir_batch(
 
 /// Run zahir on paths from a channel. Use `ZahirOutputSink::Collect` to get all outputs in the result (default).
 /// Use `ZahirOutputSink::Channel(tx)` to stream each `(path, Output)` to a receiver so ublx can write to the DB incrementally.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] when the zahir scan fails.
 pub fn run_zahir_from_stream(
     paths_rx: Receiver<String>,
     ublx_opts: &UblxOpts,
@@ -72,6 +81,7 @@ pub fn run_zahir_from_stream(
 
 /// Zahir output by path from a zahir result. Keys are path strings.
 /// If `root` is `Some`, keys are relative to `root` (so they line up with nefaxer); otherwise keys are absolute (source as-is).
+#[must_use]
 pub fn get_zahir_output_by_path<'a>(
     zahir_result: &'a ZahirResult,
     dir_to_ublx_abs: Option<&Path>,
@@ -95,6 +105,7 @@ pub fn get_zahir_output_by_path<'a>(
 }
 
 /// Convert a zahir output to a JSON string.
+#[must_use]
 pub fn zahir_output_to_json(output: Option<&ZahirOutput>) -> String {
     output
         .and_then(|o| serde_json::to_string(o).ok())

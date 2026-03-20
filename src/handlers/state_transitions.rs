@@ -7,8 +7,8 @@ use crate::ui::keymap::UblxAction;
 use crate::utils::clamp_selection;
 
 fn apply_quit(state: &mut UblxState) -> bool {
-    if state.viewer_fullscreen {
-        state.viewer_fullscreen = false;
+    if state.chrome.viewer_fullscreen {
+        state.chrome.viewer_fullscreen = false;
         false
     } else {
         true
@@ -17,8 +17,8 @@ fn apply_quit(state: &mut UblxState) -> bool {
 
 fn apply_misc(state: &mut UblxState, action: UblxAction) {
     match action {
-        UblxAction::Help => state.help_visible = true,
-        UblxAction::TakeSnapshot => state.snapshot_requested = true,
+        UblxAction::Help => state.chrome.help_visible = true,
+        UblxAction::TakeSnapshot => state.snapshot_bg.requested = true,
         _ => {}
     }
 }
@@ -34,7 +34,7 @@ fn apply_mode_switch(
         UblxAction::MainModeDelta => state.main_mode = MainMode::Delta,
         UblxAction::MainModeDuplicates => state.main_mode = MainMode::Duplicates,
         UblxAction::MainModeLenses => state.main_mode = MainMode::Lenses,
-        UblxAction::LoadDuplicates => state.duplicate_load_requested = true,
+        UblxAction::LoadDuplicates => state.duplicate_load.requested = true,
         UblxAction::MainModeToggle => {
             state.main_mode = state.main_mode.next(has_duplicates, has_lenses);
         }
@@ -63,6 +63,7 @@ pub struct UblxActionContext<'a> {
 }
 
 impl<'a> UblxActionContext<'a> {
+    #[must_use]
     pub fn new(view: &'a ViewData, right_content: &'a RightPaneContent) -> Self {
         Self {
             view,
@@ -72,7 +73,7 @@ impl<'a> UblxActionContext<'a> {
 
     /// Apply the key action to state (mutates focus, selection, panes, etc.).
     /// Returns true if the user requested quit (caller should exit the run loop).
-    /// `has_duplicates` / `has_lenses` are used for MainModeToggle and tab keys (cycle / switch only when tab exists).
+    /// `has_duplicates` / `has_lenses` are used for `MainModeToggle` and tab keys (cycle / switch only when tab exists).
     pub fn apply_action_to_state(
         &self,
         state: &mut UblxState,
@@ -91,7 +92,7 @@ impl<'a> UblxActionContext<'a> {
             | UblxAction::MainModeLenses
             | UblxAction::MainModeToggle
             | UblxAction::LoadDuplicates => {
-                apply_mode_switch(state, action, has_duplicates, has_lenses)
+                apply_mode_switch(state, action, has_duplicates, has_lenses);
             }
             UblxAction::SearchStart => state.search.active = true,
             UblxAction::CycleRightPane
@@ -121,7 +122,7 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::CycleRightPane => self.apply_cycle_right_pane(state),
             UblxAction::RightPaneViewer => state.right_pane_mode = RightPaneMode::Viewer,
             UblxAction::ViewerFullscreenToggle => {
-                state.viewer_fullscreen = !state.viewer_fullscreen
+                state.chrome.viewer_fullscreen = !state.chrome.viewer_fullscreen;
             }
             UblxAction::RightPaneTemplates => {
                 if !self.right_content.templates.is_empty() {

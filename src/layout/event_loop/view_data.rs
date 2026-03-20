@@ -36,7 +36,7 @@ fn clamp_content_selection(state: &mut setup::UblxState, content_len: usize) {
     }
 }
 
-/// Filter content rows by search query on the path (first element of [setup::TuiRow]). Shared by Duplicates and Lenses.
+/// Filter content rows by search query on the path (first element of [`setup::TuiRow`]). Shared by Duplicates and Lenses.
 pub fn filter_contents_by_search(
     rows: Vec<setup::TuiRow>,
     search_query: &str,
@@ -50,7 +50,7 @@ pub fn filter_contents_by_search(
     }
 }
 
-/// Build [ViewData] from filtered category names and content rows (DeltaRows). Shared by Duplicates and Lenses.
+/// Build [`ViewData`] from filtered category names and content rows (`DeltaRows`). Shared by Duplicates and Lenses.
 pub fn build_user_selected_mode_view_data(
     filtered_categories: Vec<String>,
     contents: Vec<setup::TuiRow>,
@@ -65,7 +65,7 @@ pub fn build_user_selected_mode_view_data(
     }
 }
 
-/// Clamp category and content list selection from a [ViewData]. Shared by Duplicates and Lenses (and any two-pane list mode).
+/// Clamp category and content list selection from a [`ViewData`]. Shared by Duplicates and Lenses (and any two-pane list mode).
 pub fn clamp_two_pane_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
     clamp_category_selection(state, view.category_list_len);
     clamp_content_selection(state, view.content_len);

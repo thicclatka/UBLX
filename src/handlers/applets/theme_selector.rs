@@ -53,9 +53,10 @@ pub fn handle_key(
                 state.config_written_by_us_at = Some(std::time::Instant::now());
             }
             if let Some(b) = params.bumper {
+                let theme_msg = format!("Changed theme to {display_name}");
                 b.push_with_operation(
                     log::Level::Info,
-                    format!("Changed theme to {}", display_name),
+                    theme_msg.as_str(),
                     Some(OPERATION_NAME.theme_selector()),
                 );
                 show_toast_slot(

@@ -10,6 +10,7 @@ use super::{CurrentTheme, ThemeStyles, tab_active, tab_inactive};
 
 /// One tab as a powerline-style node: round + " label " + round. No separator.
 /// Used for right-pane tabs and main (Snapshot/Delta) tabs.
+#[must_use]
 pub fn tab_node_segment(label: &str, active: bool) -> Vec<Span<'static>> {
     let (circle_style, node_style) = if active {
         (
@@ -24,7 +25,7 @@ pub fn tab_node_segment(label: &str, active: bool) -> Vec<Span<'static>> {
     };
     vec![
         Span::styled(UI_GLYPHS.round_left.to_string(), circle_style),
-        Span::styled(format!(" {} ", label), node_style),
+        Span::styled(format!(" {label} "), node_style),
         Span::styled(UI_GLYPHS.round_right.to_string(), circle_style),
     ]
 }
@@ -39,24 +40,27 @@ fn node_color() -> (ratatui::style::Color, Style, Style) {
 fn node_spans(content: &str, circle_style: Style, node_style: Style) -> Vec<Span<'static>> {
     vec![
         Span::styled(UI_GLYPHS.round_left.to_string(), circle_style),
-        Span::styled(format!(" {} ", content), node_style),
+        Span::styled(format!(" {content} "), node_style),
         Span::styled(UI_GLYPHS.round_right.to_string(), circle_style),
     ]
 }
 
 /// Single-node footer line with the given alignment (e.g. viewer size = Right, categories "Latest Snapshot" = Left).
+#[must_use]
 pub fn node_line(text: &str, alignment: HorizontalAlignment) -> Line<'static> {
     let (_, circle_style, node_style) = node_color();
     Line::from(node_spans(text, circle_style, node_style)).alignment(alignment)
 }
 
 /// Powerline-style node spans for use in a combined status line (e.g. Latest Snapshot, not in a border).
+#[must_use]
 pub fn status_node_spans(content: &str) -> Vec<Span<'static>> {
     let (_, circle_style, node_style) = node_color();
     node_spans(content, circle_style, node_style)
 }
 
 /// Footer line with optional open hint (↗ or ↗ (Terminal)/(GUI)), optional size, and optional mtime.
+#[must_use]
 pub fn viewer_footer_line(
     open_hint_label: Option<&str>,
     size_str: Option<&str>,

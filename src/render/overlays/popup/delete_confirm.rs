@@ -18,7 +18,7 @@ pub fn render_delete_confirm(
     let items = [UI_STRINGS.lens_delete_yes, UI_STRINGS.lens_delete_no];
     render_list_popup(
         f,
-        ListPopupParams {
+        &ListPopupParams {
             title: &title,
             items: &items,
             selected_index,

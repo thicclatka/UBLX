@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use log::warn;
 use rayon::prelude::*;
 use rusqlite::{Connection, Statement};
 
@@ -15,13 +16,18 @@ use crate::handlers::{
 };
 
 /// Get the full path and the path string for a given path.
+#[must_use]
 pub fn get_full_path_and_path_str(dir_to_ublx: &Path, path_ref: &Path) -> (PathBuf, String) {
     let full_path = dir_to_ublx.join(path_ref);
     let path_str = path_ref.to_string_lossy().into_owned();
     (full_path, path_str)
 }
 
-/// Open or create the DB at dir_to_ublx and ensure all ublx tables exist. Returns the DB path.
+/// Open or create the DB at `dir_to_ublx` and ensure all ublx tables exist. Returns the DB path.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` I/O or schema initialization errors.
 pub fn ensure_ublx_and_db(dir_to_ublx: &Path) -> Result<PathBuf, anyhow::Error> {
     let paths = UblxPaths::new(dir_to_ublx);
     let path = paths.db();
@@ -30,7 +36,7 @@ pub fn ensure_ublx_and_db(dir_to_ublx: &Path) -> Result<PathBuf, anyhow::Error> 
     Ok(path)
 }
 
-/// Get file_type string from prior zahir JSON so we can preserve category when current run didn't re-run zahir.
+/// Get `file_type` string from prior zahir JSON so we can preserve category when current run didn't re-run zahir.
 fn file_type_from_zahir_json(json: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(json)
         .ok()
@@ -41,6 +47,7 @@ fn file_type_from_zahir_json(json: &str) -> Option<String> {
         })
 }
 
+#[must_use]
 pub fn prepare_results_for_snapshot_insertion(
     dir_to_ublx: &Path,
     path_ref: &Path,
@@ -57,16 +64,22 @@ pub fn prepare_results_for_snapshot_insertion(
         .and_then(|o| o.file_type.as_deref())
         .or(prior_ft.as_deref());
     let category = UblxDbCategory::get_category_for_path(&full_path, ublx_paths, zahir_file_type);
-    let zahir_json = zahir_output
-        .map(|o| zahir_output_to_json(Some(o)))
-        .unwrap_or_else(|| prior_zahir_json.get(&path_str).cloned().unwrap_or_default());
+    let zahir_json = zahir_output.map_or_else(
+        || prior_zahir_json.get(&path_str).cloned().unwrap_or_default(),
+        |o| zahir_output_to_json(Some(o)),
+    );
     (path_str, category, zahir_json)
 }
 
-/// Prepared row for snapshot insert: (path_str, category, zahir_json, mtime_ns, size, hash).
+/// Prepared row for snapshot insert: (`path_str`, category, `zahir_json`, `mtime_ns`, size, hash).
 /// Hash is owned so the vec can be built in parallel (Send).
 type SnapshotInsertRow = (String, String, String, i64, i64, Option<Vec<u8>>);
 
+/// Insert all nefax rows into the prepared snapshot `INSERT` statement, then optional global config row.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` execute errors or filesystem metadata errors when inserting global config.
 pub fn insert_results_into_snapshot(
     stmt: &mut Statement,
     nefax: &NefaxResult,
@@ -87,16 +100,13 @@ pub fn insert_results_into_snapshot(
                     zahir_output_by_path,
                     prior_zahir_json,
                 );
-                let hash = meta
-                    .hash
-                    .as_ref()
-                    .map(|h| h.as_slice().to_vec());
+                let hash = meta.hash.as_ref().map(|h| h.as_slice().to_vec());
                 (
                     path_str,
                     category,
                     zahir_json,
                     meta.mtime_ns,
-                    meta.size as i64,
+                    meta.size.cast_signed(),
                     hash,
                 )
             })
@@ -123,8 +133,8 @@ pub fn insert_results_into_snapshot(
             stmt.execute(rusqlite::params![
                 path_str,
                 meta.mtime_ns,
-                meta.size as i64,
-                meta.hash.as_ref().map(|h| h.as_slice()),
+                meta.size.cast_signed(),
+                meta.hash.as_ref().map(<[u8; 32]>::as_slice),
                 category,
                 zahir_json,
             ])?;
@@ -154,9 +164,8 @@ fn insert_global_config_row_if_exists(
                 .modified()
                 .ok()
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map(|d| d.as_nanos() as i64)
-                .unwrap_or(0);
-            let size = m.len() as i64;
+                .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX));
+            let size = m.len().cast_signed();
             (mtime_ns, size)
         })
         .unwrap_or((0, 0));
@@ -172,7 +181,11 @@ fn insert_global_config_row_if_exists(
     Ok(())
 }
 
-/// Insert all nefax rows (category from prior zahir when available, else path fallback; zahir_json from prior). For streaming: zahir updates applied later for paths that were sent.
+/// Insert all nefax rows (category from prior zahir when available, else path fallback; `zahir_json` from prior). For streaming: zahir updates applied later for paths that were sent.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` execute errors or filesystem metadata errors when inserting global config.
 pub fn insert_nefax_only_into_snapshot(
     stmt: &mut Statement,
     nefax: &NefaxResult,
@@ -191,8 +204,8 @@ pub fn insert_nefax_only_into_snapshot(
         stmt.execute(rusqlite::params![
             path_str,
             meta.mtime_ns,
-            meta.size as i64,
-            meta.hash.as_ref().map(|h| h.as_slice()),
+            meta.size.cast_signed(),
+            meta.hash.as_ref().map(<[u8; 32]>::as_slice),
             category,
             zahir_json,
         ])?;
@@ -201,13 +214,20 @@ pub fn insert_nefax_only_into_snapshot(
     Ok(())
 }
 
+#[must_use]
 pub fn get_created_ns() -> i64 {
-    std::time::SystemTime::now()
+    let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_nanos() as i64
+        .as_nanos();
+    i64::try_from(nanos).unwrap_or(i64::MAX)
 }
 
+/// Insert `delta_log` rows for one delta type (added/modified/removed).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` execute errors.
 pub fn insert_results_into_delta_log_by_type(
     stmt: &mut Statement,
     nefax: &NefaxResult,
@@ -215,21 +235,28 @@ pub fn insert_results_into_delta_log_by_type(
     delta_type: DeltaType,
     created_ns: i64,
 ) -> Result<(), anyhow::Error> {
-    let (diff_to_use, expect_str) = match delta_type {
-        DeltaType::Added => (&diff.added, "added path must be in nefax"),
-        DeltaType::Mod => (&diff.modified, "modified path must be in nefax"),
-        DeltaType::Removed => (&diff.removed, ""),
+    let diff_to_use = match delta_type {
+        DeltaType::Added => &diff.added,
+        DeltaType::Mod => &diff.modified,
+        DeltaType::Removed => &diff.removed,
     };
     for path in diff_to_use {
         let path_str = path.to_string_lossy().into_owned();
         let (mtime_ns, size, hash) = match delta_type {
             DeltaType::Added | DeltaType::Mod => {
-                // Paths in diff.added/diff.modified come from the current nefax run, so they are always present.
-                let meta = nefax.get(path).expect(expect_str);
+                // Paths in diff.added/diff.modified should match the current nefax run; if not, skip.
+                let Some(meta) = nefax.get(path) else {
+                    warn!(
+                        "nefax missing metadata for {} path {}; skipping delta_log row",
+                        delta_type.as_str(),
+                        path_str
+                    );
+                    continue;
+                };
                 (
                     Some(meta.mtime_ns),
-                    Some(meta.size as i64),
-                    meta.hash.as_ref().map(|h| h.as_slice()),
+                    Some(meta.size.cast_signed()),
+                    meta.hash.as_ref().map(<[u8; 32]>::as_slice),
                 )
             }
             DeltaType::Removed => (None::<i64>, None::<i64>, None::<&[u8]>),
@@ -252,6 +279,7 @@ pub struct NefaxFromGivenDB {
 }
 
 impl NefaxFromGivenDB {
+    #[must_use]
     pub fn new(dir_to_ublx: &Path, db_path: &Path) -> Self {
         let (db_path_to_use, table_name) =
             Self::determine_db_path_and_table_name(dir_to_ublx, db_path);
@@ -274,6 +302,10 @@ impl NefaxFromGivenDB {
     }
 
     /// Load the ublx snapshot table into a Nefax-compatible map. Returns `None` if the table is empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`anyhow::Error`] on `SQLite` open/query errors.
     pub fn load_nefax_from_given_db(self) -> Result<Option<NefaxResult>, anyhow::Error> {
         let conn = Connection::open(&self.db_path_to_use)?;
         let query = UblxDbStatements::create_query_for_nefax_from_db(&self.table_name);
@@ -327,13 +359,18 @@ pub struct UblxCleanup {
 }
 
 impl UblxCleanup {
+    #[must_use]
     pub fn new(dir_to_ublx: &Path) -> Self {
         Self {
             dir_to_ublx_abs: dir_to_ublx.to_path_buf(),
         }
     }
 
-    /// Remove the nefaxer index file (`NEFAX_DB`) under dir_to_ublx if it exists. Call after the operation is complete (e.g. after writing ublx snapshot).
+    /// Remove the nefaxer index file (`NEFAX_DB`) under `dir_to_ublx` if it exists. Call after the operation is complete (e.g. after writing ublx snapshot).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`anyhow::Error`] when removing the file fails.
     pub fn delete_nefaxer_files(dir_to_ublx: &Path) -> Result<(), anyhow::Error> {
         let path = UblxPaths::new(dir_to_ublx).nefax_db();
         if path.exists() {
@@ -342,13 +379,21 @@ impl UblxCleanup {
         Ok(())
     }
 
-    /// Remove temporary ublx files under dir_to_ublx if they exist.
+    /// Remove temporary ublx files under `dir_to_ublx` if they exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`anyhow::Error`] when removing auxiliary files fails.
     pub fn delete_ublx_tmp_files(dir_to_ublx: &Path) -> Result<(), anyhow::Error> {
         UblxPaths::new(dir_to_ublx).remove_aux_files()?;
         Ok(())
     }
 
-    /// Remove the nefaxer index file and ublx tmp files under this cleanup's dir_to_ublx_abs. Call after the operation is complete (e.g. after writing ublx snapshot).
+    /// Remove the nefaxer index file and ublx tmp files under this cleanup's `dir_to_ublx_abs`. Call after the operation is complete (e.g. after writing ublx snapshot).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`anyhow::Error`] when deleting nefaxer or tmp files fails.
     pub fn post_run_cleanup(&self) -> Result<(), anyhow::Error> {
         Self::delete_nefaxer_files(&self.dir_to_ublx_abs)?;
         Self::delete_ublx_tmp_files(&self.dir_to_ublx_abs)?;

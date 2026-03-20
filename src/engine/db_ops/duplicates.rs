@@ -22,22 +22,21 @@ impl DuplicateGroup {
         self.paths
             .iter()
             .min_by_key(|p| p.len())
-            .map(|s| s.as_str())
-            .unwrap_or("")
+            .map_or("", String::as_str)
     }
 }
 
 const CONTENT_HASH_CHUNK: usize = 64 * 1024;
 const MAX_FILE_SIZE_FOR_CONTENT_HASH: u64 = 50 * 1024 * 1024; // 50 MiB cap for no-hash path
 
-/// Compute blake3 hash of file at full_path. Returns None on read error or if too large.
+/// Compute blake3 hash of file at `full_path`. Returns None on read error or if too large.
 fn content_hash(full_path: &Path, size: u64) -> Option<[u8; 32]> {
     if size > MAX_FILE_SIZE_FOR_CONTENT_HASH {
         return None;
     }
     let mut f = fs::File::open(full_path).ok()?;
     let mut hasher = Hasher::new();
-    let mut buf = [0u8; CONTENT_HASH_CHUNK];
+    let mut buf = vec![0u8; CONTENT_HASH_CHUNK];
     loop {
         let n = f.read(&mut buf).ok()?;
         if n == 0 {
@@ -112,6 +111,10 @@ fn group_by_content_hash(rows: &[SnapshotPathSizeHash], dir_to_ublx: &Path) -> V
 
 /// Load duplicate groups from the snapshot. If any row has a hash, group by DB hash; otherwise group by content hash (read files).
 /// Returns empty vec when no duplicates exist or on error.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` errors, or when reading file contents for hashing fails.
 pub fn load_duplicate_groups(
     db_path: &Path,
     dir_to_ublx: &Path,

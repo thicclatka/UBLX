@@ -4,7 +4,7 @@ use ratatui::style::Color;
 use ublx::layout::themes::lighten_rgb;
 
 /// Run with: `cargo test print_lighten_values -- --nocapture`
-/// to regenerate RGB values for popup_bg (5%) and node_bg (10%) from each theme background for palettes.rs.
+/// to regenerate RGB values for `popup_bg` (5%) and `node_bg` (10%) from each theme background for palettes.rs.
 #[test]
 fn print_lighten_values() {
     let backgrounds: &[(&str, u8, u8, u8)] = &[

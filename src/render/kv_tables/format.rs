@@ -15,6 +15,7 @@ const ALL_CAPS: &[&str] = &[
 const FLOAT_PRECISION: usize = 4;
 
 #[inline]
+#[must_use]
 pub fn is_byte_key(key: &str) -> bool {
     key.to_lowercase().contains("size")
         || key.to_lowercase().contains("compressed")
@@ -22,11 +23,13 @@ pub fn is_byte_key(key: &str) -> bool {
         || key.to_lowercase().contains("byte")
 }
 
+#[must_use]
 pub fn is_bool(value: &serde_json::Value) -> bool {
     matches!(value, serde_json::Value::Bool(_))
 }
 
 /// Optional style for a value cell (e.g. TRUE = green, FALSE = red). Returns `None` for non-bool values.
+#[must_use]
 pub fn value_cell_style(formatted_value: &str) -> Option<Style> {
     match formatted_value {
         "TRUE" => Some(Style::default().fg(DEFAULT_COLORS.green)),
@@ -45,15 +48,18 @@ pub fn join_dot(parts: impl IntoIterator<Item = impl AsRef<str>>) -> String {
 }
 
 /// Schema tree: prefix + label (e.g. tree branch + node name).
+#[must_use]
 pub fn prefixed_label(prefix: &str, label: &str) -> String {
     format!("{prefix}{label}")
 }
 
 /// Schema tree: prefix + label + ": " + value string (leaf line).
+#[must_use]
 pub fn prefixed_label_with_value(prefix: &str, label: &str, value_str: &str) -> String {
     format!("{prefix}{label}: {value_str}")
 }
 
+#[must_use]
 pub fn format_key(key: &str) -> String {
     let words: Vec<String> = key
         .split('_')
@@ -80,8 +86,7 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
         serde_json::Value::Number(n) => n
             .as_f64()
             .filter(|f| f.fract().abs() >= Epsilon::FORMAT)
-            .map(|f| format!("{f:.FLOAT_PRECISION$}"))
-            .unwrap_or_else(|| n.to_string()),
+            .map_or_else(|| n.to_string(), |f| format!("{f:.FLOAT_PRECISION$}")),
         serde_json::Value::String(s) => s.clone(),
         serde_json::Value::Array(arr) => {
             if arr.is_empty() {
@@ -99,7 +104,19 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
     }
 }
 
+/// Non-negative JSON floats for byte-like keys: clamp to `u64`, then truncate toward zero.
+fn json_f64_to_u64_for_bytes(f: f64) -> u64 {
+    if f <= 0.0 || !f.is_finite() {
+        return 0;
+    }
+    if f >= u64::MAX as f64 {
+        return u64::MAX;
+    }
+    f as u64
+}
+
 /// Format value for display: byte format when key contains "size", "compressed", or "uncompressed" (and value is numeric); "%" when key contains "percent" (case-insensitive).
+#[must_use]
 pub fn format_value(v: &serde_json::Value, key: &str) -> String {
     let key_lower = key.to_lowercase();
     if is_byte_key(&key_lower) {
@@ -107,10 +124,11 @@ pub fn format_value(v: &serde_json::Value, key: &str) -> String {
             return format_bytes(n);
         }
         if let Some(n) = v.as_i64().filter(|&x| x >= 0) {
-            return format_bytes(n as u64);
+            // Non-negative `i64` → `u64` without `as` sign-loss ambiguity.
+            return format_bytes(n.cast_unsigned());
         }
         if let Some(f) = v.as_f64().filter(|&x| x >= 0.0 && x.is_finite()) {
-            return format_bytes(f as u64);
+            return format_bytes(json_f64_to_u64_for_bytes(f));
         }
     }
     let s = value_to_string(v);

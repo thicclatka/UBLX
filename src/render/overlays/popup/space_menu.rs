@@ -38,7 +38,7 @@ pub fn render_space_menu(
     };
     render_list_popup(
         f,
-        ListPopupParams {
+        &ListPopupParams {
             title,
             items: &items,
             selected_index,

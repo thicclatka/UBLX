@@ -22,7 +22,7 @@ pub fn handle_open_menu(
     match action {
         UblxAction::Quit | UblxAction::SearchClear => state.close_open_menu(),
         UblxAction::MoveDown => {
-            let max_idx = if state.open_menu.can_terminal { 1 } else { 0 };
+            let max_idx = usize::from(state.open_menu.can_terminal);
             state.open_menu.selected_index = (state.open_menu.selected_index + 1).min(max_idx);
         }
         UblxAction::MoveUp => {
@@ -39,7 +39,7 @@ pub fn handle_open_menu(
                     {
                         let _ = core::leave_terminal_for_editor();
                         let _ = applets::opener::open_in_editor(&ed, &full_path);
-                        state.refresh_terminal_after_editor = true;
+                        state.session.refresh_terminal_after_editor = true;
                     }
                 } else {
                     let _ = applets::opener::open_in_gui(&full_path);
@@ -52,7 +52,7 @@ pub fn handle_open_menu(
     true
 }
 
-/// If action is OpenMenu and a file is selected, open the open menu. Returns true if opened.
+/// If action is `OpenMenu` and a file is selected, open the open menu. Returns true if opened.
 /// Openable files (e.g. text) get Terminal + GUI; others (e.g. .mp3) get only Open (GUI).
 pub fn try_open_open_menu(
     state: &mut UblxState,
@@ -80,7 +80,7 @@ pub fn handle_space_menu(
         return false;
     }
     let item_count: usize = match &state.space_menu.kind {
-        Some(SpaceMenuKind::FileActions { .. }) | Some(SpaceMenuKind::LensPanelActions { .. }) => 2,
+        Some(SpaceMenuKind::FileActions { .. } | SpaceMenuKind::LensPanelActions { .. }) => 2,
         None => 0,
     };
     match action {
@@ -119,7 +119,7 @@ pub fn handle_space_menu(
                             show_lens_toast(
                                 state,
                                 params,
-                                format!("Removed from lens \"{}\"", lens_name),
+                                format!("Removed from lens \"{lens_name}\""),
                             );
                         }
                     }
@@ -138,7 +138,7 @@ pub fn handle_space_menu(
     true
 }
 
-/// If action is SpaceMenu and context allows, open the space menu. Returns true if opened.
+/// If action is `SpaceMenu` and context allows, open the space menu. Returns true if opened.
 pub fn try_open_space_menu(
     state: &mut UblxState,
     view: &ViewData,

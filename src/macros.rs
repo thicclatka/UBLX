@@ -7,7 +7,7 @@ macro_rules! mod_pub {
     };
 }
 
-/// If `$result` is `Err(e)`, log with `log::error!($($msg)*, e)` and exit with [crate::utils::EXIT_ERROR]. Otherwise unwrap the `Ok` value.
+/// If `$result` is `Err(e)`, log with `log::error!($($msg)*, e)` and exit with [`crate::utils::EXIT_ERROR`]. Otherwise unwrap the `Ok` value.
 #[macro_export]
 macro_rules! fatal {
     ($result:expr, $($msg:tt)*) => {

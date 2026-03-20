@@ -1,4 +1,4 @@
-//! Index DB and related files under the dir_to_ublx_abs, all keyed by package name (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
+//! Index DB and related files under the `dir_to_ublx_abs`, all keyed by package name (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
 
 use std::fs;
 use std::path::Path;
@@ -15,10 +15,14 @@ use crate::handlers::{
 };
 use crate::utils::canonicalize_dir_to_ublx;
 
-/// One row from snapshot for TUI list: (path, category, size_bytes). zahir_json is loaded on demand for the selected row.
+/// One row from snapshot for TUI list: (path, category, `size_bytes`). `zahir_json` is loaded on demand for the selected row.
 pub type SnapshotTuiRow = (String, String, u64);
 
-/// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and delta_log, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime). When `zahir_result` is None (no paths to zahir), all paths use prior.
+/// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and `delta_log`, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime). When `zahir_result` is None (no paths to zahir), all paths use prior.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` I/O, query/prepare errors, or filesystem errors when replacing the DB file.
 pub fn write_snapshot_to_db(
     dir_to_ublx: &Path,
     nefax: &NefaxResult,
@@ -64,13 +68,17 @@ pub fn write_snapshot_to_db(
 }
 
 /// Write snapshot by inserting all nefax rows first (zahir from prior or empty), then consuming `output_rx`
-/// and updating category + zahir_json per row. Call when zahir streams output via `OutputSink::Channel`.
+/// and updating category + `zahir_json` per row. Call when zahir streams output via `OutputSink::Channel`.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` I/O, query/prepare errors, or filesystem errors when replacing the DB file.
 pub fn write_snapshot_to_db_streaming(
     dir_to_ublx: &Path,
     nefax: &NefaxResult,
     diff: &NefaxDiff,
     settings: &UblxSettings,
-    output_rx: Receiver<(String, ZahirOutput)>,
+    output_rx: &Receiver<(String, ZahirOutput)>,
     prior_zahir_json: &std::collections::HashMap<String, String>,
 ) -> Result<(), anyhow::Error> {
     let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
@@ -127,17 +135,17 @@ fn write_settings(conn: &Connection, s: &UblxSettings) -> Result<(), anyhow::Err
     conn.execute(
         UblxDbStatements::INSERT_SETTINGS,
         rusqlite::params![
-            s.num_threads as i64,
+            i64::try_from(s.num_threads).unwrap_or(i64::MAX),
             s.drive_type,
-            if s.parallel_walk { 1i64 } else { 0i64 },
+            i64::from(s.parallel_walk),
             s.config_source.as_deref(),
         ],
     )?;
     Ok(())
 }
 
-/// Copy all rows from the existing .ublx delta_log into the open tmp DB, so history persists
-/// across the replace. No-op if db_path does not exist or has no delta_log table.
+/// Copy all rows from the existing .ublx `delta_log` into the open tmp DB, so history persists
+/// across the replace. No-op if `db_path` does not exist or has no `delta_log` table.
 fn copy_previous_delta_log(conn: &Connection, db_path: &Path) -> Result<(), anyhow::Error> {
     if !db_path.exists() {
         return Ok(());
@@ -151,21 +159,18 @@ fn copy_previous_delta_log(conn: &Connection, db_path: &Path) -> Result<(), anyh
     let copied = match conn.query_row(UblxDbStatements::SELECT_COUNT_DELTA_LOG_ROWS, [], |row| {
         row.get::<_, i32>(0)
     }) {
-        Ok(1) => {
-            let n = conn.execute(UblxDbStatements::COPY_PREVIOUS_DELTA_LOG, [])?;
-            n as i32
-        }
+        Ok(1) => conn.execute(UblxDbStatements::COPY_PREVIOUS_DELTA_LOG, [])?,
         _ => 0,
     };
     conn.execute(UblxDbStatements::DETACH_OLD_DB, [])?;
     if copied > 0 {
-        log::debug!("copied {} previous delta_log rows into tmp", copied);
+        log::debug!("copied {copied} previous delta_log rows into tmp");
     }
     Ok(())
 }
 
-/// Copy path, lens, and lens_path from the existing .ublx into the open tmp DB so lenses persist
-/// across snapshot replace. No-op if db_path does not exist or has no lens table.
+/// Copy path, lens, and `lens_path` from the existing .ublx into the open tmp DB so lenses persist
+/// across snapshot replace. No-op if `db_path` does not exist or has no lens table.
 fn copy_previous_lens_tables(conn: &Connection, db_path: &Path) -> Result<(), anyhow::Error> {
     if !db_path.exists() {
         return Ok(());
@@ -185,10 +190,7 @@ fn copy_previous_lens_tables(conn: &Connection, db_path: &Path) -> Result<(), an
         conn.execute(UblxDbStatements::COPY_PREVIOUS_PATH, [])?;
         conn.execute(UblxDbStatements::COPY_PREVIOUS_LENS, [])?;
         let n = conn.execute(UblxDbStatements::COPY_PREVIOUS_LENS_PATH, [])?;
-        log::debug!(
-            "copied previous lens tables into tmp ({} lens_path rows)",
-            n
-        );
+        log::debug!("copied previous lens tables into tmp ({n} lens_path rows)");
     }
     conn.execute(UblxDbStatements::DETACH_OLD_DB, [])?;
     Ok(())
@@ -211,19 +213,25 @@ fn write_delta_log(
     Ok(())
 }
 
-/// Ensure settings table has config_source column (migration for existing DBs).
+/// Ensure settings table has `config_source` column (migration for existing DBs).
 fn ensure_settings_config_source(conn: &Connection) {
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN config_source TEXT", []);
 }
 
 /// Load cached settings from the ublx DB. Returns `None` if the settings table is empty (e.g. DB created before settings existed).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_settings_from_db(db_path: &Path) -> Result<Option<UblxSettings>, anyhow::Error> {
     let conn = Connection::open(db_path)?;
     ensure_settings_config_source(&conn);
     let settings_query = UblxDbStatements::create_query_for_settings_from_db();
     conn.query_row(&settings_query, [], |row| {
+        let nt: i64 = row.get(0)?;
         Ok(UblxSettings {
-            num_threads: row.get::<_, i64>(0)? as usize,
+            // DB stores i64; clamp negative corrupt values, then convert without lossy cast.
+            num_threads: usize::try_from(nt.max(0)).unwrap_or(0),
             drive_type: row.get(1)?,
             parallel_walk: row.get::<_, i64>(2)? != 0,
             config_source: row.get::<_, Option<String>>(3).ok().flatten(),
@@ -233,7 +241,11 @@ pub fn load_settings_from_db(db_path: &Path) -> Result<Option<UblxSettings>, any
     .map_err(Into::into)
 }
 
-/// Load (path, zahir_json) from the snapshot table for paths that have non-empty zahir_json. Use when reusing prior zahir for unchanged mtime. Empty if DB missing or table empty.
+/// Load (path, `zahir_json`) from the snapshot table for paths that have non-empty `zahir_json`. Use when reusing prior zahir for unchanged mtime. Empty if DB missing or table empty.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_snapshot_zahir_json_map(
     db_path: &Path,
 ) -> Result<std::collections::HashMap<String, String>, anyhow::Error> {
@@ -254,6 +266,10 @@ pub fn load_snapshot_zahir_json_map(
 }
 
 /// Load prior Nefax: if `dir_to_ublx/NEFAX_DB` (`.nefaxer`) exists, load from that; otherwise load from the ublx snapshot at `db_path`. Returns `None` when the chosen source is empty.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_nefax_from_db(
     dir_to_ublx: &Path,
     db_path: &Path,
@@ -262,6 +278,10 @@ pub fn load_nefax_from_db(
 }
 
 /// Load distinct categories from the snapshot table for the TUI. Returns empty vec if table missing or empty.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_CATEGORIES)?;
@@ -273,7 +293,11 @@ pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::E
     Ok(out)
 }
 
-/// Distinct snapshot timestamps from delta_log (created_ns), newest first. Empty if table missing or empty.
+/// Distinct snapshot timestamps from `delta_log` (`created_ns`), newest first. Empty if table missing or empty.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_delta_log_snapshot_timestamps(db_path: &Path) -> Result<Vec<i64>, anyhow::Error> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(UblxDbStatements::SELECT_DELTA_LOG_SNAPSHOT_TIMESTAMPS)?;
@@ -285,7 +309,11 @@ pub fn load_delta_log_snapshot_timestamps(db_path: &Path) -> Result<Vec<i64>, an
     Ok(out)
 }
 
-/// Rows in delta_log for a given delta_type: (created_ns, path), newest snapshot first, then path order.
+/// Rows in `delta_log` for a given `delta_type`: (`created_ns`, path), newest snapshot first, then path order.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_delta_log_rows_by_type(
     db_path: &Path,
     delta_type: &str,
@@ -302,7 +330,11 @@ pub fn load_delta_log_rows_by_type(
     Ok(out)
 }
 
-/// Load snapshot rows (path, category, size) for the TUI. zahir_json is not loaded; use [load_zahir_json_for_path] for the selected row.
+/// Load snapshot rows (path, category, size) for the TUI. `zahir_json` is not loaded; use [`load_zahir_json_for_path`] for the selected row.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_snapshot_rows_for_tui(
     db_path: &Path,
     category_filter: Option<&str>,
@@ -316,7 +348,7 @@ pub fn load_snapshot_rows_for_tui(
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                size.max(0) as u64,
+                size.max(0).cast_unsigned(),
             ))
         })?;
         for r in rows {
@@ -329,7 +361,7 @@ pub fn load_snapshot_rows_for_tui(
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                size.max(0) as u64,
+                size.max(0).cast_unsigned(),
             ))
         })?;
         for r in rows {
@@ -339,7 +371,11 @@ pub fn load_snapshot_rows_for_tui(
     Ok(out)
 }
 
-/// Load zahir_json for a single path (for right-pane content). Returns None if path not found or zahir_json is null/empty.
+/// Load `zahir_json` for a single path (for right-pane content). Returns None if path not found or `zahir_json` is null/empty.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_zahir_json_for_path(
     db_path: &Path,
     path: &str,
@@ -355,7 +391,11 @@ pub fn load_zahir_json_for_path(
     Ok(opt.filter(|s| !s.is_empty()))
 }
 
-/// Load mtime_ns for a single path (for viewer footer last-modified). Returns None if path not found.
+/// Load `mtime_ns` for a single path (for viewer footer last-modified). Returns None if path not found.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_mtime_for_path(db_path: &Path, path: &str) -> Result<Option<i64>, anyhow::Error> {
     if !db_path.exists() {
         return Ok(None);
@@ -371,6 +411,10 @@ pub fn load_mtime_for_path(db_path: &Path, path: &str) -> Result<Option<i64>, an
 pub type SnapshotPathSizeHash = (String, u64, Option<Vec<u8>>);
 
 /// Load path, size, hash for non-directory snapshot rows (for duplicate grouping).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_snapshot_path_size_hash(
     db_path: &Path,
 ) -> Result<Vec<SnapshotPathSizeHash>, anyhow::Error> {
@@ -383,7 +427,7 @@ pub fn load_snapshot_path_size_hash(
         let size: i64 = row.get(1)?;
         Ok((
             row.get::<_, String>(0)?,
-            size.max(0) as u64,
+            size.max(0).cast_unsigned(),
             row.get::<_, Option<Vec<u8>>>(2)?,
         ))
     })?;

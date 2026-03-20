@@ -15,20 +15,20 @@ use crate::layout;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::notifications;
 
-/// Arguments for [draw_ublx_frame] that vary per frame (keeps arg count under clippy limit).
+/// Arguments for [`draw_ublx_frame`] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
     pub delta_data: Option<&'a layout::setup::DeltaViewData>,
     /// For snapshot mode pass `Some(all_rows)`; for delta/duplicates pass `None`.
     pub all_rows: Option<&'a [layout::setup::TuiRow]>,
     /// Snapshot mode: indexed dir (for mapping UBLX Settings path to "Local"/"Global" display).
     pub dir_to_ublx: Option<&'a std::path::Path>,
-    /// Theme name (from opts); style functions use [crate::layout::themes::current].
+    /// Theme name (from opts); style functions use [`crate::layout::themes::current`].
     pub theme_name: Option<&'a str>,
     /// When true, skip painting app background so terminal default/transparency shows.
     pub transparent: bool,
     /// Left/middle/right pane percentages (0–100). Hot-reloadable from config [layout].
     pub layout: &'a LayoutOverlay,
-    /// Latest snapshot timestamp from delta_log (for categories panel footer). Set in Snapshot mode.
+    /// Latest snapshot timestamp from `delta_log` (for categories panel footer). Set in Snapshot mode.
     pub latest_snapshot_ns: Option<i64>,
     /// When true, show dev-mode toast notifications.
     pub dev: bool,
@@ -59,7 +59,7 @@ pub fn draw_ublx_frame(
     draw_main_content(f, state, view, right_content, args, &body);
 
     draw_toast_if_visible(f, state, args);
-    if state.help_visible {
+    if state.chrome.help_visible {
         overlays::render_help_box(f);
     }
     if state.theme.selector_visible {
@@ -192,7 +192,7 @@ fn draw_user_selected_mode_content<F>(
     ),
 {
     let chunks = &body.chunks[..];
-    if state.viewer_fullscreen {
+    if state.chrome.viewer_fullscreen {
         panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
     } else if has_data {
         draw_panes(f, state, view, right_content, chunks);
@@ -212,7 +212,7 @@ fn draw_main_content(
     let chunks = &body.chunks[..];
     match state.main_mode {
         layout::setup::MainMode::Snapshot => {
-            if state.viewer_fullscreen {
+            if state.chrome.viewer_fullscreen {
                 panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
             } else {
                 panes::snapshot_mode::draw_categories_pane(f, state, view, chunks);

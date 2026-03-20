@@ -34,7 +34,7 @@ pub fn render_markdown_table_lines(
     let data_rows = markdown_table_body_rows(rows);
     let col_count = header
         .len()
-        .max(data_rows.iter().map(|r| r.len()).max().unwrap_or(0))
+        .max(data_rows.iter().map(Vec::len).max().unwrap_or(0))
         .max(1);
 
     let header_cells = pad_row_to_cols(header, col_count);

@@ -1,4 +1,4 @@
-//! Tests for utils::format helpers.
+//! Tests for `utils::format` helpers.
 
 use ublx::utils::format::{
     clamp_selection, clamp_selection_opt, frame_string_with_spaces, truncate_middle,

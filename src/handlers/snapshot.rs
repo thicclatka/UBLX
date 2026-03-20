@@ -12,10 +12,14 @@ use crate::utils::notifications::BumperBuffer;
 
 /// Run snapshot pipeline in test mode (no TUI).
 /// Returns `Err` on failure.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] when the orchestrator or follow-up steps fail.
 pub fn run_test_mode(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: &Option<nefax_ops::NefaxResult>,
+    prior_nefax: Option<&nefax_ops::NefaxResult>,
     start_time: Option<Instant>,
 ) -> Result<(), anyhow::Error> {
     fatal!(
@@ -26,11 +30,14 @@ pub fn run_test_mode(
         db_ops::UblxCleanup::new(dir_to_ublx).post_run_cleanup(),
         "failed to cleanup: {}"
     );
-    let duration = start_time.expect("test mode has start_time").elapsed();
-    debug!(
-        "UBLX test completed in {:.4?} seconds",
-        duration.as_secs_f64()
-    );
+    if let Some(t) = start_time {
+        debug!(
+            "UBLX test completed in {:.4?} seconds",
+            t.elapsed().as_secs_f64()
+        );
+    } else {
+        debug!("UBLX test completed");
+    }
     Ok(())
 }
 
@@ -39,18 +46,19 @@ pub fn run_test_mode(
 pub fn run_snapshot_pipeline(
     dir: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: &Option<nefax_ops::NefaxResult>,
+    prior_nefax: Option<&nefax_ops::NefaxResult>,
     done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
-    bumper: Option<BumperBuffer>,
+    bumper: Option<&BumperBuffer>,
 ) {
     let counts = match orchestrator::run(dir, ublx_opts, prior_nefax) {
         Ok(c) => c,
         Err(e) => {
-            error!("take snapshot failed: {}", e);
+            error!("take snapshot failed: {e}");
             if let Some(b) = bumper.as_ref() {
+                let err_msg = format!("Snapshot failed: {e}");
                 b.push_with_operation(
                     log::Level::Error,
-                    format!("Snapshot failed: {}", e),
+                    err_msg.as_str(),
                     Some(OPERATION_NAME.snapshot()),
                 );
             }
@@ -58,20 +66,20 @@ pub fn run_snapshot_pipeline(
         }
     };
     if let Err(e) = db_ops::UblxCleanup::new(dir).post_run_cleanup() {
-        error!("post-run cleanup failed: {}", e);
+        error!("post-run cleanup failed: {e}");
     }
     if let Some(tx) = done_tx {
         let _ = tx.send(counts);
     }
 }
 
-/// Load prior_nefax and ublx_opts from `dir` and `db_path`, then run [run_snapshot_pipeline].
+/// Load `prior_nefax` and `ublx_opts` from `dir` and `db_path`, then run [`run_snapshot_pipeline`].
 /// Use from the TUI when running a snapshot on demand (e.g. Shift+S).
 pub fn run_snapshot_pipeline_from_dir_db(
     dir: &Path,
     db_path: &Path,
     done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
-    bumper: Option<BumperBuffer>,
+    bumper: Option<&BumperBuffer>,
 ) {
     let prior_nefax = db_ops::load_nefax_from_db(dir, db_path).ok().flatten();
     let cached = db_ops::load_settings_from_db(db_path).ok().flatten();
@@ -82,7 +90,7 @@ pub fn run_snapshot_pipeline_from_dir_db(
         .collect();
     let for_dir_config = crate::config::ForDirConfig {
         valid_theme_names: &valid_themes,
-        bumper: bumper.as_ref(),
+        bumper,
     };
     let ublx_opts = UblxOpts::for_dir(
         dir,
@@ -93,10 +101,10 @@ pub fn run_snapshot_pipeline_from_dir_db(
         cached.as_ref(),
         &for_dir_config,
     );
-    run_snapshot_pipeline(dir, &ublx_opts, &prior_nefax, done_tx, bumper);
+    run_snapshot_pipeline(dir, &ublx_opts, prior_nefax.as_ref(), done_tx, bumper);
 }
 
-/// Spawn a thread that runs [run_snapshot_pipeline_from_dir_db]. Use from the TUI when the user triggers a snapshot (e.g. Shift+S).
+/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Shift+S).
 pub fn spawn_snapshot_from_dir_db(
     dir: &Path,
     db_path: &Path,
@@ -109,7 +117,7 @@ pub fn spawn_snapshot_from_dir_db(
         let tx_clone = tx.clone();
         let bumper_clone = bumper.cloned();
         std::thread::spawn(move || {
-            run_snapshot_pipeline_from_dir_db(&dir, &db, Some(tx_clone), bumper_clone);
+            run_snapshot_pipeline_from_dir_db(&dir, &db, Some(tx_clone), bumper_clone.as_ref());
         });
     }
 }
@@ -123,19 +131,18 @@ pub fn push_snapshot_done_to_bumper(
 ) {
     bumper.push_with_operation(
         log::Level::Info,
-        "Snapshot finished".into(),
+        "Snapshot finished",
         Some(OPERATION_NAME.snapshot()),
     );
     if added + mod_count + removed > 0 {
         let summary = format!(
-            "{} added, {} modified, {} removed",
-            added, mod_count, removed
+            "{added} added, {mod_count} modified, {removed} removed"
         );
-        bumper.push_with_operation(log::Level::Info, summary, Some(OPERATION_NAME.snapshot()));
+        bumper.push_with_operation(log::Level::Info, summary.as_str(), Some(OPERATION_NAME.snapshot()));
     } else {
         bumper.push_with_operation(
             log::Level::Info,
-            "No changes".into(),
+            "No changes",
             Some(OPERATION_NAME.snapshot()),
         );
     }

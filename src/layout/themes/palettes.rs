@@ -1,5 +1,5 @@
 //! AlephMetrics-derived theme palettes.
-//! IDs: ShadowIndex, OblivionInk, GardenUnseen, BurningGlyph, GoldenDelirium, TangerineMemory, PurpleHaze, SilentPage.
+//! IDs: `ShadowIndex`, `OblivionInk`, `GardenUnseen`, `BurningGlyph`, `GoldenDelirium`, `TangerineMemory`, `PurpleHaze`, `SilentPage`.
 
 use ratatui::style::Color;
 
@@ -184,7 +184,7 @@ pub static SILENT_PAGE: Theme = Theme {
     title_brand: Color::Rgb(102, 92, 82),
 };
 
-/// All AlephMetrics palettes: (config id, theme). Config id matches JSON key (e.g. "ShadowIndex"); display name is theme.name (e.g. "Shadow Index"). "Oblivion_Ink" is an alias for the default.
+/// All `AlephMetrics` palettes: (config id, theme). Config id matches JSON key (e.g. "`ShadowIndex`"); display name is theme.name (e.g. "Shadow Index"). "`Oblivion_Ink`" is an alias for the default.
 static UBLX_THEMES: [(&str, &Theme); 9] = [
     ("ShadowIndex", &SHADOW_INDEX),
     ("OblivionInk", &OBLIVION_INK),
@@ -197,11 +197,12 @@ static UBLX_THEMES: [(&str, &Theme); 9] = [
     ("SilentPage", &SILENT_PAGE),
 ];
 
+#[must_use]
 pub fn all_ublx_themes() -> &'static [(&'static str, &'static Theme)] {
     &UBLX_THEMES
 }
 
-/// Unique theme options for the theme selector popup (8 themes; display_name = theme.name for toml).
+/// Unique theme options for the theme selector popup (8 themes; `display_name` = theme.name for toml).
 macro_rules! theme_options_array {
     ($($theme:ident),* $(,)?) => {
         [
@@ -223,6 +224,7 @@ static THEME_OPTIONS: [ThemeOption; 8] = theme_options_array!(
     SILENT_PAGE,
 );
 
+#[must_use]
 pub fn theme_options() -> &'static [ThemeOption] {
     &THEME_OPTIONS
 }

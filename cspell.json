@@ -11,7 +11,8 @@
     "ratatui",
     "spacebar",
     "strs",
-    "ublx"
+    "ublx",
+    "maxlens"
   ],
   "ignoreWords": [],
   "import": []
