@@ -154,11 +154,8 @@ pub fn run_stream(
     let (path_tx, path_rx) = mpsc::channel();
     let (output_tx, output_rx) = mpsc::channel();
     let zahir_handle = std::thread::spawn(move || {
-        zahir_ops::run_zahir_from_stream(
-            path_rx,
-            &ublx_opts_for_zahir,
-            zahir_ops::ZahirOutputSink::Channel(output_tx),
-        )
+        let output_sink = zahir_ops::ZahirOutputSink::Channel(output_tx);
+        zahir_ops::run_zahir_from_stream(&path_rx, &ublx_opts_for_zahir, &output_sink)
     });
     let on_entry = |e: &nefax_ops::NefaxEntry| {
         if e.size > 0 && zahir_ops::needs_zahir(prior_nefax, &e.path, e.mtime_ns) {

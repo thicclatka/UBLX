@@ -147,7 +147,7 @@ pub fn handle_ublx_input(
             params,
             ublx_opts,
             state,
-            Some(crate::ui::UI_STRINGS.config_reloaded),
+            Some(crate::ui::UI_STRINGS.toasts.config_reloaded),
         );
         return Ok(false);
     }

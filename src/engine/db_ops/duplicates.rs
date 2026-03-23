@@ -8,6 +8,8 @@ use std::path::Path;
 use blake3::Hasher;
 use rayon::prelude::*;
 
+use crate::utils::path::resolve_under_root;
+
 use super::{SnapshotPathSizeHash, load_snapshot_path_size_hash};
 
 /// One group of duplicate paths (same content). Left panel shows one name per group.
@@ -88,11 +90,7 @@ fn group_by_content_hash(rows: &[SnapshotPathSizeHash], dir_to_ublx: &Path) -> V
             let hashed: Vec<(String, [u8; 32])> = path_sizes
                 .par_iter()
                 .filter_map(|(path, size)| {
-                    let full = if Path::new(path).is_absolute() {
-                        Path::new(path).to_path_buf()
-                    } else {
-                        dir.join(path)
-                    };
+                    let full = resolve_under_root(&dir, path);
                     content_hash(&full, *size).map(|h| (path.clone(), h))
                 })
                 .collect();

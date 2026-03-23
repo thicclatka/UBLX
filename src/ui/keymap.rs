@@ -57,7 +57,7 @@ pub enum UblxAction {
     OpenMenu,
     /// Lens menu (Shift+L): Add current file to a lens or create new lens.
     LensMenu,
-    /// Spacebar context menu (Main/Lenses): Open…, Add to Lens… / Remove from Lens, or (Lenses left) Rename/Delete.
+    /// Spacebar context menu
     SpaceMenu,
     Noop,
 }

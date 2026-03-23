@@ -19,8 +19,8 @@ pub fn draw_categories_pane(
 ) {
     let area = chunks[0];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
-    let title = super::set_title(UI_STRINGS.categories, focused);
-    let mut items = vec![ListItem::new(UI_STRINGS.all_categories)];
+    let title = super::set_title(UI_STRINGS.pane.categories, focused);
+    let mut items = vec![ListItem::new(UI_STRINGS.list.all_categories)];
     items.extend(
         view.filtered_categories
             .iter()
@@ -57,9 +57,9 @@ fn contents_display_label(
         .global_config()
         .map(|p| p.to_string_lossy().into_owned());
     if local.as_deref() == Some(path) {
-        UI_STRINGS.local_config.to_string()
+        UI_STRINGS.config.local.to_string()
     } else if global.as_deref() == Some(path) {
-        UI_STRINGS.global_config.to_string()
+        UI_STRINGS.config.global.to_string()
     } else {
         path.to_string()
     }
@@ -76,7 +76,7 @@ pub fn draw_contents_panel(
 ) {
     let area = chunks[1];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
-    let left_title = super::set_title(UI_STRINGS.contents, focused);
+    let left_title = super::set_title(UI_STRINGS.pane.contents, focused);
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(if focused {
@@ -91,9 +91,9 @@ pub fn draw_contents_panel(
         ));
     let items: Vec<ListItem> = if view.content_len == 0 {
         vec![ListItem::new(if state.search.query.is_empty() {
-            UI_STRINGS.no_contents
+            UI_STRINGS.list.no_contents
         } else {
-            UI_STRINGS.no_matches
+            UI_STRINGS.list.no_matches
         })]
     } else {
         view.iter_contents(all_rows)

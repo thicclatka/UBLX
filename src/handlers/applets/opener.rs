@@ -80,3 +80,32 @@ pub fn open_in_gui(_path: &Path) -> std::io::Result<std::process::Child> {
         "Open (GUI) not supported on this platform",
     ))
 }
+
+/// Open the system file manager focused on `path`: reveal in Finder (macOS), Explorer `/select` (Windows),
+/// or open the parent directory in the default file manager (Linux and other Unix — selection varies by DE).
+///
+/// Branches use [`cfg!`] so each target only emits its own code; order matters because macOS is `unix`.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] if spawning the helper fails, or [`std::io::ErrorKind::Unsupported`] on other targets.
+pub fn reveal_in_file_manager(path: &Path) -> std::io::Result<std::process::Child> {
+    if cfg!(target_os = "macos") {
+        Command::new("open").arg("-R").arg(path).spawn()
+    } else if cfg!(windows) {
+        let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let p = abs.to_string_lossy();
+        Command::new("explorer").arg(format!("/select,{p}")).spawn()
+    } else if cfg!(all(unix, not(target_os = "macos"))) {
+        let dir = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(path);
+        Command::new("xdg-open").arg(dir).spawn()
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Reveal in file manager not supported on this platform",
+        ))
+    }
+}

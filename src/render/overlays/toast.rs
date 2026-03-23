@@ -22,7 +22,7 @@ pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {
         .last()
         .and_then(|m| m.operation.as_deref())
         .map_or_else(
-            || UI_STRINGS.pad(UI_STRINGS.notification_title),
+            || UI_STRINGS.pad(UI_STRINGS.dialogs.notification),
             |s| UI_STRINGS.pad(s),
         );
     let lines: Vec<Line<'_>> = slot

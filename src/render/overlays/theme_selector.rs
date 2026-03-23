@@ -42,7 +42,7 @@ fn popup_rect(area: Rect, opts: &[themes::ThemeOption]) -> Rect {
 fn theme_selector_block(t: &themes::Theme) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
-        .title(Line::from(UI_STRINGS.pad(UI_STRINGS.theme_title)).centered())
+        .title(Line::from(UI_STRINGS.pad(UI_STRINGS.dialogs.theme)).centered())
         .border_style(Style::default().fg(t.focused_border))
         .style(Style::default().bg(t.popup_bg))
 }

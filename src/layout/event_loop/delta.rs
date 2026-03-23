@@ -65,9 +65,9 @@ pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewDat
 
 fn delta_category_label(t: DeltaType) -> &'static str {
     match t {
-        DeltaType::Added => UI_STRINGS.delta_added,
-        DeltaType::Mod => UI_STRINGS.delta_mod,
-        DeltaType::Removed => UI_STRINGS.delta_removed,
+        DeltaType::Added => UI_STRINGS.delta.added,
+        DeltaType::Mod => UI_STRINGS.delta.modified,
+        DeltaType::Removed => UI_STRINGS.delta.removed,
     }
 }
 

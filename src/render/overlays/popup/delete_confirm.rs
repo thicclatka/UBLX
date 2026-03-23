@@ -14,8 +14,8 @@ pub fn render_delete_confirm(
     anchor_area: Rect,
     anchor_row_index: usize,
 ) {
-    let title = format!("{}'{}'? ", UI_STRINGS.lens_delete_confirm_title, lens_name);
-    let items = [UI_STRINGS.lens_delete_yes, UI_STRINGS.lens_delete_no];
+    let title = format!("{}'{}'? ", UI_STRINGS.lens.delete_confirm_title, lens_name);
+    let items = [UI_STRINGS.lens.delete_yes, UI_STRINGS.lens.delete_no];
     render_list_popup(
         f,
         &ListPopupParams {

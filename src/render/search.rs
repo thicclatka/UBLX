@@ -21,7 +21,7 @@ pub(super) fn draw_status_line(
     if let Some(ns) = latest_snapshot_ns {
         let node_content = format!(
             "{}: {}",
-            UI_STRINGS.latest_snapshot_label,
+            UI_STRINGS.search.latest_snapshot,
             format_timestamp_ns(ns)
         );
         spans.extend(style::status_node_spans(&node_content));
@@ -29,12 +29,12 @@ pub(super) fn draw_status_line(
     if search_active || !search_query.is_empty() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            format!("{}{}", UI_STRINGS.status_search_label, search_query),
+            format!("{}{}", UI_STRINGS.search.search_label, search_query),
             style::search_text(),
         ));
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            UI_STRINGS.status_esc_to_clear,
+            UI_STRINGS.search.esc_to_clear,
             style::hint_text(),
         ));
     }

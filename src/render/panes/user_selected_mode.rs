@@ -57,7 +57,7 @@ pub fn draw_duplicates_panes(
         view,
         right_content,
         chunks,
-        UI_STRINGS.duplicates_group_label,
+        UI_STRINGS.paths.duplicate_group,
     );
 }
 
@@ -75,6 +75,6 @@ pub fn draw_lenses_panes(
         view,
         right_content,
         chunks,
-        UI_STRINGS.lenses_group_label,
+        UI_STRINGS.paths.lens_group,
     );
 }

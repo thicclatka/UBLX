@@ -73,8 +73,8 @@ pub fn entry_cell(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -
 #[must_use]
 pub fn section_to_table(section: &KvSection, row_offset: usize) -> Table<'_> {
     let header = Row::new(vec![
-        UI_STRINGS.table_header_key,
-        UI_STRINGS.table_header_value,
+        UI_STRINGS.tables.header_key,
+        UI_STRINGS.tables.header_value,
     ])
     .style(style::table_header_style())
     .bottom_margin(0);

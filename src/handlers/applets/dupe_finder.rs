@@ -16,7 +16,7 @@ pub fn on_groups_received(
     if groups.is_empty() {
         let op = OPERATION_NAME.op("dupe-finder");
         if let Some(b) = params.bumper {
-            b.push_with_operation(log::Level::Info, UI_STRINGS.no_duplicates, Some(&op));
+            b.push_with_operation(log::Level::Info, UI_STRINGS.toasts.no_duplicates, Some(&op));
             notifications::show_toast_slot(
                 &mut state.toasts.slots,
                 b,

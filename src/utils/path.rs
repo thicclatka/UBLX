@@ -1,5 +1,15 @@
 //! Path helpers (extensions, etc.).
 
+use std::path::{Path, PathBuf};
+
+/// Resolve a path string from the DB or snapshot against `base` when relative, or use it as-is when absolute.
+///
+/// Same behavior as [`Path::join`]: if `path` is absolute, it replaces the prefix under `base`.
+#[must_use]
+pub fn resolve_under_root(base: &Path, path: &str) -> PathBuf {
+    base.join(path)
+}
+
 /// True if `path`'s file extension equals any of `exts` (ASCII case-insensitive, OR semantics).
 #[must_use]
 pub fn path_has_extension(path: &str, exts: &[&str]) -> bool {

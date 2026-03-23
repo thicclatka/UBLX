@@ -80,7 +80,8 @@ pub fn handle_space_menu(
         return false;
     }
     let item_count: usize = match &state.space_menu.kind {
-        Some(SpaceMenuKind::FileActions { .. } | SpaceMenuKind::LensPanelActions { .. }) => 2,
+        Some(SpaceMenuKind::FileActions { .. }) => 3,
+        Some(SpaceMenuKind::LensPanelActions { .. }) => 2,
         None => 0,
     };
     match action {
@@ -104,6 +105,11 @@ pub fn handle_space_menu(
                     } => {
                         if idx == 0 {
                             state.open_open_menu(path, can_open_in_terminal);
+                        } else if idx == 1 {
+                            let full = params.dir_to_ublx.join(&path);
+                            if let Err(e) = applets::opener::reveal_in_file_manager(&full) {
+                                log::warn!("Show in folder: {e}");
+                            }
                         } else if state.main_mode == MainMode::Snapshot {
                             state.open_lens_menu(path);
                         } else if let Some(lens_name) = view

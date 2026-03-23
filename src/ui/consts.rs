@@ -4,91 +4,138 @@ use ratatui::text::Span;
 
 use crate::utils::format::StringObjTraits;
 
-/// All symbols and string literals used by the renderer. Single place to tweak UI copy/symbols.
-pub struct UiStrings {
+/// Generic and feature-specific loading lines.
+pub struct UiStringsLoading {
+    /// Short spinner / placeholder (e.g. delta pane while data loads).
+    pub general: &'static str,
+}
+
+/// Delta mode: section titles and row labels.
+pub struct UiStringsDelta {
+    pub added: &'static str,
+    pub modified: &'static str,
+    pub removed: &'static str,
+    pub right_title: &'static str,
+    /// Left pane block title (delta list).
+    pub left_block_title: &'static str,
+    pub placeholder_dash: &'static str,
+    pub type_label: &'static str,
+}
+
+/// Snapshot / viewer pane titles and tab labels.
+pub struct UiStringsPane {
     pub categories: &'static str,
     pub contents: &'static str,
-    // Right pane block titles
     pub viewer: &'static str,
     pub templates: &'static str,
     pub metadata: &'static str,
     pub writing: &'static str,
-    // Tab bar labels
     pub tab_templates: &'static str,
     pub tab_viewer: &'static str,
     pub tab_metadata: &'static str,
     pub tab_writing: &'static str,
-    // List panel
+    pub not_available: &'static str,
+    pub viewer_placeholder: &'static str,
+}
+
+/// Middle / list column (All, empty states, row prefix).
+pub struct UiStringsList {
     pub all_categories: &'static str,
     pub no_contents: &'static str,
     pub no_matches: &'static str,
-    /// Symbol before each list row (selection shown by title + highlight style).
     pub list_symbol: &'static str,
-    /// Status line: label before search query (e.g. "Search: ").
-    pub status_search_label: &'static str,
-    /// Status line: "Esc to clear" label next to search.
-    pub status_esc_to_clear: &'static str,
-    /// Right pane placeholders
-    pub not_available: &'static str,
-    pub viewer_placeholder: &'static str,
-    /// Main mode tabs
-    pub main_tab_snapshot: &'static str,
-    pub main_tab_delta: &'static str,
-    pub main_tab_duplicates: &'static str,
-    pub main_tab_lenses: &'static str,
-    /// Delta left-pane labels
-    pub delta_added: &'static str,
-    pub delta_mod: &'static str,
-    pub delta_removed: &'static str,
-    pub delta_right_title: &'static str,
-    /// UBLX Settings config labels
-    pub global_config: &'static str,
-    pub local_config: &'static str,
-    // Status / delta / popups (raw; use [Self::pad] for block titles)
-    pub latest_snapshot_label: &'static str,
-    pub delta_block_title: &'static str,
-    pub delta_loading: &'static str,
-    pub delta_placeholder_dash: &'static str,
-    pub delta_type_label: &'static str,
-    pub paths_label: &'static str,
-    pub duplicates_group_label: &'static str,
-    pub lenses_group_label: &'static str,
+}
+
+/// Main mode tab bar: Snapshot | Delta | …
+pub struct UiStringsMainTabs {
+    pub snapshot: &'static str,
+    pub delta: &'static str,
+    pub duplicates: &'static str,
+    pub lenses: &'static str,
+}
+
+/// Status / search line (snapshot + query).
+pub struct UiStringsSearchStatus {
+    pub search_label: &'static str,
+    pub esc_to_clear: &'static str,
+    pub latest_snapshot: &'static str,
+}
+
+/// UBLX settings source labels (global vs local config).
+pub struct UiStringsConfig {
+    pub global: &'static str,
+    pub local: &'static str,
+}
+
+/// Paths column and group labels (duplicates / lenses).
+pub struct UiStringsPaths {
+    pub paths: &'static str,
+    pub duplicate_group: &'static str,
+    pub lens_group: &'static str,
+}
+
+pub struct UiStringsBrand {
     pub brand: &'static str,
     pub fullscreen_suffix: &'static str,
-    pub table_header_key: &'static str,
-    pub table_header_value: &'static str,
-    pub help_title: &'static str,
-    pub theme_title: &'static str,
-    pub notification_title: &'static str,
-    pub first_table_title: &'static str,
-    pub contents_table_title: &'static str,
-    pub columns_table_title: &'static str,
-    pub help_table_command: &'static str,
-    pub help_table_action: &'static str,
-    /// Toast when config is reloaded manually (e.g. Ctrl+R).
+}
+
+pub struct UiStringsTables {
+    pub header_key: &'static str,
+    pub header_value: &'static str,
+    pub first_title: &'static str,
+    pub contents_title: &'static str,
+    pub columns_title: &'static str,
+}
+
+/// Modal / overlay titles and table column headers for help.
+pub struct UiStringsDialogs {
+    pub help: &'static str,
+    pub theme: &'static str,
+    pub notification: &'static str,
+    pub help_command: &'static str,
+    pub help_action: &'static str,
+}
+
+pub struct UiStringsToasts {
     pub config_reloaded: &'static str,
-    /// Toast when no duplicates are found.
     pub no_duplicates: &'static str,
-    /// Lens menu: first option to create a new lens.
-    pub lens_menu_create_new: &'static str,
-    /// Prompt at bottom when typing new lens name (Shift+L → Create New Lens).
-    pub lens_name_prompt: &'static str,
-    /// Spacebar menu (file): open in editor/terminal or GUI.
-    pub space_menu_open: &'static str,
-    /// Spacebar menu (main mode): add current file to a lens.
-    pub space_menu_add_to_lens: &'static str,
-    /// Spacebar menu (lens mode): remove current file from lens.
-    pub space_menu_remove_from_lens: &'static str,
-    /// Spacebar menu (lens left panel): rename lens.
-    pub space_menu_rename: &'static str,
-    /// Spacebar menu (lens left panel): delete lens.
-    pub space_menu_delete: &'static str,
-    /// Prompt at bottom when renaming a lens.
-    pub lens_rename_prompt: &'static str,
-    /// Delete lens confirmation title (use with lens name).
-    pub lens_delete_confirm_title: &'static str,
-    pub lens_delete_yes: &'static str,
-    pub lens_delete_no: &'static str,
+}
+
+pub struct UiStringsLens {
+    pub menu_create_new: &'static str,
+    pub name_prompt: &'static str,
+    pub rename_prompt: &'static str,
+    pub delete_confirm_title: &'static str,
+    pub delete_yes: &'static str,
+    pub delete_no: &'static str,
+}
+
+pub struct UiStringsSpaceMenu {
+    pub open: &'static str,
+    /// Reveal in Finder / Explorer, or open parent folder (Linux).
+    pub show_in_folder: &'static str,
+    pub add_to_lens: &'static str,
+    pub remove_from_lens: &'static str,
+    pub rename: &'static str,
+    pub delete: &'static str,
+}
+
+/// All symbols and string literals used by the renderer.
+pub struct UiStrings {
+    pub loading: UiStringsLoading,
+    pub delta: UiStringsDelta,
+    pub pane: UiStringsPane,
+    pub list: UiStringsList,
+    pub main_tabs: UiStringsMainTabs,
+    pub search: UiStringsSearchStatus,
+    pub config: UiStringsConfig,
+    pub paths: UiStringsPaths,
+    pub brand: UiStringsBrand,
+    pub tables: UiStringsTables,
+    pub dialogs: UiStringsDialogs,
+    pub toasts: UiStringsToasts,
+    pub lens: UiStringsLens,
+    pub space: UiStringsSpaceMenu,
 }
 
 impl Default for UiStrings {
@@ -107,74 +154,103 @@ impl UiStrings {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            categories: "Categories",
-            contents: "Contents",
-            viewer: "Viewer",
-            templates: "Templates",
-            metadata: "Metadata",
-            writing: "Writing",
-            tab_templates: "Templates",
-            tab_viewer: "Viewer",
-            tab_metadata: "Metadata",
-            tab_writing: "Writing",
-            all_categories: "All",
-            no_contents: "(no contents)",
-            no_matches: "(no matches)",
-            list_symbol: "  ",
-            status_search_label: "Search: ",
-            status_esc_to_clear: "Esc to clear",
-            not_available: "(not available for this item)",
-            viewer_placeholder: "(viewer — file content will load here)",
-            main_tab_snapshot: "Snapshot",
-            main_tab_delta: "Delta",
-            main_tab_duplicates: "Duplicates",
-            main_tab_lenses: "Lenses",
-            delta_added: "Added",
-            delta_mod: "Modified",
-            delta_removed: "Removed",
-            delta_right_title: "Snapshot overview",
-            global_config: "Global",
-            local_config: "Local",
-            latest_snapshot_label: "Latest Snapshot",
-            delta_block_title: "Delta",
-            delta_loading: "Loading…",
-            delta_placeholder_dash: "—",
-            delta_type_label: "Delta type",
-            paths_label: "Paths",
-            duplicates_group_label: "Duplicate",
-            lenses_group_label: "Lens",
-            brand: "UBLX",
-            fullscreen_suffix: "(Esc to exit fullscreen)",
-            table_header_key: "Key",
-            table_header_value: "Value",
-            help_title: "Help",
-            theme_title: "Theme",
-            notification_title: "Notification",
-            first_table_title: "General",
-            contents_table_title: "Contents",
-            columns_table_title: "Columns",
-            help_table_command: "Command",
-            help_table_action: "Action",
-            config_reloaded: "Config reloaded",
-            no_duplicates: "No duplicates found",
-            lens_menu_create_new: "Create New Lens",
-            lens_name_prompt: "Lens name: ",
-            space_menu_open: "Open…",
-            space_menu_add_to_lens: "Add to Lens…",
-            space_menu_remove_from_lens: "Remove from Lens",
-            space_menu_rename: "Rename",
-            space_menu_delete: "Delete",
-            lens_rename_prompt: "Rename lens: ",
-            lens_delete_confirm_title: "Delete lens ",
-            lens_delete_yes: "Yes",
-            lens_delete_no: "No",
+            loading: UiStringsLoading {
+                general: "Loading…",
+            },
+            delta: UiStringsDelta {
+                added: "Added",
+                modified: "Modified",
+                removed: "Removed",
+                right_title: "Snapshot overview",
+                left_block_title: "Delta",
+                placeholder_dash: "—",
+                type_label: "Delta type",
+            },
+            pane: UiStringsPane {
+                categories: "Categories",
+                contents: "Contents",
+                viewer: "Viewer",
+                templates: "Templates",
+                metadata: "Metadata",
+                writing: "Writing",
+                tab_templates: "Templates",
+                tab_viewer: "Viewer",
+                tab_metadata: "Metadata",
+                tab_writing: "Writing",
+                not_available: "(not available for this item)",
+                viewer_placeholder: "(viewer — file content will load here)",
+            },
+            list: UiStringsList {
+                all_categories: "All",
+                no_contents: "(no contents)",
+                no_matches: "(no matches)",
+                list_symbol: "  ",
+            },
+            main_tabs: UiStringsMainTabs {
+                snapshot: "Snapshot",
+                delta: "Delta",
+                duplicates: "Duplicates",
+                lenses: "Lenses",
+            },
+            search: UiStringsSearchStatus {
+                search_label: "Search: ",
+                esc_to_clear: "Esc to clear",
+                latest_snapshot: "Latest Snapshot",
+            },
+            config: UiStringsConfig {
+                global: "Global",
+                local: "Local",
+            },
+            paths: UiStringsPaths {
+                paths: "Paths",
+                duplicate_group: "Duplicate",
+                lens_group: "Lens",
+            },
+            brand: UiStringsBrand {
+                brand: "UBLX",
+                fullscreen_suffix: "(Esc to exit fullscreen)",
+            },
+            tables: UiStringsTables {
+                header_key: "Key",
+                header_value: "Value",
+                first_title: "General",
+                contents_title: "Contents",
+                columns_title: "Columns",
+            },
+            dialogs: UiStringsDialogs {
+                help: "Help",
+                theme: "Theme",
+                notification: "Notification",
+                help_command: "Command",
+                help_action: "Action",
+            },
+            toasts: UiStringsToasts {
+                config_reloaded: "Config reloaded",
+                no_duplicates: "No duplicates found",
+            },
+            lens: UiStringsLens {
+                menu_create_new: "Create New Lens",
+                name_prompt: "Lens name: ",
+                rename_prompt: "Rename lens: ",
+                delete_confirm_title: "Delete lens ",
+                delete_yes: "Yes",
+                delete_no: "No",
+            },
+            space: UiStringsSpaceMenu {
+                open: "Open",
+                show_in_folder: "Show in folder",
+                add_to_lens: "Add to Lens",
+                remove_from_lens: "Remove from Lens",
+                rename: "Rename",
+                delete: "Delete",
+            },
         }
     }
 
     /// Toast when config is reloaded by file watcher (save).
     #[must_use]
     pub fn config_reload_triggered_by_save(&self) -> String {
-        format!("{} (triggered by save)", self.config_reloaded)
+        format!("{} (triggered by save)", self.toasts.config_reloaded)
     }
 }
 

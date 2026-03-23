@@ -52,10 +52,7 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
         "Shift+L",
         "Add to lens: menu (Create New Lens or pick lens), then add current file"
     ),
-    (
-        "Space",
-        "Context menu: Open… / Add to Lens… (main) or Remove (lens); or Rename/Delete (lens list)"
-    ),
+    ("Space", "Open context menu"),
     ("q | Esc", "Quit"),
     ("?", "Show this help"),
 ];
@@ -86,14 +83,14 @@ pub fn render_help_box(f: &mut Frame) {
     let t = themes::current();
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(Line::from(UI_STRINGS.pad(UI_STRINGS.help_title)).centered())
+        .title(Line::from(UI_STRINGS.pad(UI_STRINGS.dialogs.help)).centered())
         .border_style(Style::default().fg(t.focused_border))
         .style(Style::default().bg(t.popup_bg));
     let inner = Style::default().fg(t.text).bg(t.popup_bg);
 
     let header = Row::new(vec![
-        UI_STRINGS.help_table_command,
-        UI_STRINGS.help_table_action,
+        UI_STRINGS.dialogs.help_command,
+        UI_STRINGS.dialogs.help_action,
     ])
     .style(style::table_header_style())
     .bottom_margin(0);

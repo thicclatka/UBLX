@@ -4,7 +4,7 @@
 use serde_json::{self, Value};
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use zahirscan::FileType;
@@ -14,12 +14,11 @@ use crate::handlers::zahir_ops::file_type_from_metadata_name;
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState, ViewData,
 };
-
-/// Max bytes to load into the viewer for a single file (avoid OOM). Larger files are truncated.
-const VIEWER_MAX_BYTES: usize = 512 * 1024;
+use crate::utils::HALF_MIB_BYTES_USIZE;
+use crate::utils::path::resolve_under_root;
 
 /// [`std::fs::Metadata::len`] is `u64`; saturates at `usize::MAX` on 32-bit. Safe for `.min(small_cap)`:
-/// the cap (e.g. [`VIEWER_MAX_BYTES`]) still bounds allocation.
+/// the cap (e.g. [`HALF_MIB_BYTES_USIZE`]) still bounds allocation.
 #[inline]
 fn u64_to_usize_saturating(len: u64) -> usize {
     usize::try_from(len).unwrap_or(usize::MAX)
@@ -62,12 +61,12 @@ fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Option<
         return Some(binary_file_label(path));
     }
     let f = fs::File::open(path).ok()?;
-    let cap = VIEWER_MAX_BYTES.min(u64_to_usize_saturating(meta.len()));
+    let cap = HALF_MIB_BYTES_USIZE.min(u64_to_usize_saturating(meta.len()));
     let mut buf = Vec::with_capacity(cap);
-    let take_limit = u64::try_from(VIEWER_MAX_BYTES).expect("512 KiB fits in u64");
+    let take_limit = u64::try_from(HALF_MIB_BYTES_USIZE).expect("half MiB fits in u64");
     let n = f.take(take_limit).read_to_end(&mut buf).ok()?;
     let s = String::from_utf8_lossy(&buf[..n]).into_owned();
-    // `n` is at most VIEWER_MAX_BYTES, so it always fits in `u64`.
+    // `n` is at most HALF_MIB_BYTES_USIZE, so it always fits in `u64`.
     let n_u64 = u64::try_from(n).expect("bytes read fits in u64");
     let out = if n_u64 >= meta.len() {
         s
@@ -140,16 +139,11 @@ pub fn resolve_right_pane_content(
         .and_then(|i| view.row_at(i, all_rows));
     if let Some((path, category, size)) = selected {
         let path: &str = path.as_str();
+        let full_path = resolve_under_root(dir_to_ublx, path);
         if *category == CATEGORY_DIRECTORY {
-            let full_path = dir_to_ublx.join(Path::new(path));
             let tree_str = tree_for_path(state, path, &full_path);
             tree_content(tree_str)
         } else {
-            let full_path: PathBuf = if Path::new(path).is_absolute() {
-                PathBuf::from(path)
-            } else {
-                dir_to_ublx.join(Path::new(path))
-            };
             if full_path.is_dir() {
                 let tree_str = tree_for_path(state, path, &full_path);
                 return tree_content(tree_str);

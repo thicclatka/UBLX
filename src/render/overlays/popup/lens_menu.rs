@@ -17,7 +17,7 @@ pub fn render_lens_menu(
     content_selected_index: usize,
     lens_names: &[String],
 ) {
-    let items: Vec<&str> = std::iter::once(UI_STRINGS.lens_menu_create_new)
+    let items: Vec<&str> = std::iter::once(UI_STRINGS.lens.menu_create_new)
         .chain(lens_names.iter().map(String::as_str))
         .collect();
     render_list_popup(
@@ -42,7 +42,7 @@ pub fn render_lens_name_popup(
 ) {
     render_text_input_popup(
         f,
-        UI_STRINGS.lens_name_prompt.trim(),
+        UI_STRINGS.lens.name_prompt.trim(),
         input,
         middle_area,
         content_selected_index,
@@ -52,7 +52,7 @@ pub fn render_lens_name_popup(
 
 pub fn render_lens_name_prompt(f: &mut Frame, area: Rect, input: &str) {
     let line = Line::from(vec![
-        Span::styled(UI_STRINGS.lens_name_prompt, style::hint_text()),
+        Span::styled(UI_STRINGS.lens.name_prompt, style::hint_text()),
         Span::styled(input, style::search_text()),
     ]);
     f.render_widget(Paragraph::new(line), area);
@@ -60,7 +60,7 @@ pub fn render_lens_name_prompt(f: &mut Frame, area: Rect, input: &str) {
 
 pub fn render_lens_rename_prompt(f: &mut Frame, area: Rect, input: &str) {
     let line = Line::from(vec![
-        Span::styled(UI_STRINGS.lens_rename_prompt, style::hint_text()),
+        Span::styled(UI_STRINGS.lens.rename_prompt, style::hint_text()),
         Span::styled(input, style::search_text()),
     ]);
     f.render_widget(Paragraph::new(line), area);

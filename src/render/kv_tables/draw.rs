@@ -77,7 +77,7 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
     let sections = sections::parse_json_sections(json);
     if sections.is_empty() {
         f.render_widget(
-            Paragraph::new(UI_STRINGS.not_available).style(style::text_style()),
+            Paragraph::new(UI_STRINGS.pane.not_available).style(style::text_style()),
             area,
         );
         return;

@@ -44,7 +44,7 @@ fn object_array_to_contents_data(arr: &[Value]) -> Option<(Vec<String>, Vec<Stri
 fn push_contents_from_entries(sections: &mut Vec<Section>, arr: &[Value]) {
     if let Some((column_keys, columns, entries)) = object_array_to_contents_data(arr) {
         sections.push(Section::Contents(ContentsSection {
-            title: UI_STRINGS.contents_table_title.to_string(),
+            title: UI_STRINGS.tables.contents_title.to_string(),
             columns,
             column_keys,
             entries,
@@ -174,7 +174,7 @@ fn push_tables_sections(sections: &mut Vec<Section>, arr: &[Value]) {
             && let Some((column_keys, columns, entries)) = object_array_to_contents_data(col_arr)
         {
             sections.push(Section::Contents(ContentsSection {
-                title: format::join_dot([&table_name, UI_STRINGS.columns_table_title]),
+                title: format::join_dot([&table_name, UI_STRINGS.tables.columns_title]),
                 columns,
                 column_keys,
                 entries: entries.clone(),

@@ -46,7 +46,7 @@ pub fn styled_list<'a>(
         .block(block)
         .style(style::text_style())
         .highlight_style(highlight_style)
-        .highlight_symbol(UI_STRINGS.list_symbol)
+        .highlight_symbol(UI_STRINGS.list.list_symbol)
         .highlight_spacing(HighlightSpacing::Always)
 }
 

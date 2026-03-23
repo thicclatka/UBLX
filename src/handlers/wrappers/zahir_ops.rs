@@ -4,10 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use zahirscan::parsers::structured::{
-    delimiter_byte_for_reader as zahir_delimiter_byte_for_reader,
-    detect_delimiter_byte as zahir_detect_delimiter_byte,
-};
+use zahirscan::parsers::structured::detect_delimiter_byte as zahir_detect_delimiter_byte;
 use zahirscan::{
     FileType, Output, OutputSink, RuntimeConfig, ZahirScanResult, extract_zahir,
     extract_zahir_from_stream,
@@ -27,13 +24,6 @@ pub type ZahirOutputSink = OutputSink;
 #[must_use]
 pub fn file_type_from_metadata_name(s: &str) -> Option<FileType> {
     FileType::from_metadata_name(s)
-}
-
-/// Byte to pass to the Rust [`csv`](https://docs.rs/csv) crate’s [`csv::ReaderBuilder::delimiter`].
-/// Same rules as zahirscan’s CSV metadata parser: `.tsv` / `.tab` → tab, `.psv` → pipe, else sniff.
-#[must_use]
-pub fn delimiter_byte_for_reader(content: &str, path_hint: &str) -> u8 {
-    zahir_delimiter_byte_for_reader(content, path_hint)
 }
 
 /// Sniff delimiter from the first lines of `content` (comma, semicolon, tab, pipe, colon).
@@ -106,17 +96,17 @@ pub fn run_zahir_batch(
 ///
 /// Returns [`anyhow::Error`] when the zahir scan fails.
 pub fn run_zahir_from_stream(
-    paths_rx: Receiver<String>,
+    paths_rx: &Receiver<String>,
     ublx_opts: &UblxOpts,
-    output_sink: ZahirOutputSink,
+    output_sink: &ZahirOutputSink,
 ) -> Result<ZahirScanResult, anyhow::Error> {
     let config = extract_zahir_opts_from_ublx_opts(ublx_opts);
     extract_zahir_from_stream(
-        &paths_rx,
+        paths_rx,
         config.output_mode,
         Some(&config),
         None,
-        &output_sink,
+        output_sink,
     )
 }
 

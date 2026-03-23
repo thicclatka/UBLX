@@ -20,6 +20,7 @@ use crate::engine::db_ops::{SnapshotReaderPreference, load_lens_names};
 use crate::handlers::{nefax_ops::NefaxResult, snapshot};
 use crate::layout::{event_loop, setup};
 use crate::utils::notifications;
+use log::debug;
 
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
@@ -162,6 +163,13 @@ pub fn run_ublx(
     let (mut categories, mut all_rows) =
         event_loop::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
+    debug!(
+        "clipboard copy command: {}",
+        state
+            .clipboard_copy
+            .as_ref()
+            .map_or_else(|| "(none)".to_owned(), |c| c.argv.join(" "))
+    );
     // Already-done dir: we have data, skip polling to avoid redundant first-tick load (stutter).
     if !categories.is_empty() || !all_rows.is_empty() {
         state.snapshot_bg.done_received = true;

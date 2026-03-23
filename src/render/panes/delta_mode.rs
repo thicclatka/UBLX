@@ -17,14 +17,14 @@ pub fn draw_delta_placeholder(f: &mut Frame, chunks: &[Rect]) {
     let right = chunks[2];
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(UI_STRINGS.pad(UI_STRINGS.delta_block_title));
+        .title(UI_STRINGS.pad(UI_STRINGS.delta.left_block_title));
     f.render_widget(
-        Paragraph::new(UI_STRINGS.delta_loading)
+        Paragraph::new(UI_STRINGS.loading.general)
             .style(style::text_style())
             .block(block),
         left,
     );
-    let dash = UI_STRINGS.delta_placeholder_dash;
+    let dash = UI_STRINGS.delta.placeholder_dash;
     f.render_widget(
         Paragraph::new(dash)
             .style(style::text_style())
@@ -35,7 +35,7 @@ pub fn draw_delta_placeholder(f: &mut Frame, chunks: &[Rect]) {
         Paragraph::new(dash).style(style::text_style()).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(UI_STRINGS.pad(UI_STRINGS.delta_right_title)),
+                .title(UI_STRINGS.pad(UI_STRINGS.delta.right_title)),
         ),
         right,
     );
@@ -53,9 +53,9 @@ pub struct DrawDeltaPanesParams<'a> {
 /// Left-pane labels for Delta: Added / Mod / Removed, with styles.
 fn delta_left_labels() -> [(&'static str, Style); 3] {
     [
-        (UI_STRINGS.delta_added, style::delta_added()),
-        (UI_STRINGS.delta_mod, style::delta_mod()),
-        (UI_STRINGS.delta_removed, style::delta_removed()),
+        (UI_STRINGS.delta.added, style::delta_added()),
+        (UI_STRINGS.delta.modified, style::delta_mod()),
+        (UI_STRINGS.delta.removed, style::delta_removed()),
     ]
 }
 
@@ -77,7 +77,7 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
             ListItem::new(Line::from(span))
         })
         .collect();
-    let title = super::set_title(UI_STRINGS.delta_type_label, focused);
+    let title = super::set_title(UI_STRINGS.delta.type_label, focused);
     let left_block = super::panel_block(title, focused);
     f.render_stateful_widget(
         super::styled_list(items, left_block, state.panels.highlight_style),
@@ -89,7 +89,7 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
 
     let right_block = Block::default()
         .borders(Borders::ALL)
-        .title(UI_STRINGS.pad(UI_STRINGS.delta_right_title));
+        .title(UI_STRINGS.pad(UI_STRINGS.delta.right_title));
     f.render_widget(&right_block, right);
     let right_inner = right_block.inner(right);
     f.render_widget(

@@ -49,15 +49,15 @@ pub fn draw_paths_list_with_counter(
     area: Rect,
 ) {
     let content_focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
-    let mid_title = panes::set_title(UI_STRINGS.paths_label, content_focused);
+    let mid_title = panes::set_title(UI_STRINGS.paths.paths, content_focused);
     let mid_block = panes::panel_block(mid_title, content_focused).title_bottom(
         panes::middle::line_for(state.panels.content_state.selected(), view.content_len),
     );
     let mid_items: Vec<ListItem> = if view.content_len == 0 {
         vec![ListItem::new(if state.search.query.is_empty() {
-            UI_STRINGS.no_contents
+            UI_STRINGS.list.no_contents
         } else {
-            UI_STRINGS.no_matches
+            UI_STRINGS.list.no_matches
         })]
     } else {
         view.iter_contents(None)

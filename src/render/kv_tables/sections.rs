@@ -109,7 +109,7 @@ pub fn parse_json_sections(json: &str) -> Vec<Section> {
     };
 
     if let Some(Section::KeyValue(kv)) = sections.first_mut() {
-        kv.title = Some(UI_STRINGS.first_table_title.to_string());
+        kv.title = Some(UI_STRINGS.tables.first_title.to_string());
     }
     sections
 }

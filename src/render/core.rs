@@ -329,24 +329,24 @@ fn draw_main_tabs(
     let has_duplicates = args.duplicate_groups.is_some_and(|g| !g.is_empty());
     let has_lenses = args.lens_names.is_some_and(|n| !n.is_empty());
     let mut segments: Vec<_> = layout::style::tab_node_segment(
-        UI_STRINGS.main_tab_snapshot,
+        UI_STRINGS.main_tabs.snapshot,
         state.main_mode == layout::setup::MainMode::Snapshot,
     )
     .into_iter()
     .chain(layout::style::tab_node_segment(
-        UI_STRINGS.main_tab_delta,
+        UI_STRINGS.main_tabs.delta,
         state.main_mode == layout::setup::MainMode::Delta,
     ))
     .collect();
     if has_lenses {
         segments.extend(layout::style::tab_node_segment(
-            UI_STRINGS.main_tab_lenses,
+            UI_STRINGS.main_tabs.lenses,
             state.main_mode == layout::setup::MainMode::Lenses,
         ));
     }
     if has_duplicates {
         segments.extend(layout::style::tab_node_segment(
-            UI_STRINGS.main_tab_duplicates,
+            UI_STRINGS.main_tabs.duplicates,
             state.main_mode == layout::setup::MainMode::Duplicates,
         ));
     }
@@ -354,7 +354,7 @@ fn draw_main_tabs(
     f.render_widget(Paragraph::new(line), tabs_rect);
     f.render_widget(
         Paragraph::new(Line::from(ratatui::text::Span::styled(
-            UI_STRINGS.brand,
+            UI_STRINGS.brand.brand,
             layout::style::title_brand(),
         ))),
         brand_rect,

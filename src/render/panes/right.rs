@@ -37,16 +37,17 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use zahirscan::FileType;
 
-use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
-use crate::layout::style;
-use crate::render::viewers::{csv_handler, image_handler as viewer_image, markdown};
-use crate::render::{kv_tables, scrollable_content};
+use crate::handlers::zahir_ops::delimiter_from_path_for_viewer;
+use crate::layout::{
+    setup::{RightPaneContent, RightPaneMode, UblxState},
+    style,
+};
+use crate::render::{
+    kv_tables, scrollable_content,
+    viewers::{csv_handler, image_handler as viewer_image, markdown},
+};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
-use crate::utils::path::path_has_extension;
 use crate::utils::{format::StringObjTraits, format_bytes};
-
-/// Extensions zahirscan treats as delimiter-separated ([`FileType::Csv`]).
-const DELIMITED_TABLE_EXTS: &[&str] = &["csv", "tsv", "tab", "psv"];
 
 #[inline]
 fn viewer_is_csv(rc: &RightPaneContent) -> bool {
@@ -66,7 +67,7 @@ fn viewer_show_delimited_table(rc: &RightPaneContent) -> bool {
     }
     rc.viewer_path
         .as_deref()
-        .is_some_and(|p| path_has_extension(p, DELIMITED_TABLE_EXTS))
+        .is_some_and(|p| delimiter_from_path_for_viewer(p).is_some())
 }
 
 #[inline]
@@ -142,7 +143,7 @@ fn viewer_total_lines(
                 }
                 if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
                     return wrapped_line_count(
-                        &viewer_image::label_body(viewer_image::LOADING_MESSAGE),
+                        &viewer_image::label_body(UI_STRINGS.loading.general),
                         content_width,
                     ) as usize;
                 }
@@ -211,7 +212,7 @@ fn viewer_display_text(
     let raw = right_content
         .viewer
         .as_deref()
-        .unwrap_or(UI_STRINGS.viewer_placeholder);
+        .unwrap_or(UI_STRINGS.pane.viewer_placeholder);
     if right_content.viewer_path.is_some() {
         if viewer_show_delimited_table(right_content) {
             if let Some(ref path) = right_content.viewer_path
@@ -235,7 +236,7 @@ fn viewer_display_text(
             }
             if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
                 return ratatui::text::Text::from(viewer_image::label_body(
-                    viewer_image::LOADING_MESSAGE,
+                    UI_STRINGS.loading.general,
                 ));
             }
             if let Some(e) = state.viewer_image.err.as_deref() {
@@ -260,33 +261,33 @@ fn content_display_text(
             right_content
                 .metadata
                 .clone()
-                .unwrap_or_else(|| UI_STRINGS.not_available.to_string()),
+                .unwrap_or_else(|| UI_STRINGS.pane.not_available.to_string()),
         ),
         RightPaneMode::Writing => ratatui::text::Text::from(
             right_content
                 .writing
                 .clone()
-                .unwrap_or_else(|| UI_STRINGS.not_available.to_string()),
+                .unwrap_or_else(|| UI_STRINGS.pane.not_available.to_string()),
         ),
     }
 }
 
 fn title(state: &UblxState) -> String {
     let label = match state.right_pane_mode {
-        RightPaneMode::Viewer => UI_STRINGS.viewer,
-        RightPaneMode::Templates => UI_STRINGS.templates,
-        RightPaneMode::Metadata => UI_STRINGS.metadata,
-        RightPaneMode::Writing => UI_STRINGS.writing,
+        RightPaneMode::Viewer => UI_STRINGS.pane.viewer,
+        RightPaneMode::Templates => UI_STRINGS.pane.templates,
+        RightPaneMode::Metadata => UI_STRINGS.pane.metadata,
+        RightPaneMode::Writing => UI_STRINGS.pane.writing,
     };
     UI_STRINGS.pad(label)
 }
 
 fn visible_tabs(right_content: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> {
     [
-        (RightPaneMode::Viewer, UI_STRINGS.tab_viewer),
-        (RightPaneMode::Templates, UI_STRINGS.tab_templates),
-        (RightPaneMode::Metadata, UI_STRINGS.tab_metadata),
-        (RightPaneMode::Writing, UI_STRINGS.tab_writing),
+        (RightPaneMode::Viewer, UI_STRINGS.pane.tab_viewer),
+        (RightPaneMode::Templates, UI_STRINGS.pane.tab_templates),
+        (RightPaneMode::Metadata, UI_STRINGS.pane.tab_metadata),
+        (RightPaneMode::Writing, UI_STRINGS.pane.tab_writing),
     ]
     .into_iter()
     .filter(|(mode, _)| match mode {
@@ -426,7 +427,7 @@ pub fn draw_right_pane_fullscreen(
             )
         })
         .flatten();
-    let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.fullscreen_suffix);
+    let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.brand.fullscreen_suffix);
     let block = if let Some(ref line) = footer_line {
         Block::default()
             .borders(Borders::ALL)

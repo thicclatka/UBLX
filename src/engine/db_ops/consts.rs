@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::config::UblxPaths;
+use crate::handlers::zahir_ops::file_type_from_metadata_name;
 use zahirscan::FileType;
 
 /// Schema for the ublx DB
@@ -315,7 +316,7 @@ impl UblxDbCategory {
         if s.is_empty() || s.eq_ignore_ascii_case("Unknown") {
             return fallback;
         }
-        if let Some(ft) = FileType::from_metadata_name(s) {
+        if let Some(ft) = file_type_from_metadata_name(s) {
             return UblxDbCategory::Zahir(ft).as_str().to_string();
         }
         // Non-metadata label (future zahir strings or legacy rows): keep as stored.

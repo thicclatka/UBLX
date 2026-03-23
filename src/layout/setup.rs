@@ -14,6 +14,7 @@ use zahirscan::FileType;
 use super::style;
 
 use crate::engine::db_ops::DeltaType;
+use crate::utils::ClipboardCopyCommand;
 
 /// Re-export snapshot row type for layout/view/render (`path`, category, size).
 pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
@@ -209,6 +210,8 @@ pub struct UblxState {
     pub duplicate_load: DuplicateLoadGate,
     pub config_written_by_us_at: Option<std::time::Instant>,
     pub session: SessionFlow,
+    /// CLI to pipe UTF-8 into for clipboard (see [`ClipboardCopyCommand::detect`]); None if nothing found.
+    pub clipboard_copy: Option<ClipboardCopyCommand>,
 }
 
 impl Default for UblxState {
@@ -240,6 +243,7 @@ impl UblxState {
             duplicate_load: DuplicateLoadGate::default(),
             config_written_by_us_at: None,
             session: SessionFlow::default(),
+            clipboard_copy: ClipboardCopyCommand::detect(),
         }
     }
 

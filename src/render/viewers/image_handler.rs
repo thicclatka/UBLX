@@ -9,15 +9,11 @@ use zahirscan::FileType;
 
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
 use crate::ui::UI_GLYPHS;
-
-/// Shown while decode runs off the UI thread (see [`ASYNC_DECODE_MIN_BYTES`]).
-pub const LOADING_MESSAGE: &str = "Loading… (decoding image off-thread)";
+use crate::utils::{HALF_MIB_BYTES, MIB};
 
 /// Decode + downscale off the UI thread when the file is at least this large (keeps dev/`opt-level=1` snappy too).
-pub const ASYNC_DECODE_MIN_BYTES: u64 = 512 * 1024; // 512 KiB
-
-const KIB: u64 = 1024;
-const MIB: u64 = 1024 * KIB;
+/// Same value as [`crate::utils::HALF_MIB_BYTES`] (viewer read cap).
+pub const ASYNC_DECODE_MIN_BYTES: u64 = HALF_MIB_BYTES;
 
 #[inline]
 pub fn is_image_category(rc: &RightPaneContent) -> bool {

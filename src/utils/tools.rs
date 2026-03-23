@@ -6,6 +6,18 @@ use std::path::{Path, PathBuf};
 use crate::config::PKG_NAME;
 use crate::utils::exit_error;
 
+/// Binary prefixes (1024-based), shared with [`format_bytes`].
+pub const KIB: u64 = 1024;
+pub const MIB: u64 = KIB * 1024;
+pub const GIB: u64 = MIB * 1024;
+
+/// Half a mebibyte (512 KiB): max single-file text load in the viewer and minimum file size for
+/// off-thread image decode — keep these policies in sync unless intentionally diverging.
+pub const HALF_MIB_BYTES: u64 = MIB / 2;
+
+/// [`HALF_MIB_BYTES`] as [`usize`] for allocation caps (`HALF_MIB_BYTES` always fits in `usize`).
+pub const HALF_MIB_BYTES_USIZE: usize = HALF_MIB_BYTES as usize;
+
 /// Validate that a path is a directory and return the canonicalized path.
 /// Symlinks are resolved (e.g. `~/Dropbox` → `~/Library/CloudStorage/...` on macOS).
 #[must_use]
@@ -68,19 +80,16 @@ pub fn build_logger_test_mode_no_tui() {
     debug!("UBLX test mode logger enabled");
 }
 
-/// Format byte count as "B", "KB", "MB", "GB" etc.
+/// Format byte count as "B", "KB", "MB", "GB" etc. (uses [`KIB`], [`MIB`], [`GIB`]).
 #[must_use]
 pub fn format_bytes(n: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    if n < KB {
+    if n < KIB {
         format!("{n} B")
-    } else if n < MB {
-        format!("{:.2} KB", n as f64 / KB as f64)
-    } else if n < GB {
-        format!("{:.2} MB", n as f64 / MB as f64)
+    } else if n < MIB {
+        format!("{:.2} KB", n as f64 / KIB as f64)
+    } else if n < GIB {
+        format!("{:.2} MB", n as f64 / MIB as f64)
     } else {
-        format!("{:.2} GB", n as f64 / GB as f64)
+        format!("{:.2} GB", n as f64 / GIB as f64)
     }
 }

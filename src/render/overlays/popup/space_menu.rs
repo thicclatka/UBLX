@@ -20,20 +20,22 @@ pub fn render_space_menu(
         SpaceMenuKind::FileActions { .. } => {
             let items: Vec<&str> = if main_mode == MainMode::Lenses {
                 vec![
-                    UI_STRINGS.space_menu_open,
-                    UI_STRINGS.space_menu_remove_from_lens,
+                    UI_STRINGS.space.open,
+                    UI_STRINGS.space.show_in_folder,
+                    UI_STRINGS.space.remove_from_lens,
                 ]
             } else {
                 vec![
-                    UI_STRINGS.space_menu_open,
-                    UI_STRINGS.space_menu_add_to_lens,
+                    UI_STRINGS.space.open,
+                    UI_STRINGS.space.show_in_folder,
+                    UI_STRINGS.space.add_to_lens,
                 ]
             };
             (" Actions ", items)
         }
         SpaceMenuKind::LensPanelActions { .. } => (
             " Lens ",
-            vec![UI_STRINGS.space_menu_rename, UI_STRINGS.space_menu_delete],
+            vec![UI_STRINGS.space.rename, UI_STRINGS.space.delete],
         ),
     };
     render_list_popup(
@@ -44,7 +46,7 @@ pub fn render_space_menu(
             selected_index,
             anchor_area,
             anchor_row_index,
-            max_width: 24,
+            max_width: 26,
             max_items: None,
         },
     );

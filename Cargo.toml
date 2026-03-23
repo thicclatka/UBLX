@@ -4,14 +4,20 @@ version = "0.1.1"
 edition = "2024"
 rust-version = "1.93"
 authors = ["AHurowitz <thicclatka@users.noreply.github.com>"]
-description = "TUI to index once (nefaxer), enrich with metadata (zahirscan), and browse a flat snapshot in a 3-pane layout with snapshot/delta/duplicates tabs."
+description = "TUI to index once, enrich with metadata, and browse a flat snapshot in a 3-pane layout with multiple modes."
 license = "MIT or Apache-2.0"
 repository = "https://github.com/thicclatka/ublx"
 homepage = "https://github.com/thicclatka/ublx"
 documentation = "https://docs.rs/ublx"
 readme = "README.md"
 keywords = ["tui", "cli", "file-manager", "file-browser"]
-categories = []
+categories = [
+  "command-line-utilities",
+  "database",
+  "development-tools",
+  "file-browser",
+  "tui",
+]
 
 [dependencies]
 anyhow = "1.0.102"
@@ -24,9 +30,9 @@ crossterm = "0.29"
 csv = "1.4.0"
 env_logger = "0.11.9"
 log = "0.4.29"
-nefaxer = "0.1.4"
+nefaxer = "0.1.5"
 notify = "8.2.0"
-pulldown-cmark = "0.13.0"
+pulldown-cmark = "0.13.3"
 ratatui = "0.30"
 ratatui-image = { version = "10", default-features = false, features = [
   "crossterm",
@@ -42,11 +48,11 @@ tokio = "1.50.0"
 toml = "1.0.7"
 tui-logger = { version = "0.18.1", features = ["crossterm"] }
 unicode-width = "0.2"
-zahirscan = "0.2.13"
+zahirscan = "0.2.14"
 
 [patch.crates-io]
-zahirscan = { path = "../zahirscan" }
-nefaxer = { path = "../nefaxer" }
+# zahirscan = { path = "../zahirscan" }
+# nefaxer = { path = "../nefaxer" }
 
 [dev-dependencies]
 anyhow = "1.0.102"
