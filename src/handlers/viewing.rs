@@ -46,7 +46,7 @@ fn binary_file_label(path: &Path) -> String {
 }
 
 /// Resolve viewer string for a file: (directory), binary label, (file not found), or file contents (with size limit).
-/// When `zahir_type` is [`FileType::Image`], skip the binary short-label path — preview loads from disk in the render layer.
+/// When `zahir_type` is [`FileType::Image`] or [`FileType::Pdf`], skip the binary short-label path — preview loads from disk in the render layer.
 fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Option<String> {
     let Ok(meta) = fs::metadata(path) else {
         return Some("(file not found)".to_string());
@@ -54,7 +54,7 @@ fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Option<
     // if meta.is_dir() {
     //     return Some("(directory)".to_string());
     // }
-    if meta.is_file() && zahir_type == Some(FileType::Image) {
+    if meta.is_file() && matches!(zahir_type, Some(FileType::Image | FileType::Pdf)) {
         return Some(String::new());
     }
     if meta.is_file() && is_likely_binary(path) {
@@ -161,8 +161,11 @@ pub fn resolve_right_pane_content(
             let viewer_str = file_content_for_viewer(&full_path, viewer_zahir_type);
             let viewer_byte_size = viewer_str.as_ref().map(|_| *size);
             let viewer_mtime_ns = db_ops::load_mtime_for_path(db_path, path).ok().flatten();
-            let viewer_can_open =
-                !is_likely_binary(&full_path) || viewer_zahir_type == Some(FileType::Image);
+            let viewer_can_open = !is_likely_binary(&full_path)
+                || matches!(
+                    viewer_zahir_type,
+                    Some(FileType::Image | FileType::Pdf)
+                );
             let zahir_json: String = db_ops::load_zahir_json_for_path(db_path, path)
                 .ok()
                 .flatten()

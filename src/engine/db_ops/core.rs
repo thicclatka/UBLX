@@ -468,11 +468,11 @@ pub fn load_snapshot_path_size_hash(
     Ok(out)
 }
 
-/// Apply one ZahirScan [`ZahirOutput`] to a snapshot row (e.g. space menu "Enhance with ZahirScan").
+/// Apply one `ZahirScan` [`ZahirOutput`] to a snapshot row (e.g. space menu "Enhance with `ZahirScan`").
 ///
 /// # Errors
 ///
-/// Returns [`anyhow::Error`] on SQLite errors or JSON serialization failure.
+/// Returns [`anyhow::Error`] on `SQLite` errors or JSON serialization failure.
 pub fn update_snapshot_zahir_for_path(
     db_path: &Path,
     _dir_to_ublx: &Path,

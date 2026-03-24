@@ -110,7 +110,7 @@ fn entry_should_batch_zahir(
     )
 }
 
-/// Index-time batch ZahirScan: paths that pass [`UblxOpts::batch_zahir_for_path`] and still need a Zahir extract (see [`path_needs_zahir_extract`]).
+/// Index-time batch `ZahirScan`: paths that pass [`UblxOpts::batch_zahir_for_path`] and still need a Zahir extract (see [`path_needs_zahir_extract`]).
 fn paths_needing_zahir(
     nefax: &nefax_ops::NefaxResult,
     prior_nefax: Option<&nefax_ops::NefaxResult>,

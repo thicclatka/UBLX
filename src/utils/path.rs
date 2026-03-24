@@ -12,7 +12,7 @@ pub fn resolve_under_root(base: &Path, path: &str) -> PathBuf {
 }
 
 /// True if `path` relative to `root` exists on disk and is a directory (`fs::metadata` / `is_dir`).
-/// Matches how snapshot rows get category `"Directory"` (see db_ops category fallback).
+/// Matches how snapshot rows get category `"Directory"` (see `db_ops` category fallback).
 #[must_use]
 pub fn rel_path_is_directory(root: &Path, path: &Path) -> bool {
     fs::metadata(root.join(path))

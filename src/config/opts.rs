@@ -83,8 +83,8 @@ impl Default for LayoutOverlay {
     }
 }
 
-/// Per-directory policy for automatic (index-time) ZahirScan. Longest matching path prefix wins; absent entry inherits [`UblxOpts::enable_enhance_all`].
-/// Does not apply to per-file "Enhance with ZahirScan" from the space menu.
+/// Per-directory policy for automatic (index-time) `ZahirScan`. Longest matching path prefix wins; absent entry inherits [`UblxOpts::enable_enhance_all`].
+/// Does not apply to per-file "Enhance with `ZahirScan`" from the space menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EnhancePolicy {
@@ -130,8 +130,8 @@ pub struct UblxOverlay {
     /// Editor for Open (Terminal) (e.g. "vim", "nvim"). When unset, uses $EDITOR.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_path: Option<String>,
-    /// When `true`, index runs full ZahirScan enrichment on paths that need it (normal pipeline).
-    /// When `false` (default), only nefax + path-based category from ZahirScan file-type hints; empty `zahir_json` until per-file "Enhance with ZahirScan" or flip to `true` (next run re-enhances all). Hot-reloadable.
+    /// When `true`, index runs full `ZahirScan` enrichment on paths that need it (normal pipeline).
+    /// When `false` (default), only nefax + path-based category from `ZahirScan` file-type hints; empty `zahir_json` until per-file "Enhance with `ZahirScan`" or flip to `true` (next run re-enhances all). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_enhance_all: Option<bool>,
     /// Optional per-path subtree rules for index-time Zahir (`[[enhance_policy]]`). Hot-reloadable.
@@ -215,7 +215,7 @@ pub struct UblxOpts {
     pub layout: LayoutOverlay,
     /// Editor for Open (Terminal). When None, use $EDITOR.
     pub editor_path: Option<String>,
-    /// When true, run full ZahirScan on indexed files; when false, path-only category + space-menu enhance.
+    /// When true, run full `ZahirScan` on indexed files; when false, path-only category + space-menu enhance.
     pub enable_enhance_all: bool,
     /// `enable_enhance_all` from the config cache **before** [`Self::for_dir`] applied the current overlay and called [`Self::save_overlay_to_cache`]. Used by snapshot `force_full` Zahir when flipping the flag to `true`.
     pub enable_enhance_all_cache_before_apply: Option<bool>,
@@ -568,7 +568,7 @@ impl UblxOpts {
         config
     }
 
-    /// Whether index-time batch ZahirScan should run for this relative path (longest `[[enhance_policy]]` prefix wins; else [`Self::enable_enhance_all`]).
+    /// Whether index-time batch `ZahirScan` should run for this relative path (longest `[[enhance_policy]]` prefix wins; else [`Self::enable_enhance_all`]).
     #[must_use]
     pub fn batch_zahir_for_path(&self, rel_path: &str) -> bool {
         let rel = normalize_rel_path_for_policy(rel_path);

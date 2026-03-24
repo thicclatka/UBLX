@@ -1,5 +1,5 @@
-//! Image viewer: decode, tiered downscale by file size, optional background thread for large files,
-//! and `ratatui-image` terminal preview.
+//! Image / PDF page viewer: decode, tiered downscale by file size, optional background thread
+//! for large files or PDF rasterization, and `ratatui-image` terminal preview.
 
 use std::sync::mpsc::{self, TryRecvError};
 
@@ -7,9 +7,11 @@ use image::imageops::FilterType;
 use ratatui_image::{Resize, StatefulImage, protocol::StatefulProtocol};
 use zahirscan::FileType;
 
-use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
+use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
 use crate::ui::UI_GLYPHS;
 use crate::utils::{HALF_MIB_BYTES, MIB};
+
+use super::pdf_preview;
 
 /// Decode + downscale off the UI thread when the file is at least this large (keeps dev/`opt-level=1` snappy too).
 /// Same value as [`crate::utils::HALF_MIB_BYTES`] (viewer read cap).
@@ -20,10 +22,39 @@ pub fn is_image_category(rc: &RightPaneContent) -> bool {
     rc.viewer_zahir_type == Some(FileType::Image)
 }
 
+/// True when the viewer should show a **raster** preview (standalone image file or PDF page).
+#[inline]
+pub fn is_raster_preview_category(rc: &RightPaneContent) -> bool {
+    matches!(rc.viewer_zahir_type, Some(FileType::Image | FileType::Pdf))
+}
+
 /// Right-pane text under the **Image** heading (e.g. loading line).
 #[must_use]
 pub fn label_body(raw: &str) -> String {
     format!("{}: {raw}", FileType::Image.as_metadata_name())
+}
+
+/// Label for image or PDF raster preview (uses snapshot category name).
+#[must_use]
+pub fn raster_preview_label_body(rc: &RightPaneContent, raw: &str) -> String {
+    let name = match rc.viewer_zahir_type {
+        Some(FileType::Pdf) => FileType::Pdf.as_metadata_name(),
+        _ => FileType::Image.as_metadata_name(),
+    };
+    format!("{name}: {raw}")
+}
+
+/// Footer line for PDF page position (`Page 2 / 10`).
+#[must_use]
+pub fn pdf_page_footer_text(right: &RightPaneContent, viewer: &ViewerImageState) -> Option<String> {
+    if right.viewer_zahir_type != Some(FileType::Pdf) || right.viewer_abs_path.is_none() {
+        return None;
+    }
+    let p = viewer.pdf_page.max(1);
+    match viewer.pdf_page_count {
+        Some(n) => Some(format!("Page {p} / {n}")),
+        None => Some(format!("Page {p}")),
+    }
 }
 
 /// Like [`label_body`], but prefixes the body with the markdown image glyph — **only** for failed
@@ -38,16 +69,49 @@ pub fn label_body_error(raw: &str) -> String {
     )
 }
 
+/// Cell→pixel estimates for longest-edge raster budgets (half-block rendering; conservative).
+#[derive(Clone, Copy, Debug)]
+pub struct ViewportCellRasterBudget {
+    pub px_per_cell_w: u32,
+    pub px_per_cell_h: u32,
+    pub min_longest_edge: u32,
+}
+
+impl ViewportCellRasterBudget {
+    #[must_use]
+    pub fn max_edge_for_cells(self, width_cells: u16, height_cells: u16) -> u32 {
+        let w = width_cells as u32;
+        let h = height_cells as u32;
+        let by_w = w.saturating_mul(self.px_per_cell_w);
+        let by_h = h.saturating_mul(self.px_per_cell_h);
+        by_w.max(by_h).max(self.min_longest_edge)
+    }
+}
+
+pub const VIEWPORT_RASTER_IMAGE: ViewportCellRasterBudget = ViewportCellRasterBudget {
+    px_per_cell_w: 8,
+    px_per_cell_h: 16,
+    min_longest_edge: 320,
+};
+
+/// Slightly **taller** cell→px vertical term so PDF pages (often portrait) get a bit more longest-edge budget.
+pub const VIEWPORT_RASTER_PDF: ViewportCellRasterBudget = ViewportCellRasterBudget {
+    px_per_cell_w: 8,
+    px_per_cell_h: 20,
+    min_longest_edge: 400,
+};
+
 /// Upper bound on longest edge (px) from the preview **area in terminal cells** so we don’t decode
 /// more pixels than can appear in the pane (half-blocks ≈ a few px per cell; this is conservative).
 #[must_use]
 pub fn max_edge_for_viewport_cells(width_cells: u16, height_cells: u16) -> u32 {
-    let w = width_cells as u32;
-    let h = height_cells as u32;
-    // ~8×16 px per cell is typical; cap longest edge to something drawable in the rect.
-    let by_w = w.saturating_mul(8);
-    let by_h = h.saturating_mul(16);
-    by_w.max(by_h).max(320)
+    VIEWPORT_RASTER_IMAGE.max_edge_for_cells(width_cells, height_cells)
+}
+
+/// Like [`max_edge_for_viewport_cells`], but uses [`VIEWPORT_RASTER_PDF`].
+#[must_use]
+pub fn max_edge_for_pdf_viewport_cells(width_cells: u16, height_cells: u16) -> u32 {
+    VIEWPORT_RASTER_PDF.max_edge_for_cells(width_cells, height_cells)
 }
 
 /// Longest edge (px) after decode, tiered by **file size** (smaller caps for heavier files = less work in `thumbnail` + terminal encode).
@@ -58,9 +122,7 @@ pub fn tiered_max_dimension_for_file_size(file_size_bytes: u64) -> u32 {
         s if s >= 20 * MIB => 1024,
         s if s >= 8 * MIB => 1280,
         s if s >= 2 * MIB => 1600,
-        // 1–2 MiB: cap before terminal encode.
         s if s >= MIB => 1440,
-        // Under 1 MiB: still bound preview size (terminal encode scales with pixels).
         _ => 1600,
     }
 }
@@ -92,7 +154,50 @@ pub fn stateful_widget() -> StatefulImage<StatefulProtocol> {
     StatefulImage::<StatefulProtocol>::default().resize(Resize::Fit(Some(FilterType::Nearest)))
 }
 
-/// Load [`ViewerImageState::protocol`] when the viewer is an Image row (category **Image**).
+/// Reset PDF page state when switching files; poll [`ViewerImageState::pdf_page_count_rx`].
+pub fn sync_pdf_selection_state(state: &mut UblxState, right_content: &RightPaneContent) {
+    if right_content.viewer_zahir_type != Some(FileType::Pdf) {
+        if state.viewer_image.pdf_for_path.take().is_some() {
+            state.viewer_image.pdf_page = 1;
+            state.viewer_image.pdf_page_count = None;
+            state.viewer_image.pdf_page_count_rx = None;
+        }
+        return;
+    }
+    let Some(abs) = right_content.viewer_abs_path.as_ref() else {
+        return;
+    };
+    if state.viewer_image.pdf_for_path.as_ref() != Some(abs) {
+        state.viewer_image.pdf_for_path = Some(abs.clone());
+        state.viewer_image.pdf_page = 1;
+        state.viewer_image.pdf_page_count = None;
+        state.viewer_image.pdf_page_count_rx = None;
+        let (tx, rx) = mpsc::channel();
+        state.viewer_image.pdf_page_count_rx = Some(rx);
+        let p = abs.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(pdf_preview::pdf_page_count(&p));
+        });
+    }
+    if let Some(rx) = state.viewer_image.pdf_page_count_rx.as_ref() {
+        match rx.try_recv() {
+            Ok(Ok(n)) => {
+                state.viewer_image.pdf_page_count = Some(n);
+                state.viewer_image.pdf_page_count_rx = None;
+                state.viewer_image.pdf_page = state.viewer_image.pdf_page.min(n.max(1));
+            }
+            Ok(Err(_)) => {
+                state.viewer_image.pdf_page_count_rx = None;
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                state.viewer_image.pdf_page_count_rx = None;
+            }
+        }
+    }
+}
+
+/// Load [`ViewerImageState::protocol`] when the viewer is an **Image** or **PDF** row (raster preview).
 ///
 /// `viewport_cells`: `(width, height)` of the padded preview area in **terminal cells**; pass
 /// [`None`] to use only file-size tiers (e.g. tests). When set, decode size is `min(tier, viewport)`.
@@ -101,22 +206,31 @@ pub fn ensure_viewer_image(
     right_content: &RightPaneContent,
     viewport_cells: Option<(u16, u16)>,
 ) {
+    sync_pdf_selection_state(state, right_content);
+
     if state.right_pane_mode != RightPaneMode::Viewer {
         return;
     }
-    if !is_image_category(right_content) {
+    if !is_raster_preview_category(right_content) {
         state.viewer_image.clear();
         return;
     }
     let Some(abs) = right_content.viewer_abs_path.as_ref() else {
         state.viewer_image.clear();
-        state.viewer_image.err = Some("No absolute path for image".to_string());
+        state.viewer_image.err = Some("No absolute path for preview".to_string());
         return;
     };
-    let key = abs.display().to_string();
 
-    // Same file as last tick: poll background decode if any.
-    if state.viewer_image.key.as_deref() == Some(key.as_str()) {
+    let is_pdf = right_content.viewer_zahir_type == Some(FileType::Pdf);
+    let path_str = abs.display().to_string();
+    let selection_key = if is_pdf {
+        format!("{}#p{}", path_str, state.viewer_image.pdf_page.max(1))
+    } else {
+        path_str
+    };
+
+    // Same file + page: poll background decode if any.
+    if state.viewer_image.key.as_deref() == Some(selection_key.as_str()) {
         if let Some(rx) = state.viewer_image.decode_rx.as_ref() {
             match rx.try_recv() {
                 Ok(Ok(img)) => {
@@ -125,47 +239,69 @@ pub fn ensure_viewer_image(
                 }
                 Ok(Err(e)) => {
                     state.viewer_image.decode_rx = None;
-                    state.viewer_image.err = Some(format!("Could not open image: {e}"));
+                    state.viewer_image.err = Some(format!("Could not load preview: {e}"));
                 }
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
                     state.viewer_image.decode_rx = None;
-                    state.viewer_image.err = Some("Image decode cancelled".to_string());
+                    state.viewer_image.err = Some("Preview decode cancelled".to_string());
                 }
             }
         }
         return;
     }
 
-    // New selection: cancel in-flight decode; stash previous finished preview; try LRU hit.
+    // New selection or new PDF page: cancel in-flight decode; stash previous finished preview; try LRU hit.
     state.viewer_image.decode_rx = None;
 
     if let Some(pk) = state.viewer_image.key.clone()
-        && pk != key
+        && pk != selection_key
         && let Some(p) = state.viewer_image.protocol.take()
     {
         state.viewer_image.push_lru(pk, p);
     }
 
-    if let Some(p) = state.viewer_image.take_from_lru(&key) {
-        state.viewer_image.key = Some(key.clone());
+    if let Some(p) = state.viewer_image.take_from_lru(&selection_key) {
+        state.viewer_image.key = Some(selection_key.clone());
         state.viewer_image.protocol = Some(p);
         state.viewer_image.err = None;
         return;
     }
 
-    state.viewer_image.key = Some(key.clone());
+    state.viewer_image.key = Some(selection_key.clone());
     state.viewer_image.protocol = None;
     state.viewer_image.err = None;
 
     let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
     let tiered = tiered_max_dimension_for_file_size(file_size);
     let max_dim = match viewport_cells {
-        Some((w, h)) => tiered.min(max_edge_for_viewport_cells(w, h)),
+        Some((w, h)) => {
+            let edge = if is_pdf {
+                max_edge_for_pdf_viewport_cells(w, h)
+            } else {
+                max_edge_for_viewport_cells(w, h)
+            };
+            tiered.min(edge)
+        }
         None => tiered,
     };
+    let max_dim = if is_pdf {
+        pdf_preview::PdfRasterMaxDimBoost::apply(max_dim)
+    } else {
+        max_dim
+    };
 
-    if file_size >= ASYNC_DECODE_MIN_BYTES {
+    if is_pdf {
+        let (tx, rx) = mpsc::channel();
+        state.viewer_image.decode_rx = Some(rx);
+        let path = abs.clone();
+        let page = state.viewer_image.pdf_page.max(1);
+        std::thread::spawn(move || {
+            let res = pdf_preview::render_pdf_page(&path, page, max_dim)
+                .map(|img| downscale_with_max(img, max_dim));
+            let _ = tx.send(res);
+        });
+    } else if file_size >= ASYNC_DECODE_MIN_BYTES {
         let (tx, rx) = mpsc::channel();
         state.viewer_image.decode_rx = Some(rx);
         let path = abs.clone();

@@ -145,7 +145,7 @@ pub struct DuplicateLoadGate {
 pub struct SessionFlow {
     pub first_tick: bool,
     pub refresh_terminal_after_editor: bool,
-    /// After single-file ZahirScan enhance, reload snapshot rows from DB on next tick.
+    /// After single-file `ZahirScan` enhance, reload snapshot rows from DB on next tick.
     pub reload_snapshot_rows: bool,
     /// After we show the "enhancing in background" toast for [`crate::engine::orchestrator::should_force_full_zahir`], suppress duplicates until restart.
     pub force_full_enhance_toast_shown: bool,
@@ -163,17 +163,39 @@ impl Default for SessionFlow {
 }
 
 /// State for the image viewer in the right pane (`ratatui-image`, tiered downscale, optional background decode).
-#[derive(Default)]
 pub struct ViewerImageState {
     pub protocol: Option<ratatui_image::protocol::StatefulProtocol>,
     pub picker: Option<ratatui_image::picker::Picker>,
-    /// Cache key: [`std::path::Path::display`] string for the selected file.
+    /// Cache key: path display, or `path#pN` for PDF page `N`.
     pub key: Option<String>,
     /// When set, a background thread is decoding/downsizing; poll in [`crate::render::viewers::image_handler::ensure_viewer_image`].
     pub decode_rx: Option<mpsc::Receiver<Result<image::DynamicImage, String>>>,
     pub err: Option<String>,
     /// Recent previews (not the current row) for instant navigation back within [`Self::LRU_CAP`] paths.
     pub image_lru: VecDeque<(String, ratatui_image::protocol::StatefulProtocol)>,
+    /// PDF: one-based page; PDF: selected file this state applies to.
+    pub pdf_page: u32,
+    pub pdf_page_count: Option<u32>,
+    pub pdf_for_path: Option<PathBuf>,
+    /// Background [`pdf_preview::pdf_page_count`] result.
+    pub pdf_page_count_rx: Option<mpsc::Receiver<Result<u32, String>>>,
+}
+
+impl Default for ViewerImageState {
+    fn default() -> Self {
+        Self {
+            protocol: None,
+            picker: None,
+            key: None,
+            decode_rx: None,
+            err: None,
+            image_lru: VecDeque::new(),
+            pdf_page: 1,
+            pdf_page_count: None,
+            pdf_for_path: None,
+            pdf_page_count_rx: None,
+        }
+    }
 }
 
 impl ViewerImageState {
@@ -201,12 +223,16 @@ impl ViewerImageState {
     /// Finished previews are moved into [`Self::image_lru`] so returning to an image can be instant.
     pub fn clear(&mut self) {
         self.decode_rx = None;
+        self.pdf_page_count_rx = None;
         self.err = None;
         let k = self.key.take();
         let p = self.protocol.take();
         if let (Some(k), Some(p)) = (k, p) {
             self.push_lru(k, p);
         }
+        self.pdf_for_path = None;
+        self.pdf_page = 1;
+        self.pdf_page_count = None;
     }
 }
 
@@ -379,7 +405,7 @@ pub enum SpaceMenuKind {
         can_open_in_terminal: bool,
         /// Show subtree batch-enhance policy when the snapshot row is [`CATEGORY_DIRECTORY`].
         show_enhance_directory_policy: bool,
-        /// Show "Enhance with ZahirScan" when [`crate::config::UblxOpts::enable_enhance_all`] is false and row has no `zahir_json`.
+        /// Show "Enhance with `ZahirScan`" when [`crate::config::UblxOpts::enable_enhance_all`] is false and row has no `zahir_json`.
         show_enhance_zahir: bool,
     },
     /// Lens panel actions: `lens_name` is the selected lens. Options: Rename, Delete.
@@ -485,7 +511,7 @@ pub struct RightPaneContent {
     pub viewer_can_open: bool,
     /// Label for the open hint node in the footer (e.g. "↗", "↗ (Terminal)", "↗ (GUI)"). Set by caller when `viewer_can_open`.
     pub open_hint_label: Option<String>,
-    /// Space menu: offer per-file ZahirScan when global enhance is off and this row has no enrichment yet.
+    /// Space menu: offer per-file `ZahirScan` when global enhance is off and this row has no enrichment yet.
     pub viewer_offer_enhance_zahir: bool,
     /// Space menu: offer `[[enhance_policy]]` for this path when the row is a Directory in the snapshot.
     pub viewer_offer_enhance_directory_policy: bool,

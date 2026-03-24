@@ -49,7 +49,7 @@ pub fn delimiter_from_path_for_viewer(path: &str) -> Option<u8> {
 }
 
 /// Metadata name string for [`FileType`] from path/extension only (ZahirScan’s [`detect_file_type`]), without a full extract.
-/// Used when [`crate::config::UblxOpts::enable_enhance_all`] is false so categories still align with ZahirScan labels while `zahir_json` stays empty.
+/// Used when [`crate::config::UblxOpts::enable_enhance_all`] is false so categories still align with `ZahirScan` labels while `zahir_json` stays empty.
 #[must_use]
 pub fn zahir_metadata_name_from_path_hint(path_str: &str) -> Option<String> {
     let ft = detect_file_type(path_str);

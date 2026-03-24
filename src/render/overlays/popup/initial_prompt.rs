@@ -1,4 +1,4 @@
-//! First-run: choose whether to index with full ZahirScan (`enable_enhance_all`).
+//! First-run: choose whether to index with full `ZahirScan` (`enable_enhance_all`).
 
 use ratatui::Frame;
 use ratatui::style::{Modifier, Style};

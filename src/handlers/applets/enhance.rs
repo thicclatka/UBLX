@@ -1,4 +1,4 @@
-//! Per-file ZahirScan enrichment when global `enable_enhance_all` is false.
+//! Per-file `ZahirScan` enrichment when global `enable_enhance_all` is false.
 
 use std::path::Path;
 
@@ -7,7 +7,7 @@ use crate::engine::db_ops;
 use crate::handlers::zahir_ops::{self, get_zahir_output_by_path};
 use crate::utils::canonicalize_dir_to_ublx;
 
-/// Run ZahirScan on one file and update the snapshot row.
+/// Run `ZahirScan` on one file and update the snapshot row.
 ///
 /// # Errors
 ///

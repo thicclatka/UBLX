@@ -137,22 +137,30 @@ fn viewer_total_lines(
             {
                 return csv_handler::table_line_count(&rows, content_width);
             }
-            if viewer_image::is_image_category(right_content) {
+            if viewer_image::is_raster_preview_category(right_content) {
                 if state.viewer_image.protocol.is_some() {
                     return 1;
                 }
                 if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
                     return wrapped_line_count(
-                        &viewer_image::label_body(UI_STRINGS.loading.general),
+                        &viewer_image::raster_preview_label_body(
+                            right_content,
+                            UI_STRINGS.loading.general,
+                        ),
                         content_width,
                     ) as usize;
                 }
                 if let Some(e) = state.viewer_image.err.as_deref() {
-                    return wrapped_line_count(&viewer_image::label_body(e), content_width)
-                        as usize;
+                    return wrapped_line_count(
+                        &viewer_image::raster_preview_label_body(right_content, e),
+                        content_width,
+                    ) as usize;
                 }
                 let msg = right_content.viewer.as_deref().unwrap_or("");
-                return wrapped_line_count(&viewer_image::label_body(msg), content_width) as usize;
+                return wrapped_line_count(
+                    &viewer_image::raster_preview_label_body(right_content, msg),
+                    content_width,
+                ) as usize;
             }
             if viewer_is_markdown(right_content) {
                 let raw = right_content.viewer.as_deref().unwrap_or("");
@@ -180,7 +188,9 @@ fn viewer_uses_preformatted_layout(state: &UblxState, right_content: &RightPaneC
     if viewer_is_markdown(right_content) {
         return true;
     }
-    if viewer_image::is_image_category(right_content) && state.viewer_image.protocol.is_some() {
+    if viewer_image::is_raster_preview_category(right_content)
+        && state.viewer_image.protocol.is_some()
+    {
         return true;
     }
     if !viewer_show_delimited_table(right_content) {
@@ -236,20 +246,27 @@ fn viewer_display_text(
         } else if viewer_is_markdown(right_content) {
             let doc = markdown::parse_markdown(raw);
             return doc.to_text(content_width);
-        } else if viewer_image::is_image_category(right_content) {
+        } else if viewer_image::is_raster_preview_category(right_content) {
             if state.viewer_image.protocol.is_some() {
                 return ratatui::text::Text::default();
             }
             if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
-                return ratatui::text::Text::from(viewer_image::label_body(
+                return ratatui::text::Text::from(viewer_image::raster_preview_label_body(
+                    right_content,
                     UI_STRINGS.loading.general,
                 ));
             }
             if let Some(e) = state.viewer_image.err.as_deref() {
-                return ratatui::text::Text::from(viewer_image::label_body(e));
+                return ratatui::text::Text::from(viewer_image::raster_preview_label_body(
+                    right_content,
+                    e,
+                ));
             }
             let msg = right_content.viewer.as_deref().unwrap_or("");
-            return ratatui::text::Text::from(viewer_image::label_body(msg));
+            return ratatui::text::Text::from(viewer_image::raster_preview_label_body(
+                right_content,
+                msg,
+            ));
         }
     }
     ratatui::text::Text::from(raw.to_string())
@@ -313,10 +330,13 @@ pub fn draw_right_pane(
     chunks: &[Rect],
 ) {
     let area = chunks[2];
+    viewer_image::sync_pdf_selection_state(state, right_content);
+    let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
         && (right_content.open_hint_label.is_some()
             || right_content.viewer_byte_size.is_some()
-            || right_content.viewer_mtime_ns.is_some());
+            || right_content.viewer_mtime_ns.is_some()
+            || pdf_footer.is_some());
     let size_str = right_content.viewer_byte_size.map(format_bytes);
     let footer_line = show_footer
         .then(|| {
@@ -324,6 +344,7 @@ pub fn draw_right_pane(
                 right_content.open_hint_label.as_deref(),
                 size_str.as_deref(),
                 right_content.viewer_mtime_ns,
+                pdf_footer.as_deref(),
             )
         })
         .flatten();
@@ -391,7 +412,7 @@ pub fn draw_right_pane(
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
         let image_mode = state.right_pane_mode == RightPaneMode::Viewer
-            && viewer_image::is_image_category(right_content)
+            && viewer_image::is_raster_preview_category(right_content)
             && right_content.viewer_path.is_some()
             && state.viewer_image.protocol.is_some();
         if image_mode {
@@ -419,10 +440,13 @@ pub fn draw_right_pane_fullscreen(
     right_content: &RightPaneContent,
     area: Rect,
 ) {
+    viewer_image::sync_pdf_selection_state(state, right_content);
+    let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
         && (right_content.open_hint_label.is_some()
             || right_content.viewer_byte_size.is_some()
-            || right_content.viewer_mtime_ns.is_some());
+            || right_content.viewer_mtime_ns.is_some()
+            || pdf_footer.is_some());
     let size_str = right_content.viewer_byte_size.map(format_bytes);
     let footer_line = show_footer
         .then(|| {
@@ -430,6 +454,7 @@ pub fn draw_right_pane_fullscreen(
                 right_content.open_hint_label.as_deref(),
                 size_str.as_deref(),
                 right_content.viewer_mtime_ns,
+                pdf_footer.as_deref(),
             )
         })
         .flatten();
@@ -477,7 +502,7 @@ pub fn draw_right_pane_fullscreen(
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
     } else {
         let image_mode = state.right_pane_mode == RightPaneMode::Viewer
-            && viewer_image::is_image_category(right_content)
+            && viewer_image::is_raster_preview_category(right_content)
             && right_content.viewer_path.is_some()
             && state.viewer_image.protocol.is_some();
         if image_mode {

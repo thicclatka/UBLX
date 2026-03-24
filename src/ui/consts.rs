@@ -129,7 +129,7 @@ pub struct UiStringsSpaceMenu {
     pub enhance_policy: &'static str,
     pub enhance_policy_always: &'static str,
     pub enhance_policy_never: &'static str,
-    /// Run full ZahirScan on this file when `enable_enhance_all` is false.
+    /// Run full `ZahirScan` on this file when `enable_enhance_all` is false.
     pub enhance_with_zahirscan: &'static str,
     pub add_to_lens: &'static str,
     pub remove_from_lens: &'static str,

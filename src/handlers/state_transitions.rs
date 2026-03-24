@@ -1,5 +1,7 @@
 //! Apply key actions to TUI state. Moved from layout so "what happens on key" lives with other behavior.
 
+use zahirscan::FileType;
+
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
 };
@@ -56,6 +58,38 @@ fn apply_preview_scroll(state: &mut UblxState, action: UblxAction) {
     }
 }
 
+fn pdf_page_nav_applies(state: &UblxState, right: &RightPaneContent) -> bool {
+    state.right_pane_mode == RightPaneMode::Viewer
+        && right.viewer_zahir_type == Some(FileType::Pdf)
+        && right.viewer_abs_path.is_some()
+}
+
+fn apply_pdf_page_scroll(state: &mut UblxState, action: UblxAction) {
+    let max = state.viewer_image.pdf_page_count;
+    match action {
+        UblxAction::ScrollPreviewDown => {
+            let next = state.viewer_image.pdf_page.saturating_add(1);
+            state.viewer_image.pdf_page = if let Some(m) = max {
+                next.min(m)
+            } else {
+                next
+            };
+        }
+        UblxAction::ScrollPreviewUp => {
+            state.viewer_image.pdf_page = state.viewer_image.pdf_page.saturating_sub(1).max(1);
+        }
+        UblxAction::PreviewTop => {
+            state.viewer_image.pdf_page = 1;
+        }
+        UblxAction::PreviewBottom => {
+            if let Some(m) = max {
+                state.viewer_image.pdf_page = m;
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Context (view + right-pane content) required to apply actions to state.
 pub struct UblxActionContext<'a> {
     view: &'a ViewData,
@@ -104,7 +138,13 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::ScrollPreviewUp
             | UblxAction::ScrollPreviewDown
             | UblxAction::PreviewTop
-            | UblxAction::PreviewBottom => apply_preview_scroll(state, action),
+            | UblxAction::PreviewBottom => {
+                if pdf_page_nav_applies(state, self.right_content) {
+                    apply_pdf_page_scroll(state, action);
+                } else {
+                    apply_preview_scroll(state, action);
+                }
+            }
             UblxAction::ListTop
             | UblxAction::ListBottom
             | UblxAction::MoveUp
