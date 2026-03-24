@@ -9,11 +9,11 @@ use std::sync::mpsc;
 
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
-use zahirscan::FileType;
 
 use super::style;
 
 use crate::engine::db_ops::DeltaType;
+use crate::handlers::zahir_ops::ZahirFileType as FileType;
 use crate::utils::ClipboardCopyCommand;
 
 /// Re-export snapshot row type for layout/view/render (`path`, category, size).
@@ -168,7 +168,7 @@ pub struct ViewerImageState {
     pub picker: Option<ratatui_image::picker::Picker>,
     /// Cache key: path display, or `path#pN` for PDF page `N`.
     pub key: Option<String>,
-    /// When set, a background thread is decoding/downsizing; poll in [`crate::render::viewers::image_handler::ensure_viewer_image`].
+    /// When set, a background thread is decoding/downsizing; poll in [`crate::render::viewers::image::ensure_viewer_image`].
     pub decode_rx: Option<mpsc::Receiver<Result<image::DynamicImage, String>>>,
     pub err: Option<String>,
     /// Recent previews (not the current row) for instant navigation back within [`Self::LRU_CAP`] paths.

@@ -5,14 +5,23 @@
   "dictionaries": [],
   "words": [
     "AUTOINCREMENT",
+    "blen",
     "cmark",
     "crossterm",
     "Deque",
+    "halfblocks",
+    "imageops",
+    "maxlens",
+    "mupdf",
+    "mutool",
+    "pdfinfo",
+    "pdftoppm",
+    "poppler",
     "ratatui",
+    "singlefile",
     "spacebar",
     "strs",
-    "ublx",
-    "maxlens"
+    "ublx"
   ],
   "ignoreWords": [],
   "import": []

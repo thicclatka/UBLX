@@ -1,9 +1,12 @@
 use colored::Colorize;
 use log::{Level, debug, error};
-use std::io::Write;
+use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::PKG_NAME;
+use crate::handlers::zahir_ops::ZahirFileType as FileType;
 use crate::utils::exit_error;
 
 /// Binary prefixes (1024-based), shared with [`format_bytes`].
@@ -17,6 +20,67 @@ pub const HALF_MIB_BYTES: u64 = MIB / 2;
 
 /// [`HALF_MIB_BYTES`] as [`usize`] for allocation caps (`HALF_MIB_BYTES` always fits in `usize`).
 pub const HALF_MIB_BYTES_USIZE: usize = HALF_MIB_BYTES as usize;
+
+/// [`std::fs::Metadata::len`] is `u64`; saturates at `usize::MAX` on 32-bit. Safe for `.min(small_cap)`:
+/// the cap (e.g. [`HALF_MIB_BYTES_USIZE`]) still bounds allocation.
+#[inline]
+#[must_use]
+pub fn u64_to_usize_saturating(len: u64) -> usize {
+    usize::try_from(len).unwrap_or(usize::MAX)
+}
+
+/// Chunk size for [`is_likely_binary`] (first bytes read to detect NUL / invalid UTF-8).
+const BINARY_CHECK_CHUNK: usize = 8192;
+
+/// Quick binary heuristic: read the first chunk; binary if NUL present or invalid UTF-8.
+#[must_use]
+pub fn is_likely_binary(path: &Path) -> bool {
+    let Ok(mut f) = fs::File::open(path) else {
+        return false;
+    };
+    let mut buf = [0u8; BINARY_CHECK_CHUNK];
+    let n = f.read(&mut buf).unwrap_or(0);
+    let buf = &buf[..n];
+    buf.contains(&0) || std::str::from_utf8(buf).is_err()
+}
+
+/// Label for a binary file: `"EXT file"` if the path has an extension (e.g. `"PNG file"`), else `"binary file"`.
+#[must_use]
+pub fn binary_file_label(path: &Path) -> String {
+    path.extension().and_then(|e| e.to_str()).map_or_else(
+        || "binary file".to_string(),
+        |ext| format!("{} file", ext.to_uppercase()),
+    )
+}
+
+/// Read text for a viewer pane: not found, empty for image/PDF (raster preview elsewhere), binary short label, or capped UTF-8 with truncation notice.
+///
+/// Cap is [`HALF_MIB_BYTES_USIZE`]. When `zahir_type` is [`FileType::Image`] or [`FileType::Pdf`], returns empty string for a normal file so the render layer loads the preview.
+#[must_use]
+pub fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Option<String> {
+    let Ok(meta) = fs::metadata(path) else {
+        return Some("(file not found)".to_string());
+    };
+    if meta.is_file() && matches!(zahir_type, Some(FileType::Image | FileType::Pdf)) {
+        return Some(String::new());
+    }
+    if meta.is_file() && is_likely_binary(path) {
+        return Some(binary_file_label(path));
+    }
+    let f = fs::File::open(path).ok()?;
+    let cap = HALF_MIB_BYTES_USIZE.min(u64_to_usize_saturating(meta.len()));
+    let mut buf = Vec::with_capacity(cap);
+    let take_limit = u64::try_from(HALF_MIB_BYTES_USIZE).expect("half MiB fits in u64");
+    let n = f.take(take_limit).read_to_end(&mut buf).ok()?;
+    let s = String::from_utf8_lossy(&buf[..n]).into_owned();
+    let n_u64 = u64::try_from(n).expect("bytes read fits in u64");
+    let out = if n_u64 >= meta.len() {
+        s
+    } else {
+        format!("{}\n\n… (truncated, {} bytes total)", s, meta.len())
+    };
+    Some(out)
+}
 
 /// Expand a leading `~/` using `HOME` so `cargo run -- ~/src/proj` works (the shell often does not expand `~` in argv).
 #[must_use]
@@ -117,4 +181,23 @@ pub fn format_bytes(n: u64) -> String {
     } else {
         format!("{:.2} GB", n as f64 / GIB as f64)
     }
+}
+
+/// Unique stamp for temporary files (nanos XOR pid).
+pub fn unique_stamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+        ^ ((std::process::id() as u64) << 32)
+}
+
+/// Current Unix timestamp in nanoseconds.
+#[must_use]
+pub fn get_created_ns() -> i64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    i64::try_from(nanos).unwrap_or(i64::MAX)
 }

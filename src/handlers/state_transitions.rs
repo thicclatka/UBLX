@@ -1,7 +1,6 @@
 //! Apply key actions to TUI state. Moved from layout so "what happens on key" lives with other behavior.
 
-use zahirscan::FileType;
-
+use crate::handlers::zahir_ops::ZahirFileType as FileType;
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
 };
@@ -69,11 +68,7 @@ fn apply_pdf_page_scroll(state: &mut UblxState, action: UblxAction) {
     match action {
         UblxAction::ScrollPreviewDown => {
             let next = state.viewer_image.pdf_page.saturating_add(1);
-            state.viewer_image.pdf_page = if let Some(m) = max {
-                next.min(m)
-            } else {
-                next
-            };
+            state.viewer_image.pdf_page = if let Some(m) = max { next.min(m) } else { next };
         }
         UblxAction::ScrollPreviewUp => {
             state.viewer_image.pdf_page = state.viewer_image.pdf_page.saturating_sub(1).max(1);

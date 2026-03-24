@@ -28,6 +28,25 @@ pub fn path_to_slash_string(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+/// Normalize a snapshot `path` column so it matches nefaxer’s relative path strings (`rel_str` / map keys).
+///
+/// Trims, strips a leading `./` or `.\`, then replaces `\` with `/`.
+#[must_use]
+pub fn normalize_snapshot_rel_path_str(path: &str) -> String {
+    let mut s = path.trim();
+    s = s.strip_prefix("./").unwrap_or(s);
+    if let Some(rest) = s.strip_prefix(".\\") {
+        s = rest;
+    }
+    s.replace('\\', "/")
+}
+
+/// [`PathBuf`] key for nefax-style maps, from a snapshot `path` column (see [`normalize_snapshot_rel_path_str`]).
+#[must_use]
+pub fn snapshot_rel_path_buf(path_str: &str) -> PathBuf {
+    PathBuf::from(normalize_snapshot_rel_path_str(path_str))
+}
+
 /// True if `path`'s file extension equals any of `exts` (ASCII case-insensitive, OR semantics).
 #[must_use]
 pub fn path_has_extension(path: &str, exts: &[&str]) -> bool {

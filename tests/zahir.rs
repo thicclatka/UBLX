@@ -1,5 +1,4 @@
-use ublx::handlers::zahir_ops::file_type_from_metadata_name;
-use zahirscan::FileType;
+use ublx::handlers::zahir_ops::{ZahirFileType as FileType, file_type_from_metadata_name};
 
 #[test]
 fn wrapper_matches_zahirscan_api() {

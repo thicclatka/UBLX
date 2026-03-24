@@ -9,6 +9,7 @@ pub use clipboard::ClipboardCopyCommand;
 pub use error_writer::{NefaxZahirErrors, exit_error};
 pub use format::*;
 pub use path::{
-    path_has_extension, path_to_slash_string, rel_path_is_directory, resolve_under_root,
+    normalize_snapshot_rel_path_str, path_has_extension, path_to_slash_string,
+    rel_path_is_directory, resolve_under_root, snapshot_rel_path_buf,
 };
 pub use tools::*;

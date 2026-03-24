@@ -9,11 +9,13 @@ use rayon::prelude::*;
 use rusqlite::{Connection, Statement};
 
 use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
+
 use crate::config::{PARALLEL, UblxOpts, UblxPaths};
 use crate::handlers::{
     nefax_ops::{NefaxDiff, NefaxPathMeta, NefaxResult},
     zahir_ops::{ZahirOutput, zahir_metadata_name_from_path_hint, zahir_output_to_json},
 };
+use crate::utils::path::snapshot_rel_path_buf;
 
 /// Prior snapshot maps and options passed through snapshot rebuild (keeps clippy arg counts down).
 pub struct SnapshotPriorContext<'a> {
@@ -232,15 +234,6 @@ pub fn insert_nefax_only_into_snapshot(
     Ok(())
 }
 
-#[must_use]
-pub fn get_created_ns() -> i64 {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    i64::try_from(nanos).unwrap_or(i64::MAX)
-}
-
 /// Insert `delta_log` rows for one delta type (added/modified/removed).
 ///
 /// # Errors
@@ -346,7 +339,7 @@ impl NefaxFromGivenDB {
             if Path::new(path_str.trim()).is_absolute() {
                 continue;
             }
-            let path = nefax_rel_path_key_from_snapshot(&path_str);
+            let path = snapshot_rel_path_buf(&path_str);
             let size_u = size.try_into().unwrap_or(0);
             let hash = hash_blob.filter(|b| b.len() == 32).map(|b| {
                 let mut a = [0u8; 32];
@@ -373,20 +366,6 @@ pub(crate) fn snapshot_table_has_rows(db_path: &Path) -> bool {
     };
     conn.query_row("SELECT 1 FROM snapshot LIMIT 1", [], |_r| Ok(()))
         .is_ok()
-}
-
-/// Normalize a snapshot `path` column so it matches nefaxer’s relative path strings (`rel_str` / map keys).
-pub(crate) fn normalize_snapshot_rel_path_str(path: &str) -> String {
-    let mut s = path.trim();
-    s = s.strip_prefix("./").unwrap_or(s);
-    if let Some(rest) = s.strip_prefix(".\\") {
-        s = rest;
-    }
-    s.replace('\\', "/")
-}
-
-fn nefax_rel_path_key_from_snapshot(path_str: &str) -> PathBuf {
-    PathBuf::from(normalize_snapshot_rel_path_str(path_str))
 }
 
 pub struct UblxCleanup {

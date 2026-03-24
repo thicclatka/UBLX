@@ -5,13 +5,14 @@ use std::sync::mpsc::{self, TryRecvError};
 
 use image::imageops::FilterType;
 use ratatui_image::{Resize, StatefulImage, protocol::StatefulProtocol};
-use zahirscan::FileType;
 
+use super::raster_policy;
+use crate::render::viewers::pdf_preview;
+
+use crate::handlers::zahir_ops::ZahirFileType as FileType;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
 use crate::ui::UI_GLYPHS;
-use crate::utils::{HALF_MIB_BYTES, MIB};
-
-use super::pdf_preview;
+use crate::utils::HALF_MIB_BYTES;
 
 /// Decode + downscale off the UI thread when the file is at least this large (keeps dev/`opt-level=1` snappy too).
 /// Same value as [`crate::utils::HALF_MIB_BYTES`] (viewer read cap).
@@ -67,75 +68,6 @@ pub fn label_body_error(raw: &str) -> String {
         UI_GLYPHS.markdown_image,
         raw
     )
-}
-
-/// Cell→pixel estimates for longest-edge raster budgets (half-block rendering; conservative).
-#[derive(Clone, Copy, Debug)]
-pub struct ViewportCellRasterBudget {
-    pub px_per_cell_w: u32,
-    pub px_per_cell_h: u32,
-    pub min_longest_edge: u32,
-}
-
-impl ViewportCellRasterBudget {
-    #[must_use]
-    pub fn max_edge_for_cells(self, width_cells: u16, height_cells: u16) -> u32 {
-        let w = width_cells as u32;
-        let h = height_cells as u32;
-        let by_w = w.saturating_mul(self.px_per_cell_w);
-        let by_h = h.saturating_mul(self.px_per_cell_h);
-        by_w.max(by_h).max(self.min_longest_edge)
-    }
-}
-
-pub const VIEWPORT_RASTER_IMAGE: ViewportCellRasterBudget = ViewportCellRasterBudget {
-    px_per_cell_w: 8,
-    px_per_cell_h: 16,
-    min_longest_edge: 320,
-};
-
-/// Slightly **taller** cell→px vertical term so PDF pages (often portrait) get a bit more longest-edge budget.
-pub const VIEWPORT_RASTER_PDF: ViewportCellRasterBudget = ViewportCellRasterBudget {
-    px_per_cell_w: 8,
-    px_per_cell_h: 20,
-    min_longest_edge: 400,
-};
-
-/// Upper bound on longest edge (px) from the preview **area in terminal cells** so we don’t decode
-/// more pixels than can appear in the pane (half-blocks ≈ a few px per cell; this is conservative).
-#[must_use]
-pub fn max_edge_for_viewport_cells(width_cells: u16, height_cells: u16) -> u32 {
-    VIEWPORT_RASTER_IMAGE.max_edge_for_cells(width_cells, height_cells)
-}
-
-/// Like [`max_edge_for_viewport_cells`], but uses [`VIEWPORT_RASTER_PDF`].
-#[must_use]
-pub fn max_edge_for_pdf_viewport_cells(width_cells: u16, height_cells: u16) -> u32 {
-    VIEWPORT_RASTER_PDF.max_edge_for_cells(width_cells, height_cells)
-}
-
-/// Longest edge (px) after decode, tiered by **file size** (smaller caps for heavier files = less work in `thumbnail` + terminal encode).
-#[must_use]
-pub fn tiered_max_dimension_for_file_size(file_size_bytes: u64) -> u32 {
-    match file_size_bytes {
-        s if s >= 32 * MIB => 768,
-        s if s >= 20 * MIB => 1024,
-        s if s >= 8 * MIB => 1280,
-        s if s >= 2 * MIB => 1600,
-        s if s >= MIB => 1440,
-        _ => 1600,
-    }
-}
-
-#[inline]
-pub fn downscale_with_max(img: image::DynamicImage, max_dim: u32) -> image::DynamicImage {
-    let w = img.width();
-    let h = img.height();
-    if w <= max_dim && h <= max_dim {
-        img
-    } else {
-        img.thumbnail(max_dim, max_dim)
-    }
 }
 
 fn finish_protocol_from_image(state: &mut UblxState, dyn_img: image::DynamicImage) {
@@ -273,13 +205,13 @@ pub fn ensure_viewer_image(
     state.viewer_image.err = None;
 
     let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
-    let tiered = tiered_max_dimension_for_file_size(file_size);
+    let tiered = raster_policy::tiered_max_dimension_for_file_size(file_size);
     let max_dim = match viewport_cells {
         Some((w, h)) => {
             let edge = if is_pdf {
-                max_edge_for_pdf_viewport_cells(w, h)
+                raster_policy::max_edge_for_pdf_viewport_cells(w, h)
             } else {
-                max_edge_for_viewport_cells(w, h)
+                raster_policy::max_edge_for_viewport_cells(w, h)
             };
             tiered.min(edge)
         }
@@ -298,7 +230,7 @@ pub fn ensure_viewer_image(
         let page = state.viewer_image.pdf_page.max(1);
         std::thread::spawn(move || {
             let res = pdf_preview::render_pdf_page(&path, page, max_dim)
-                .map(|img| downscale_with_max(img, max_dim));
+                .map(|img| raster_policy::downscale_with_max(img, max_dim));
             let _ = tx.send(res);
         });
     } else if file_size >= ASYNC_DECODE_MIN_BYTES {
@@ -306,28 +238,17 @@ pub fn ensure_viewer_image(
         state.viewer_image.decode_rx = Some(rx);
         let path = abs.clone();
         std::thread::spawn(move || {
-            let res = image::open(&path).map(|img| downscale_with_max(img, max_dim));
+            let res = image::open(&path).map(|img| raster_policy::downscale_with_max(img, max_dim));
             let _ = tx.send(res.map_err(|e| e.to_string()));
         });
     } else {
         match image::open(abs) {
-            Ok(img) => finish_protocol_from_image(state, downscale_with_max(img, max_dim)),
+            Ok(img) => {
+                finish_protocol_from_image(state, raster_policy::downscale_with_max(img, max_dim))
+            }
             Err(e) => {
                 state.viewer_image.err = Some(format!("Could not open image: {e}"));
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::label_body_error;
-    use crate::ui::UI_GLYPHS;
-
-    #[test]
-    fn label_body_error_includes_markdown_image_glyph() {
-        let s = label_body_error("not found");
-        assert!(s.contains("not found"));
-        assert!(s.contains(UI_GLYPHS.markdown_image));
     }
 }

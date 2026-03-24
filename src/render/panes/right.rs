@@ -18,7 +18,7 @@
 //! 4. **Scroll** — [`scrollable_content::layout_scrollable_content`] + [`scrollable_content::draw_scrollbar`].
 //! 5. **Draw** — If metadata/writing JSON is present, [`kv_tables::draw_tables`] (no `Paragraph`).
 //!    Else [`content_display_text`] → `Paragraph` with optional ratatui [`Wrap`].
-//! 6. **Images** — See [`crate::render::viewers::image_handler`]: ≥512 KiB off-thread decode, tiered
+//! 6. **Images** — See [`crate::render::viewers::image::core`]: ≥512 KiB off-thread decode, tiered
 //!    downscale, **min(tier, viewport cells)**, and a small **LRU** for instant back within a few files.
 //!
 //! **Preformatted layout:** [`viewer_uses_preformatted_layout`] is true for Markdown and for CSV
@@ -35,16 +35,15 @@
 use ratatui::layout::{Constraint, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use zahirscan::FileType;
 
-use crate::handlers::zahir_ops::delimiter_from_path_for_viewer;
+use crate::handlers::zahir_ops::{ZahirFileType as FileType, delimiter_from_path_for_viewer};
 use crate::layout::{
     setup::{RightPaneContent, RightPaneMode, UblxState},
     style,
 };
 use crate::render::{
     kv_tables, scrollable_content,
-    viewers::{csv_handler, image_handler as viewer_image, markdown},
+    viewers::{csv_handler, image as viewer_image, markdown},
 };
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::{format::StringObjTraits, format_bytes};

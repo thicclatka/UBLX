@@ -16,6 +16,7 @@ use crate::config::UblxOpts;
 pub type ZahirResult = ZahirScanResult;
 pub type ZahirOutput = Output;
 pub type ZahirOutputSink = OutputSink;
+pub type ZahirFileType = FileType;
 
 /// Parse a DB `category` string into [`FileType`] when it matches [`FileType::as_metadata_name`].
 ///

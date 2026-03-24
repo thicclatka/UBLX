@@ -8,12 +8,13 @@ use rusqlite::{Connection, OptionalExtension};
 
 use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
 use super::utils::{self as db_ops_utils, SnapshotPriorContext};
+
 use crate::config::{UblxPaths, UblxSettings};
 use crate::handlers::{
     nefax_ops::{NefaxDiff, NefaxResult},
     zahir_ops::{ZahirOutput, ZahirResult, get_zahir_output_by_path},
 };
-use crate::utils::canonicalize_dir_to_ublx;
+use crate::utils::{canonicalize_dir_to_ublx, get_created_ns, normalize_snapshot_rel_path_str};
 
 /// One row from snapshot for TUI list: (path, category, `size_bytes`). `zahir_json` is loaded on demand for the selected row.
 pub type SnapshotTuiRow = (String, String, u64);
@@ -196,7 +197,7 @@ fn write_delta_log(
     diff: &NefaxDiff,
 ) -> Result<(), anyhow::Error> {
     let mut stmt = conn.prepare(UblxDbStatements::INSERT_DELTA_LOG)?;
-    let created_ns = db_ops_utils::get_created_ns();
+    let created_ns = get_created_ns();
 
     for delta_type in DeltaType::iter() {
         db_ops_utils::insert_results_into_delta_log_by_type(
@@ -263,7 +264,7 @@ pub fn load_snapshot_zahir_json_map(
     let mut out = std::collections::HashMap::new();
     for r in rows {
         let (path, json) = r?;
-        out.insert(db_ops_utils::normalize_snapshot_rel_path_str(&path), json);
+        out.insert(normalize_snapshot_rel_path_str(&path), json);
     }
     Ok(out)
 }
@@ -287,10 +288,7 @@ pub fn load_snapshot_category_map(
     let mut out = std::collections::HashMap::new();
     for r in rows {
         let (path, category) = r?;
-        out.insert(
-            db_ops_utils::normalize_snapshot_rel_path_str(&path),
-            category,
-        );
+        out.insert(normalize_snapshot_rel_path_str(&path), category);
     }
     Ok(out)
 }

@@ -5,9 +5,10 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use image::DynamicImage;
+
+use crate::utils::unique_stamp;
 
 /// Extra scale on the PDF raster longest edge vs plain images (applied after viewport + tier caps).
 ///
@@ -26,14 +27,6 @@ impl PdfRasterMaxDimBoost {
     pub fn apply(base: u32) -> u32 {
         ((base as u64 * Self::NUMERATOR) / Self::DENOMINATOR).min(Self::CAP_PX) as u32
     }
-}
-
-fn unique_stamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
-        ^ ((std::process::id() as u64) << 32)
 }
 
 /// One failed attempt: whether the executable was missing from `PATH` vs ran and failed.
@@ -59,9 +52,10 @@ fn try_pdfinfo_pages(pdf: &Path) -> Result<u32, String> {
     for line in stdout.lines() {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix("Pages:") {
-            return rest.trim().parse::<u32>().map_err(|_| {
-                format!("pdfinfo: invalid Pages line: {line}")
-            });
+            return rest
+                .trim()
+                .parse::<u32>()
+                .map_err(|_| format!("pdfinfo: invalid Pages line: {line}"));
         }
     }
     Err("pdfinfo: no Pages line".to_string())

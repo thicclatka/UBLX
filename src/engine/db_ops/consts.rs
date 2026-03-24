@@ -2,8 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::config::UblxPaths;
-use crate::handlers::zahir_ops::file_type_from_metadata_name;
-use zahirscan::FileType;
+use crate::handlers::zahir_ops::{ZahirFileType as FileType, file_type_from_metadata_name};
 
 /// Schema for the ublx DB
 pub struct UblxDbSchema;
