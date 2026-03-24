@@ -19,6 +19,9 @@ Handler logic for the TUI: input → state transitions, loading data, and callin
 | ------------------ | -------------------------------------------------------------------------------------- |
 | **theme_selector** | Open selector (Ctrl+t), handle j/k/Enter/Esc, apply theme, toast.                      |
 | **settings**       | First-tick toast, config watcher for hot reload.                                       |
+| **first_run**      | First-run prompt to choose default `enable_enhance_all` and write local config.         |
+| **enhance_policy** | Space-menu flow to set per-subtree `[[enhance_policy]]` (auto vs manual batch Zahir). |
+| **enhance**        | Per-file “Enhance with ZahirScan” when global enhance is off.                          |
 | **dupe_finder**    | Spawn duplicate detection in background; on result, toast or switch to Duplicates tab. |
 | **opener**         | Open (Terminal) / Open (GUI) from context menu.                                        |
 | **lens**           | Add to lens, create/rename/delete lens; lens menu and confirm flows.                   |
@@ -28,4 +31,4 @@ Handler logic for the TUI: input → state transitions, loading data, and callin
 | Wrapper       | Purpose                                                                             |
 | ------------- | ----------------------------------------------------------------------------------- |
 | **nefax_ops** | Build nefax opts, run nefax (batch or stream), map results.                         |
-| **zahir_ops** | Build zahir config from ublx opts, run zahir (batch or stream), get output by path. |
+| **zahir_ops** | Build zahir config from ublx opts, run zahir (batch or stream), empty-path short circuit, get output by path. |

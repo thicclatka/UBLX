@@ -49,6 +49,11 @@ fn main() {
     );
     debug!("db: {}", db_path.display());
 
+    let paths = UblxPaths::new(&dir_to_ublx);
+    // After `ensure_ublx_and_db`, `.ublx` always exists — use empty `snapshot` + no local toml, not missing DB file.
+    let initial_prompt =
+        !test_mode && !db_ops::snapshot_has_any_row(&db_path) && paths.toml_path().is_none();
+
     // Load prior Nefax from DB or exit if error
     let prior_nefax = nefax_ops::load_prior_nefax_or_exit(&dir_to_ublx, &db_path);
 
@@ -57,7 +62,6 @@ fn main() {
         debug!("using cached settings from .ublx (skipping disk check)");
     }
 
-    let paths = UblxPaths::new(&dir_to_ublx);
     let valid_themes: Vec<&str> = themes::theme_options()
         .iter()
         .map(|o| o.display_name)
@@ -86,6 +90,7 @@ fn main() {
         bumper: bumper.as_ref(),
         dev: args.dev,
         start_time,
+        initial_prompt,
     };
     fatal!(core::run_app(&mut run_params), "{}");
 }

@@ -74,19 +74,28 @@ Config is optional. If present, **global** config is applied first, then **local
 
 **Configurable keys** (in `ublx.toml` / `.ublx.toml`):
 
-| Key                 | Type             | Allowable values / notes                                                                                                                         |
-| ------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `theme`             | string           | See [Themes](src/layout/themes/README.md#allowable-values).                                                                                      |
-| `layout`            | table            | Pane widths: `left_pct`, `middle_pct`, `right_pct` (each 0–100; must sum to 100). Default: `left_pct = 20`, `middle_pct = 30`, `right_pct = 50`. |
-| `transparent`       | bool             | If `true`, no app background (terminal default/transparency shows).                                                                              |
-| `show_hidden_files` | bool             | If `true`, include hidden files (e.g. `.*`) in the index.                                                                                        |
-| `hash`              | bool             | If `true`, compute blake3 hash per file (slower; used for duplicate detection and change detection).                                             |
-| `exclude`           | array of strings | Extra path patterns to exclude from indexing (startup only; not hot-reloadable).                                                                 |
-| `editor_path`       | string           | Path to editor for “Open (Terminal)” (e.g. `"vim"`, `"nvim"`). When unset, uses `$EDITOR`.                                                       |
+| Key                  | Type                 | Allowable values / notes                                                                                                                         |
+| -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `theme`              | string               | See [Themes](src/layout/themes/README.md#allowable-values).                                                                                      |
+| `layout`             | table                | Pane widths: `left_pct`, `middle_pct`, `right_pct` (each 0–100; must sum to 100). Default: `left_pct = 20`, `middle_pct = 30`, `right_pct = 50`. |
+| `transparent`        | bool                 | If `true`, no app background (terminal default/transparency shows).                                                                              |
+| `show_hidden_files`  | bool                 | If `true`, include hidden files (e.g. `.*`) in the index.                                                                                        |
+| `hash`               | bool                 | If `true`, compute blake3 hash per file (slower; used for duplicate detection and change detection).                                             |
+| `exclude`            | array of strings     | Extra path patterns to exclude from indexing (startup only; not hot-reloadable).                                                                 |
+| `editor_path`        | string               | Path to editor for “Open (Terminal)” (e.g. `"vim"`, `"nvim"`). When unset, uses `$EDITOR`.                                                       |
+| `enable_enhance_all` | bool                 | If `true`, metadata for all files on snapshot. If `false` (default), path-only until **Enhance with ZahirScan** per file.                        |
+| `[[enhance_policy]]` | TOML array of tables | Optional per-subtree rules (see below). Hot-reloadable with the rest of the overlay.                                                             |
 
-All of the above except `exclude` are **hot-reloadable** (edit the file and changes apply without restart).
+All of the above except **`exclude`** are **hot-reloadable**.
 
-**Live reload** — UBLX watches the config file. If you edit it (inside the TUI or in an external editor), a successful parse applies the new settings immediately. If the file is invalid, an error is shown and the last successful config is used (loaded from cache for that directory).
+**`[[enhance_policy]]`** — Each row has `path` (relative to the indexed directory, `/` separators, e.g. `src` or `photos/2024`) and `policy`:
+
+- **`auto`** — ZahirScan runs for files under that prefix when you take a snapshot (same idea as `enable_enhance_all = true`, but only for this subtree).
+- **`manual`** — No batch Zahir on snapshot for that subtree (same idea as `enable_enhance_all = false`): the catalog is path-only there until you **Enhance with ZahirScan** on specific files.
+
+The **longest** `path` prefix that matches a file wins. If no row matches, **`enable_enhance_all`** applies globally.
+
+**Live reload** — UBLX watches the config file. If you edit it (inside the TUI or in an external editor), a successful parse applies the new settings immediately; valid merged overlay is written to the per-directory config cache. If the file is invalid, an error is shown and the last successful config is used (loaded from cache for that directory).
 
 ## Usage
 

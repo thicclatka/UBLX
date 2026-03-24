@@ -51,6 +51,11 @@ pub struct RichBuilder {
     /// Glyph to append after the outermost link’s visible text (`end_link`).
     link_pending_glyph: Option<char>,
     image_depth: u32,
+    /// Paragraph contains only a single `![alt](url)` (no other text outside the image).
+    images_in_paragraph: u32,
+    non_image_text: bool,
+    image_only_dest: Option<String>,
+    image_only_alt: String,
 }
 
 impl RichBuilder {
@@ -66,6 +71,10 @@ impl RichBuilder {
             link_depth: 0,
             link_pending_glyph: None,
             image_depth: 0,
+            images_in_paragraph: 0,
+            non_image_text: false,
+            image_only_dest: None,
+            image_only_alt: String::new(),
         }
     }
 
@@ -153,8 +162,10 @@ impl RichBuilder {
     }
 
     /// Inline `![alt](url)` — leading image glyph before alt text.
-    pub fn begin_image(&mut self) {
+    pub fn begin_image(&mut self, dest_url: &str) {
         if self.image_depth == 0 {
+            self.images_in_paragraph = self.images_in_paragraph.saturating_add(1);
+            self.image_only_dest = Some(dest_url.to_string());
             self.push_leading_image_glyph(UI_GLYPHS.markdown_image);
         }
         self.image_depth += 1;
@@ -173,6 +184,11 @@ impl RichBuilder {
     pub fn push_text(&mut self, s: &str) {
         if s.is_empty() {
             return;
+        }
+        if self.image_depth == 0 {
+            self.non_image_text = true;
+        } else {
+            self.image_only_alt.push_str(s);
         }
         let st = self.current_text_style();
         self.current_spans.push(Span::styled(s.to_string(), st));

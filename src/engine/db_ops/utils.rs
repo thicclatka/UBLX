@@ -9,11 +9,18 @@ use rayon::prelude::*;
 use rusqlite::{Connection, Statement};
 
 use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
-use crate::config::{NEFAX_DB, PARALLEL, UblxPaths};
+use crate::config::{PARALLEL, UblxOpts, UblxPaths};
 use crate::handlers::{
     nefax_ops::{NefaxDiff, NefaxPathMeta, NefaxResult},
-    zahir_ops::{ZahirOutput, zahir_output_to_json},
+    zahir_ops::{ZahirOutput, zahir_metadata_name_from_path_hint, zahir_output_to_json},
 };
+
+/// Prior snapshot maps and options passed through snapshot rebuild (keeps clippy arg counts down).
+pub struct SnapshotPriorContext<'a> {
+    pub prior_zahir_json: &'a HashMap<String, String>,
+    pub prior_category: &'a HashMap<String, String>,
+    pub ublx_opts: &'a UblxOpts,
+}
 
 /// Get the full path and the path string for a given path.
 #[must_use]
@@ -36,15 +43,20 @@ pub fn ensure_ublx_and_db(dir_to_ublx: &Path) -> Result<PathBuf, anyhow::Error> 
     Ok(path)
 }
 
-/// Get `file_type` string from prior zahir JSON so we can preserve category when current run didn't re-run zahir.
-fn file_type_from_zahir_json(json: &str) -> Option<String> {
-    serde_json::from_str::<serde_json::Value>(json)
-        .ok()
-        .and_then(|v| {
-            v.get("file_type")
-                .and_then(|v| v.as_str())
-                .map(String::from)
-        })
+/// Category for a snapshot row: reuse prior DB category when present so Zahir enrichment does not move files between TUI categories; else path-type hint (same as first-time index without prior row).
+fn category_for_snapshot_row(
+    full_path: &Path,
+    path_str: &str,
+    ublx_paths: Option<&UblxPaths>,
+    prior_category: &HashMap<String, String>,
+) -> String {
+    if let Some(c) = prior_category.get(path_str)
+        && !c.is_empty()
+    {
+        return c.clone();
+    }
+    let hint = zahir_metadata_name_from_path_hint(path_str);
+    UblxDbCategory::get_category_for_path(full_path, ublx_paths, hint.as_deref())
 }
 
 #[must_use]
@@ -54,16 +66,17 @@ pub fn prepare_results_for_snapshot_insertion(
     ublx_paths: Option<&UblxPaths>,
     zahir_output_by_path: &HashMap<String, &ZahirOutput>,
     prior_zahir_json: &std::collections::HashMap<String, String>,
+    prior_category: &HashMap<String, String>,
+    ublx_opts: &UblxOpts,
 ) -> (String, String, String) {
     let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path_ref);
+    let category = category_for_snapshot_row(&full_path, &path_str, ublx_paths, prior_category);
+    let skip_batch = !ublx_opts.batch_zahir_for_path(&path_str);
+    if skip_batch {
+        let zahir_json = prior_zahir_json.get(&path_str).cloned().unwrap_or_default();
+        return (path_str, category, zahir_json);
+    }
     let zahir_output = zahir_output_by_path.get(&path_str);
-    let prior_ft = prior_zahir_json
-        .get(&path_str)
-        .and_then(|j| file_type_from_zahir_json(j));
-    let zahir_file_type = zahir_output
-        .and_then(|o| o.file_type.as_deref())
-        .or(prior_ft.as_deref());
-    let category = UblxDbCategory::get_category_for_path(&full_path, ublx_paths, zahir_file_type);
     let zahir_json = zahir_output.map_or_else(
         || prior_zahir_json.get(&path_str).cloned().unwrap_or_default(),
         |o| zahir_output_to_json(Some(o)),
@@ -86,7 +99,7 @@ pub fn insert_results_into_snapshot(
     dir_to_ublx: &Path,
     ublx_paths: Option<&UblxPaths>,
     zahir_output_by_path: &HashMap<String, &ZahirOutput>,
-    prior_zahir_json: &std::collections::HashMap<String, String>,
+    prior: &SnapshotPriorContext<'_>,
 ) -> Result<(), anyhow::Error> {
     if nefax.len() >= PARALLEL.snapshot_insert_prep {
         let entries: Vec<_> = nefax.iter().collect();
@@ -98,7 +111,9 @@ pub fn insert_results_into_snapshot(
                     path.as_path(),
                     ublx_paths,
                     zahir_output_by_path,
-                    prior_zahir_json,
+                    prior.prior_zahir_json,
+                    prior.prior_category,
+                    prior.ublx_opts,
                 );
                 let hash = meta.hash.as_ref().map(|h| h.as_slice().to_vec());
                 (
@@ -128,7 +143,9 @@ pub fn insert_results_into_snapshot(
                 path,
                 ublx_paths,
                 zahir_output_by_path,
-                prior_zahir_json,
+                prior.prior_zahir_json,
+                prior.prior_category,
+                prior.ublx_opts,
             );
             stmt.execute(rusqlite::params![
                 path_str,
@@ -181,7 +198,7 @@ fn insert_global_config_row_if_exists(
     Ok(())
 }
 
-/// Insert all nefax rows (category from prior zahir when available, else path fallback; `zahir_json` from prior). For streaming: zahir updates applied later for paths that were sent.
+/// Insert all nefax rows (category from prior snapshot when present, else path hint; `zahir_json` from prior). For streaming: `zahir_json` updates applied later for paths that were sent.
 ///
 /// # Errors
 ///
@@ -191,16 +208,17 @@ pub fn insert_nefax_only_into_snapshot(
     nefax: &NefaxResult,
     dir_to_ublx: &Path,
     ublx_paths: Option<&UblxPaths>,
-    prior_zahir_json: &std::collections::HashMap<String, String>,
+    prior: &SnapshotPriorContext<'_>,
 ) -> Result<(), anyhow::Error> {
     for (path, meta) in nefax {
         let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path);
-        let prior_ft = prior_zahir_json
-            .get(&path_str)
-            .and_then(|j| file_type_from_zahir_json(j));
         let category =
-            UblxDbCategory::get_category_for_path(&full_path, ublx_paths, prior_ft.as_deref());
-        let zahir_json = prior_zahir_json.get(&path_str).cloned().unwrap_or_default();
+            category_for_snapshot_row(&full_path, &path_str, ublx_paths, prior.prior_category);
+        let zahir_json = prior
+            .prior_zahir_json
+            .get(&path_str)
+            .cloned()
+            .unwrap_or_default();
         stmt.execute(rusqlite::params![
             path_str,
             meta.mtime_ns,
@@ -280,24 +298,13 @@ pub struct NefaxFromGivenDB {
 
 impl NefaxFromGivenDB {
     #[must_use]
-    pub fn new(dir_to_ublx: &Path, db_path: &Path) -> Self {
-        let (db_path_to_use, table_name) =
-            Self::determine_db_path_and_table_name(dir_to_ublx, db_path);
+    pub fn new(_dir_to_ublx: &Path, db_path: &Path) -> Self {
+        // Always load prior from `.ublx` `snapshot`. A stale `.nefaxer` beside an empty snapshot
+        // (first-run prompt → deferred index) produced a full prior from `paths`, empty nefax diff,
+        // and (0,0,0) while the DB never filled — see `orchestrator::run` nefaxer delete when snapshot empty.
         Self {
-            db_path_to_use,
-            table_name: table_name.to_string(),
-        }
-    }
-
-    fn determine_db_path_and_table_name(
-        dir_to_ublx: &Path,
-        db_path: &Path,
-    ) -> (PathBuf, &'static str) {
-        let nefax_path = dir_to_ublx.join(NEFAX_DB);
-        if nefax_path.exists() {
-            (nefax_path, "paths")
-        } else {
-            (db_path.to_path_buf(), "snapshot")
+            db_path_to_use: db_path.to_path_buf(),
+            table_name: "snapshot".to_string(),
         }
     }
 
@@ -334,7 +341,12 @@ impl NefaxFromGivenDB {
         let mut nefax = NefaxResult::new();
         for row in rows {
             let (path_str, mtime_ns, size, hash_blob) = row?;
-            let path = PathBuf::from(path_str);
+            // Drop synthetic global-config row (`insert_global_config_row_if_exists`): absolute path, not a nefax-relative key.
+            // Local `ublx.toml` / `ublx.log` use the same display categories but stay relative — they must stay in prior nefax.
+            if Path::new(path_str.trim()).is_absolute() {
+                continue;
+            }
+            let path = nefax_rel_path_key_from_snapshot(&path_str);
             let size_u = size.try_into().unwrap_or(0);
             let hash = hash_blob.filter(|b| b.len() == 32).map(|b| {
                 let mut a = [0u8; 32];
@@ -352,6 +364,29 @@ impl NefaxFromGivenDB {
         }
         Ok(nefax)
     }
+}
+
+/// True if `snapshot` has at least one row (schema present and populated).
+pub(crate) fn snapshot_table_has_rows(db_path: &Path) -> bool {
+    let Ok(conn) = Connection::open(db_path) else {
+        return false;
+    };
+    conn.query_row("SELECT 1 FROM snapshot LIMIT 1", [], |_r| Ok(()))
+        .is_ok()
+}
+
+/// Normalize a snapshot `path` column so it matches nefaxer’s relative path strings (`rel_str` / map keys).
+pub(crate) fn normalize_snapshot_rel_path_str(path: &str) -> String {
+    let mut s = path.trim();
+    s = s.strip_prefix("./").unwrap_or(s);
+    if let Some(rest) = s.strip_prefix(".\\") {
+        s = rest;
+    }
+    s.replace('\\', "/")
+}
+
+fn nefax_rel_path_key_from_snapshot(path_str: &str) -> PathBuf {
+    PathBuf::from(normalize_snapshot_rel_path_str(path_str))
 }
 
 pub struct UblxCleanup {

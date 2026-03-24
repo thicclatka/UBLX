@@ -6,8 +6,7 @@ use crate::layout::event_loop::RunUblxParams;
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
 };
-use crate::ui::keymap::UblxAction;
-use crate::ui::lens::show_lens_toast;
+use crate::ui::{keymap::UblxAction, show_operation_toast};
 
 /// Handle action when Open menu (Terminal/GUI) is visible. Returns true if handled.
 pub fn handle_open_menu(
@@ -74,13 +73,20 @@ pub fn handle_space_menu(
     state: &mut UblxState,
     view: &ViewData,
     params: &mut RunUblxParams<'_>,
+    ublx_opts: &UblxOpts,
     action: UblxAction,
 ) -> bool {
     if !state.space_menu.visible {
         return false;
     }
     let item_count: usize = match &state.space_menu.kind {
-        Some(SpaceMenuKind::FileActions { .. }) => 3,
+        Some(SpaceMenuKind::FileActions {
+            show_enhance_directory_policy,
+            show_enhance_zahir,
+            ..
+        }) => {
+            2 + usize::from(*show_enhance_directory_policy) + usize::from(*show_enhance_zahir) + 1
+        }
         Some(SpaceMenuKind::LensPanelActions { .. }) => 2,
         None => 0,
     };
@@ -102,31 +108,88 @@ pub fn handle_space_menu(
                     SpaceMenuKind::FileActions {
                         path,
                         can_open_in_terminal,
+                        show_enhance_directory_policy,
+                        show_enhance_zahir,
                     } => {
-                        if idx == 0 {
+                        let mut i = 0usize;
+                        if idx == i {
                             state.open_open_menu(path, can_open_in_terminal);
-                        } else if idx == 1 {
+                            return true;
+                        }
+                        i += 1;
+                        if idx == i {
                             let full = params.dir_to_ublx.join(&path);
                             if let Err(e) = applets::opener::reveal_in_file_manager(&full) {
                                 log::warn!("Show in folder: {e}");
                             }
-                        } else if state.main_mode == MainMode::Snapshot {
-                            state.open_lens_menu(path);
-                        } else if let Some(lens_name) = view
-                            .filtered_categories
-                            .get(state.panels.category_state.selected().unwrap_or(0))
-                            && crate::handlers::applets::lens::remove_path_from_lens(
-                                params.db_path,
-                                lens_name,
-                                &path,
-                            )
-                            .is_ok()
-                        {
-                            show_lens_toast(
-                                state,
-                                params,
-                                format!("Removed from lens \"{lens_name}\""),
-                            );
+                            return true;
+                        }
+                        i += 1;
+                        if show_enhance_directory_policy {
+                            if idx == i {
+                                state.enhance_policy_menu.visible = true;
+                                state.enhance_policy_menu.path = Some(path);
+                                state.enhance_policy_menu.selected_index = 0;
+                                return true;
+                            }
+                            i += 1;
+                        }
+                        if show_enhance_zahir {
+                            if idx == i {
+                                if !ublx_opts.enable_enhance_all {
+                                    match applets::enhance::enhance_single_path(
+                                        params.dir_to_ublx,
+                                        params.db_path,
+                                        &path,
+                                        ublx_opts,
+                                    ) {
+                                        Ok(()) => {
+                                            state.session.reload_snapshot_rows = true;
+                                            show_operation_toast(
+                                                state,
+                                                params,
+                                                "Enhanced with ZahirScan",
+                                                "enhance",
+                                                log::Level::Info,
+                                            );
+                                        }
+                                        Err(e) => {
+                                            log::warn!("Enhance with ZahirScan: {e}");
+                                            show_operation_toast(
+                                                state,
+                                                params,
+                                                format!("Enhance failed: {e}"),
+                                                "enhance",
+                                                log::Level::Info,
+                                            );
+                                        }
+                                    }
+                                }
+                                return true;
+                            }
+                            i += 1;
+                        }
+                        if idx == i {
+                            if state.main_mode == MainMode::Snapshot {
+                                state.open_lens_menu(path);
+                            } else if let Some(lens_name) = view
+                                .filtered_categories
+                                .get(state.panels.category_state.selected().unwrap_or(0))
+                                && crate::handlers::applets::lens::remove_path_from_lens(
+                                    params.db_path,
+                                    lens_name,
+                                    &path,
+                                )
+                                .is_ok()
+                            {
+                                show_operation_toast(
+                                    state,
+                                    params,
+                                    format!("Removed from lens \"{lens_name}\""),
+                                    "lens",
+                                    log::Level::Info,
+                                );
+                            }
                         }
                     }
                     SpaceMenuKind::LensPanelActions { lens_name } => {
@@ -156,6 +219,7 @@ pub fn try_open_space_menu(
     }
     if !matches!(state.main_mode, MainMode::Snapshot | MainMode::Lenses)
         || state.space_menu.visible
+        || state.enhance_policy_menu.visible
         || state.lens_confirm.rename_input.is_some()
         || state.lens_confirm.delete_visible
         || state.open_menu.visible
@@ -169,6 +233,8 @@ pub fn try_open_space_menu(
             state.open_space_menu(SpaceMenuKind::FileActions {
                 path: path.clone(),
                 can_open_in_terminal: right_content.viewer_can_open,
+                show_enhance_directory_policy: right_content.viewer_offer_enhance_directory_policy,
+                show_enhance_zahir: right_content.viewer_offer_enhance_zahir,
             });
             return true;
         }

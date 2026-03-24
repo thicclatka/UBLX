@@ -22,7 +22,7 @@ static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();
 pub struct BumperMessage {
     pub level: Level,
     pub text: String,
-    /// Optional operation name used as the toast title (e.g. "ublx-snapshot").
+    /// Optional operation name used as the toast title (e.g. `ublx: snapshot`).
     pub operation: Option<String>,
 }
 

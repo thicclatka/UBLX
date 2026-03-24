@@ -2,32 +2,12 @@
 
 use crossterm::event::KeyCode;
 
-use crate::config::OPERATION_NAME;
 use crate::handlers::applets::lens as lens_applet;
 use crate::layout::{
     event_loop::RunUblxParams,
     setup::{RightPaneContent, UblxState},
 };
-use crate::ui::keymap::UblxAction;
-use crate::utils::notifications;
-
-/// Push a lens-operation message to the bumper and show a toast. No-op if `params.bumper` is None.
-pub fn show_lens_toast(
-    state: &mut UblxState,
-    params: &RunUblxParams<'_>,
-    message: impl AsRef<str>,
-) {
-    if let Some(b) = params.bumper {
-        let op = OPERATION_NAME.op("lens");
-        b.push_with_operation(log::Level::Info, message.as_ref(), Some(&op));
-        notifications::show_toast_slot(
-            &mut state.toasts.slots,
-            b,
-            Some(op.as_str()),
-            &mut state.toasts.consumed_per_operation,
-        );
-    }
-}
+use crate::ui::{keymap::UblxAction, show_operation_toast};
 
 /// Handle key when user is typing a new lens name (Create New Lens). Returns true if key was consumed.
 pub fn handle_lens_name_input(
@@ -59,7 +39,7 @@ pub fn handle_lens_name_input(
                     } else {
                         format!("Added to lens \"{name_trimmed}\"")
                     };
-                    show_lens_toast(state, params, msg);
+                    show_operation_toast(state, params, msg, "lens", log::Level::Info);
                 }
             }
         }
@@ -96,7 +76,13 @@ pub fn handle_lens_rename_input(
                 if let Some(i) = params.lens_names.iter().position(|n| n == &target_name) {
                     params.lens_names[i].clone_from(&new_name);
                 }
-                show_lens_toast(state, params, format!("Renamed lens to \"{new_name}\""));
+                show_operation_toast(
+                    state,
+                    params,
+                    format!("Renamed lens to \"{new_name}\""),
+                    "lens",
+                    log::Level::Info,
+                );
             }
         }
         KeyCode::Esc => {}
@@ -132,7 +118,13 @@ pub fn handle_lens_delete_confirm(
                 && lens_applet::delete_lens(params.db_path, &name).is_ok()
             {
                 params.lens_names.retain(|n| n != &name);
-                show_lens_toast(state, params, format!("Deleted lens \"{name}\""));
+                show_operation_toast(
+                    state,
+                    params,
+                    format!("Deleted lens \"{name}\""),
+                    "lens",
+                    log::Level::Info,
+                );
             }
         }
         _ => {}
@@ -166,7 +158,13 @@ pub fn handle_lens_menu(
                     params.lens_names.get(state.lens_menu.selected_index - 1)
                 {
                     if lens_applet::add_path_to_lens(params.db_path, lens_name, path).is_ok() {
-                        show_lens_toast(state, params, format!("Added to lens \"{lens_name}\""));
+                        show_operation_toast(
+                            state,
+                            params,
+                            format!("Added to lens \"{lens_name}\""),
+                            "lens",
+                            log::Level::Info,
+                        );
                     }
                     state.close_lens_menu();
                 }

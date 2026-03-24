@@ -94,9 +94,13 @@ pub struct UblxDbStatements;
 impl UblxDbStatements {
     pub const INSERT_SNAPSHOT: &'static str = "INSERT OR REPLACE INTO snapshot (path, mtime_ns, size, hash, category, zahir_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
 
-    /// Update category and `zahir_json` for an existing snapshot row (streaming write).
+    /// Update category and `zahir_json` for an existing snapshot row (legacy; prefer [`Self::UPDATE_SNAPSHOT_ZAHIR_JSON_ONLY`] when category must stay unchanged).
     pub const UPDATE_SNAPSHOT_ZAHIR: &'static str =
         "UPDATE snapshot SET category = ?1, zahir_json = ?2 WHERE path = ?3";
+
+    /// Update only `zahir_json` (category stays as set at insert / prior snapshot).
+    pub const UPDATE_SNAPSHOT_ZAHIR_JSON_ONLY: &'static str =
+        "UPDATE snapshot SET zahir_json = ?1 WHERE path = ?2";
 
     pub const INSERT_SETTINGS: &'static str = "INSERT OR REPLACE INTO settings (id, num_threads, drive_type, parallel_walk, config_source) VALUES (1, ?1, ?2, ?3, ?4)";
 
@@ -126,6 +130,10 @@ impl UblxDbStatements {
     /// (path, `zahir_json`) for paths that have non-empty `zahir_json`. Used for prior-zahir reuse.
     pub const SELECT_SNAPSHOT_PATH_ZAHIR_JSON: &'static str =
         "SELECT path, zahir_json FROM snapshot WHERE zahir_json IS NOT NULL AND zahir_json != ''";
+
+    /// (path, category) for all snapshot rows. Used to preserve categories across Zahir enrichment.
+    pub const SELECT_SNAPSHOT_PATH_CATEGORY: &'static str =
+        "SELECT path, category FROM snapshot WHERE path IS NOT NULL";
 
     /// Distinct categories for TUI left bar.
     pub const SELECT_SNAPSHOT_CATEGORIES: &'static str = "SELECT DISTINCT category FROM snapshot WHERE category IS NOT NULL AND category != '' ORDER BY category";

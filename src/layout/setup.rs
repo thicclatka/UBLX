@@ -94,6 +94,14 @@ pub struct SpaceMenuState {
     pub kind: Option<SpaceMenuKind>,
 }
 
+/// After Space → Enhance policy: choose auto / manual batch Zahir for this directory subtree (local TOML).
+#[derive(Default)]
+pub struct EnhancePolicyMenuState {
+    pub visible: bool,
+    pub path: Option<String>,
+    pub selected_index: usize,
+}
+
 /// Lens rename input and delete-lens confirmation.
 #[derive(Default)]
 pub struct LensConfirmState {
@@ -110,12 +118,21 @@ pub struct ViewerChrome {
     pub viewer_fullscreen: bool,
 }
 
+/// First-run modal: choose `enable_enhance_all` when there was no DB and no local `ublx.toml`.
+#[derive(Debug, Clone)]
+pub struct InitialEnhancePromptState {
+    /// 0 = Yes (full Zahir on index), 1 = No.
+    pub selected_index: usize,
+}
+
 /// Background snapshot: user request, poll `.ublx_tmp` while running, and completion.
 #[derive(Default)]
 pub struct BackgroundSnapshot {
     pub requested: bool,
     pub poll_deadline: Option<std::time::Instant>,
     pub done_received: bool,
+    /// After the in-flight snapshot finishes, run one more (e.g. `[[enhance_policy]]` = auto just saved).
+    pub defer_snapshot_after_current: bool,
 }
 
 /// Lazy-load duplicate groups when the user opens the Duplicates tab.
@@ -128,6 +145,10 @@ pub struct DuplicateLoadGate {
 pub struct SessionFlow {
     pub first_tick: bool,
     pub refresh_terminal_after_editor: bool,
+    /// After single-file ZahirScan enhance, reload snapshot rows from DB on next tick.
+    pub reload_snapshot_rows: bool,
+    /// After we show the "enhancing in background" toast for [`crate::engine::orchestrator::should_force_full_zahir`], suppress duplicates until restart.
+    pub force_full_enhance_toast_shown: bool,
 }
 
 impl Default for SessionFlow {
@@ -135,6 +156,8 @@ impl Default for SessionFlow {
         Self {
             first_tick: true,
             refresh_terminal_after_editor: false,
+            reload_snapshot_rows: false,
+            force_full_enhance_toast_shown: false,
         }
     }
 }
@@ -198,6 +221,7 @@ pub struct UblxState {
     pub open_menu: OpenMenuState,
     pub lens_menu: LensMenuState,
     pub space_menu: SpaceMenuState,
+    pub enhance_policy_menu: EnhancePolicyMenuState,
     pub lens_confirm: LensConfirmState,
     pub chrome: ViewerChrome,
     pub cached_tree: Option<(String, String)>,
@@ -212,6 +236,8 @@ pub struct UblxState {
     pub session: SessionFlow,
     /// CLI to pipe UTF-8 into for clipboard (see [`ClipboardCopyCommand::detect`]); None if nothing found.
     pub clipboard_copy: Option<ClipboardCopyCommand>,
+    /// Shown once when the indexed dir had no `.ublx` yet and no local config file.
+    pub initial_prompt: Option<InitialEnhancePromptState>,
 }
 
 impl Default for UblxState {
@@ -233,6 +259,7 @@ impl UblxState {
             open_menu: OpenMenuState::default(),
             lens_menu: LensMenuState::default(),
             space_menu: SpaceMenuState::default(),
+            enhance_policy_menu: EnhancePolicyMenuState::default(),
             lens_confirm: LensConfirmState::default(),
             chrome: ViewerChrome::default(),
             cached_tree: None,
@@ -244,6 +271,7 @@ impl UblxState {
             config_written_by_us_at: None,
             session: SessionFlow::default(),
             clipboard_copy: ClipboardCopyCommand::detect(),
+            initial_prompt: None,
         }
     }
 
@@ -274,6 +302,12 @@ impl UblxState {
         self.space_menu.visible = false;
         self.space_menu.selected_index = 0;
         self.space_menu.kind = None;
+    }
+
+    pub fn close_enhance_policy_menu(&mut self) {
+        self.enhance_policy_menu.visible = false;
+        self.enhance_policy_menu.path = None;
+        self.enhance_policy_menu.selected_index = 0;
     }
 
     /// Reset delete-lens confirmation popup state.
@@ -343,6 +377,10 @@ pub enum SpaceMenuKind {
     FileActions {
         path: String,
         can_open_in_terminal: bool,
+        /// Show subtree batch-enhance policy when the snapshot row is [`CATEGORY_DIRECTORY`].
+        show_enhance_directory_policy: bool,
+        /// Show "Enhance with ZahirScan" when [`crate::config::UblxOpts::enable_enhance_all`] is false and row has no `zahir_json`.
+        show_enhance_zahir: bool,
     },
     /// Lens panel actions: `lens_name` is the selected lens. Options: Rename, Delete.
     LensPanelActions { lens_name: String },
@@ -447,6 +485,10 @@ pub struct RightPaneContent {
     pub viewer_can_open: bool,
     /// Label for the open hint node in the footer (e.g. "↗", "↗ (Terminal)", "↗ (GUI)"). Set by caller when `viewer_can_open`.
     pub open_hint_label: Option<String>,
+    /// Space menu: offer per-file ZahirScan when global enhance is off and this row has no enrichment yet.
+    pub viewer_offer_enhance_zahir: bool,
+    /// Space menu: offer `[[enhance_policy]]` for this path when the row is a Directory in the snapshot.
+    pub viewer_offer_enhance_directory_policy: bool,
 }
 
 impl RightPaneContent {

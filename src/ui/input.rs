@@ -48,6 +48,9 @@ fn dispatch_modal_handlers(
 ) -> bool {
     let ModalInput { e, action } = input;
     // Table-style: each line is (guard / handler returns true) → we handled the event.
+    if applets::first_run::handle_initial_prompt(state, params, ublx_opts, action) {
+        return true;
+    }
     if lens::handle_lens_name_input(state, params, e) {
         return true;
     }
@@ -57,7 +60,10 @@ fn dispatch_modal_handlers(
     if lens::handle_lens_delete_confirm(state, params, action) {
         return true;
     }
-    if menu::handle_space_menu(state, view, params, action) {
+    if applets::enhance_policy::handle_enhance_policy_menu(state, params, ublx_opts, action) {
+        return true;
+    }
+    if menu::handle_space_menu(state, view, params, ublx_opts, action) {
         return true;
     }
     if lens::handle_lens_menu(state, params, action) {

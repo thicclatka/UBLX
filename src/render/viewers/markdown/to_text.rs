@@ -36,7 +36,7 @@ impl LinePushExt for Vec<Line<'static>> {
     }
 }
 
-fn block_to_lines(
+pub(crate) fn block_to_lines(
     block: &Block,
     width: u16,
     next_block: Option<&Block>,
@@ -99,7 +99,6 @@ fn block_to_lines(
 impl MarkdownDoc {
     #[must_use]
     pub fn to_text(&self, width: u16) -> Text<'static> {
-        // Resolve once on the main thread so parallel workers do not read empty theme TLS.
         let theme = themes::current();
 
         let mut lines: Vec<Line<'static>> = if self.blocks.len() >= PARALLEL.markdown_blocks {
@@ -121,9 +120,13 @@ impl MarkdownDoc {
                 })
                 .collect()
         };
-        if lines.last().is_some_and(|l| l.width() == 0) {
-            lines.pop();
-        }
+        trim_trailing_blank_line(&mut lines);
         Text::from(lines)
+    }
+}
+
+fn trim_trailing_blank_line(lines: &mut Vec<Line<'static>>) {
+    if lines.last().is_some_and(|l| l.width() == 0) {
+        lines.pop();
     }
 }

@@ -154,6 +154,11 @@ fn viewer_total_lines(
                 let msg = right_content.viewer.as_deref().unwrap_or("");
                 return wrapped_line_count(&viewer_image::label_body(msg), content_width) as usize;
             }
+            if viewer_is_markdown(right_content) {
+                let raw = right_content.viewer.as_deref().unwrap_or("");
+                let doc = markdown::parse_markdown(raw);
+                return doc.to_text(content_width).lines.len();
+            }
             right_content
                 .viewer
                 .as_deref()
@@ -229,7 +234,8 @@ fn viewer_display_text(
             }
             // Parse failed or empty: fall back to raw
         } else if viewer_is_markdown(right_content) {
-            return markdown::parse_markdown(raw).to_text(content_width);
+            let doc = markdown::parse_markdown(raw);
+            return doc.to_text(content_width);
         } else if viewer_image::is_image_category(right_content) {
             if state.viewer_image.protocol.is_some() {
                 return ratatui::text::Text::default();

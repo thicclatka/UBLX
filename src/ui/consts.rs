@@ -99,6 +99,8 @@ pub struct UiStringsDialogs {
 pub struct UiStringsToasts {
     pub config_reloaded: &'static str,
     pub no_duplicates: &'static str,
+    /// Index-time full Zahir after enabling `enable_enhance_all` (background snapshot).
+    pub force_full_enhance_background: &'static str,
 }
 
 pub struct UiStringsLens {
@@ -110,10 +112,25 @@ pub struct UiStringsLens {
     pub delete_no: &'static str,
 }
 
+/// First launch: no local `ublx.toml` yet.
+pub struct UiStringsFirstRun {
+    pub enhance_prompt_title: &'static str,
+    /// Shown below Yes/No (hint style). `ublx.toml` / `.ublx.toml`: `enable_enhance_all`.
+    pub enhance_prompt_footnote: &'static str,
+    pub enhance_yes: &'static str,
+    pub enhance_no: &'static str,
+}
+
 pub struct UiStringsSpaceMenu {
     pub open: &'static str,
     /// Reveal in Finder / Explorer, or open parent folder (Linux).
     pub show_in_folder: &'static str,
+    /// Index-time batch Zahir for this directory subtree (`[[enhance_policy]]`); snapshot Directory rows only.
+    pub enhance_policy: &'static str,
+    pub enhance_policy_always: &'static str,
+    pub enhance_policy_never: &'static str,
+    /// Run full ZahirScan on this file when `enable_enhance_all` is false.
+    pub enhance_with_zahirscan: &'static str,
     pub add_to_lens: &'static str,
     pub remove_from_lens: &'static str,
     pub rename: &'static str,
@@ -136,6 +153,7 @@ pub struct UiStrings {
     pub toasts: UiStringsToasts,
     pub lens: UiStringsLens,
     pub space: UiStringsSpaceMenu,
+    pub first_run: UiStringsFirstRun,
 }
 
 impl Default for UiStrings {
@@ -227,6 +245,7 @@ impl UiStrings {
             toasts: UiStringsToasts {
                 config_reloaded: "Config reloaded",
                 no_duplicates: "No duplicates found",
+                force_full_enhance_background: "Getting metadata for all files.",
             },
             lens: UiStringsLens {
                 menu_create_new: "Create New Lens",
@@ -239,10 +258,20 @@ impl UiStrings {
             space: UiStringsSpaceMenu {
                 open: "Open",
                 show_in_folder: "Show in folder",
+                enhance_policy: "Enhance policy",
+                enhance_policy_always: "Always (automatic)",
+                enhance_policy_never: "Per-file (manual)",
+                enhance_with_zahirscan: "Enhance with ZahirScan",
                 add_to_lens: "Add to Lens",
                 remove_from_lens: "Remove from Lens",
                 rename: "Rename",
                 delete: "Delete",
+            },
+            first_run: UiStringsFirstRun {
+                enhance_prompt_title: "Index with full ZahirScan for all files automatically?",
+                enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in settings file (`enable_enhance_all`).",
+                enhance_yes: "Yes",
+                enhance_no: "No",
             },
         }
     }

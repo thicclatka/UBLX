@@ -6,12 +6,16 @@ use std::time::{Duration, Instant};
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
-use crate::config::{OPERATION_NAME, UblxOpts};
+use crate::config::UblxOpts;
 use crate::engine::db_ops;
+use crate::engine::orchestrator;
 use crate::handlers::{applets, core::reapply_terminal_after_editor, snapshot, viewing};
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
-use crate::ui::input::{MainTabFlags, handle_ublx_input};
+use crate::ui::{
+    input::{MainTabFlags, handle_ublx_input},
+    snapshot::{show_force_full_enhance_started_toast, show_snapshot_completed_toast},
+};
 use crate::utils::notifications;
 
 use super::delta::{build_delta_view_data, clamp_delta_selection, view_data_for_delta_mode};
@@ -56,6 +60,22 @@ fn run_tick(
 ) -> io::Result<bool> {
     applets::settings::on_first_tick(state, params);
 
+    if params.pending_force_full_enhance_toast {
+        params.pending_force_full_enhance_toast = false;
+        if !state.session.force_full_enhance_toast_shown {
+            state.session.force_full_enhance_toast_shown = true;
+            show_force_full_enhance_started_toast(state, params);
+        }
+    }
+
+    if state.session.reload_snapshot_rows {
+        let (c, r) =
+            load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
+        *categories = c;
+        *all_rows = r;
+        state.session.reload_snapshot_rows = false;
+    }
+
     // Drain completed duplicate load from background thread (non-blocking).
     if let Some(rx) = params.duplicate_groups_rx.as_ref()
         && let Ok(groups) = rx.try_recv()
@@ -73,7 +93,7 @@ fn run_tick(
     applets::dupe_finder::spawn_if_requested(state, params);
 
     prune_toasts(state);
-    handle_snapshot_request(state, params);
+    handle_snapshot_request(state, params, ublx_opts);
     handle_snapshot_done(state, categories, all_rows, params);
     poll_snapshot_if_due(state, categories, all_rows, params);
 
@@ -81,8 +101,13 @@ fn run_tick(
         notifications::move_log_events();
     }
 
-    let (view, mut right_content, delta_data, rows_for_draw) =
-        build_view_and_right_content(state, categories.as_slice(), all_rows.as_slice(), params);
+    let (view, mut right_content, delta_data, rows_for_draw) = build_view_and_right_content(
+        state,
+        categories.as_slice(),
+        all_rows.as_slice(),
+        params,
+        ublx_opts.enable_enhance_all,
+    );
     if right_content.viewer_can_open {
         right_content.open_hint_label =
             applets::opener::open_hint_label(ublx_opts.editor_path.as_deref()).map(String::from);
@@ -200,15 +225,25 @@ fn prune_toasts(state: &mut setup::UblxState) {
         .retain(|s| Instant::now() < s.visible_until);
 }
 
-fn handle_snapshot_request(state: &mut setup::UblxState, params: &RunUblxParams<'_>) {
+fn handle_snapshot_request(
+    state: &mut setup::UblxState,
+    params: &mut RunUblxParams<'_>,
+    ublx_opts: &UblxOpts,
+) {
     if !state.snapshot_bg.requested {
         return;
+    }
+    if orchestrator::should_force_full_zahir(ublx_opts)
+        && !state.session.force_full_enhance_toast_shown
+    {
+        params.pending_force_full_enhance_toast = true;
     }
     snapshot::spawn_snapshot_from_dir_db(
         params.dir_to_ublx,
         params.db_path,
         params.snapshot_done_tx.as_ref(),
         params.bumper,
+        Some(ublx_opts),
     );
     state.snapshot_bg.requested = false;
     state.snapshot_bg.done_received = false; // start polling .ublx_tmp for live progress
@@ -233,18 +268,13 @@ fn handle_snapshot_done(
     *all_rows = r;
     state.snapshot_bg.poll_deadline = None;
     state.snapshot_bg.done_received = true;
+    if state.snapshot_bg.defer_snapshot_after_current {
+        state.snapshot_bg.defer_snapshot_after_current = false;
+        state.snapshot_bg.requested = true;
+    }
     // Duplicates are lazy-loaded when user switches to that tab; don't block here.
 
-    if let Some(b) = params.bumper {
-        snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
-        let op = OPERATION_NAME.snapshot();
-        notifications::show_toast_slot(
-            &mut state.toasts.slots,
-            b,
-            Some(op.as_str()),
-            &mut state.toasts.consumed_per_operation,
-        );
-    }
+    show_snapshot_completed_toast(state, params, added, mod_count, removed);
 }
 
 /// When a background snapshot is running, periodically reload from the DB (e.g. .`ublx_tmp`) so the TUI shows live progress.
@@ -279,6 +309,7 @@ fn build_view_and_right_for_user_selected_mode(
     params: &RunUblxParams<'_>,
     db_path_for_read: &std::path::Path,
     view: setup::ViewData,
+    enable_enhance_all: bool,
 ) -> (setup::ViewData, setup::RightPaneContent) {
     clamp_two_pane_selection(state, &view);
     let right_content = viewing::resolve_right_pane_content(
@@ -287,16 +318,22 @@ fn build_view_and_right_for_user_selected_mode(
         db_path_for_read,
         &view,
         None,
+        enable_enhance_all,
     );
     (view, right_content)
 }
 
 /// Expands to: build view from `$view`, then [`build_view_and_right_for_user_selected_mode`]; returns `(view, right_content, None)`.
 macro_rules! build_view_and_right_user_selected_mode {
-    ($state:expr, $params:expr, $db_path:expr, $view:expr) => {{
+    ($state:expr, $params:expr, $db_path:expr, $view:expr, $enable_enhance:expr) => {{
         let view = $view;
-        let (view, right_content) =
-            build_view_and_right_for_user_selected_mode($state, $params, $db_path, view);
+        let (view, right_content) = build_view_and_right_for_user_selected_mode(
+            $state,
+            $params,
+            $db_path,
+            view,
+            $enable_enhance,
+        );
         (view, right_content, None)
     }};
 }
@@ -307,6 +344,7 @@ fn build_view_and_right_content<'a>(
     categories: &[String],
     all_rows: &'a [setup::TuiRow],
     params: &RunUblxParams<'_>,
+    enable_enhance_all: bool,
 ) -> (
     setup::ViewData,
     setup::RightPaneContent,
@@ -339,14 +377,16 @@ fn build_view_and_right_content<'a>(
                 state,
                 params,
                 &db_path_for_read,
-                view_data_for_duplicates_mode(state, &params.duplicate_groups)
+                view_data_for_duplicates_mode(state, &params.duplicate_groups),
+                enable_enhance_all
             )
         } else if state.main_mode == setup::MainMode::Lenses {
             build_view_and_right_user_selected_mode!(
                 state,
                 params,
                 &db_path_for_read,
-                view_data_for_lenses_mode(state, &params.lens_names, &db_path_for_read)
+                view_data_for_lenses_mode(state, &params.lens_names, &db_path_for_read),
+                enable_enhance_all
             )
         } else {
             let view = build_view_data(state, categories, all_rows);
@@ -356,6 +396,7 @@ fn build_view_and_right_content<'a>(
                 &db_path_for_read,
                 &view,
                 Some(all_rows),
+                enable_enhance_all,
             );
             (view, right_content, Some(all_rows))
         };

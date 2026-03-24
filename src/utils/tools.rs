@@ -18,10 +18,35 @@ pub const HALF_MIB_BYTES: u64 = MIB / 2;
 /// [`HALF_MIB_BYTES`] as [`usize`] for allocation caps (`HALF_MIB_BYTES` always fits in `usize`).
 pub const HALF_MIB_BYTES_USIZE: usize = HALF_MIB_BYTES as usize;
 
+/// Expand a leading `~/` using `HOME` so `cargo run -- ~/src/proj` works (the shell often does not expand `~` in argv).
+#[must_use]
+pub fn expand_home_dir_arg(path: &Path) -> PathBuf {
+    let Some(s) = path.to_str() else {
+        return path.to_path_buf();
+    };
+    let Some(rest) = s.strip_prefix("~/") else {
+        return path.to_path_buf();
+    };
+    #[cfg(not(windows))]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Ok(user) = std::env::var("USERPROFILE") {
+            return PathBuf::from(user).join(rest);
+        }
+    }
+    path.to_path_buf()
+}
+
 /// Validate that a path is a directory and return the canonicalized path.
 /// Symlinks are resolved (e.g. `~/Dropbox` → `~/Library/CloudStorage/...` on macOS).
 #[must_use]
 pub fn validate_dir(path: &std::path::Path) -> PathBuf {
+    let path = expand_home_dir_arg(path);
     if path.exists() && !path.is_dir() {
         error!("'{}' is not a directory", path.display());
         exit_error();

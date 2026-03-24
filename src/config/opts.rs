@@ -83,6 +83,27 @@ impl Default for LayoutOverlay {
     }
 }
 
+/// Per-directory policy for automatic (index-time) ZahirScan. Longest matching path prefix wins; absent entry inherits [`UblxOpts::enable_enhance_all`].
+/// Does not apply to per-file "Enhance with ZahirScan" from the space menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EnhancePolicy {
+    /// Index-time batch Zahir for paths under this subtree (same idea as global `enable_enhance_all` for that prefix).
+    #[serde(alias = "always")]
+    Auto,
+    /// No batch Zahir under this subtree; enrich per file from the space menu only.
+    #[serde(alias = "never")]
+    Manual,
+}
+
+/// One `[[enhance_policy]]` row in `ublx.toml` / `.ublx.toml`.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct EnhancePolicyEntry {
+    /// Path relative to the indexed directory, using `/` separators (e.g. `photos/vacation`).
+    pub path: String,
+    pub policy: EnhancePolicy,
+}
+
 /// Config overlay read from config files. Only present keys override; used for global + local overlay.
 /// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
 /// [theme], [transparent], [layout], [hash], and [`show_hidden_files`] are hot-reloadable; [exclude] is applied only at startup.
@@ -91,7 +112,8 @@ impl Default for LayoutOverlay {
 pub struct UblxOverlay {
     /// Extra paths/patterns to exclude from indexing (appended to nefax [`NefaxOpts::exclude`]). Startup-only; not hot-reloadable.
     pub exclude: Option<Vec<String>>,
-    /// When true, show hidden files; when false, exclude ".*" and zahir skips hidden. Hot-reloadable.
+    /// When true, show hidden files; when false, exclude `.*` per segment and zahir skips hidden. Hot-reloadable.
+    /// When omitted, treated as false (same as explicit false).
     #[serde(rename = "show_hidden_files")]
     pub show_hidden_files: Option<bool>,
     /// When true, nefaxer computes blake3 hash for files (slower, more accurate change detection). Hot-reloadable.
@@ -108,6 +130,13 @@ pub struct UblxOverlay {
     /// Editor for Open (Terminal) (e.g. "vim", "nvim"). When unset, uses $EDITOR.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_path: Option<String>,
+    /// When `true`, index runs full ZahirScan enrichment on paths that need it (normal pipeline).
+    /// When `false` (default), only nefax + path-based category from ZahirScan file-type hints; empty `zahir_json` until per-file "Enhance with ZahirScan" or flip to `true` (next run re-enhances all). Hot-reloadable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_enhance_all: Option<bool>,
+    /// Optional per-path subtree rules for index-time Zahir (`[[enhance_policy]]`). Hot-reloadable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enhance_policy: Option<Vec<EnhancePolicyEntry>>,
 }
 
 impl UblxOverlay {
@@ -133,6 +162,12 @@ impl UblxOverlay {
         }
         if other.editor_path.is_some() {
             self.editor_path.clone_from(&other.editor_path);
+        }
+        if other.enable_enhance_all.is_some() {
+            self.enable_enhance_all = other.enable_enhance_all;
+        }
+        if other.enhance_policy.is_some() {
+            self.enhance_policy.clone_from(&other.enhance_policy);
         }
     }
 
@@ -180,6 +215,12 @@ pub struct UblxOpts {
     pub layout: LayoutOverlay,
     /// Editor for Open (Terminal). When None, use $EDITOR.
     pub editor_path: Option<String>,
+    /// When true, run full ZahirScan on indexed files; when false, path-only category + space-menu enhance.
+    pub enable_enhance_all: bool,
+    /// `enable_enhance_all` from the config cache **before** [`Self::for_dir`] applied the current overlay and called [`Self::save_overlay_to_cache`]. Used by snapshot `force_full` Zahir when flipping the flag to `true`.
+    pub enable_enhance_all_cache_before_apply: Option<bool>,
+    /// Effective `[[enhance_policy]]` entries (merged global + local). Used only for index-time batch Zahir.
+    pub enhance_policy: Vec<EnhancePolicyEntry>,
 }
 
 impl UblxOpts {
@@ -250,21 +291,22 @@ impl UblxOpts {
     /// Apply only hot-reloadable fields: theme, transparent, layout, hash, `show_hidden_files`. Used when reloading config without restart.
     /// On invalid config from disk, caller should fall back to [`Self::load_overlay_from_cache`] and pass that overlay here.
     pub fn apply_hot_reload_overlay(&mut self, overlay: &UblxOverlay) {
-        if let Some(show_hidden) = overlay.show_hidden_files {
-            if show_hidden {
-                self.nefax.exclude.retain(|p| p != HIDDEN_EXCLUDE_PATTERN);
-                self.zahir.flags.ignore_hidden_files = false;
-            } else {
-                if !self
-                    .nefax
-                    .exclude
-                    .iter()
-                    .any(|p| p == HIDDEN_EXCLUDE_PATTERN)
-                {
-                    self.nefax.exclude.push(HIDDEN_EXCLUDE_PATTERN.to_string());
-                }
-                self.zahir.flags.ignore_hidden_files = true;
+        // When `show_hidden_files` is omitted from merged overlay, default to false (do not index dotfiles).
+        // Otherwise `.*` is never added to nefax exclude and paths like `.mise.toml` are still walked.
+        let show_hidden = overlay.show_hidden_files.unwrap_or(false);
+        if show_hidden {
+            self.nefax.exclude.retain(|p| p != HIDDEN_EXCLUDE_PATTERN);
+            self.zahir.flags.ignore_hidden_files = false;
+        } else {
+            if !self
+                .nefax
+                .exclude
+                .iter()
+                .any(|p| p == HIDDEN_EXCLUDE_PATTERN)
+            {
+                self.nefax.exclude.push(HIDDEN_EXCLUDE_PATTERN.to_string());
             }
+            self.zahir.flags.ignore_hidden_files = true;
         }
         if let Some(hash) = overlay.hash {
             self.nefax.with_hash = hash;
@@ -281,9 +323,14 @@ impl UblxOpts {
         if overlay.editor_path.is_some() {
             self.editor_path.clone_from(&overlay.editor_path);
         }
+        if let Some(v) = overlay.enable_enhance_all {
+            self.enable_enhance_all = v;
+        }
+        self.enhance_policy = overlay.enhance_policy.clone().unwrap_or_default();
     }
 
     /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
+    /// On success, writes the merged overlay to the config cache (same path as startup `for_dir`).
     /// Validates before applying; on validation failure the overlay is not applied and errors are returned.
     /// `valid_theme_names`: allowed theme values (e.g. from [`crate::layout::themes::theme_options`] display names).
     pub fn reload_hot_config(
@@ -303,6 +350,7 @@ impl UblxOpts {
         match validate_hot_reload_overlay(&to_apply, valid_theme_names) {
             Ok(()) => {
                 self.apply_hot_reload_overlay(&to_apply);
+                Self::save_overlay_to_cache(ublx_paths, &to_apply);
                 ReloadResult {
                     applied: true,
                     validation_errors: Vec::new(),
@@ -348,6 +396,8 @@ impl UblxOpts {
         let zahir = RuntimeConfig::new();
         let streaming = num_threads >= STREAMING_THRESHOLD;
         let config_source = cached_settings.and_then(|s| s.config_source.clone());
+        let enable_enhance_all_cache_before_apply =
+            Self::load_overlay_from_cache(ublx_paths).and_then(|o| o.enable_enhance_all);
         let mut opts = Self {
             nefax,
             zahir,
@@ -361,6 +411,9 @@ impl UblxOpts {
             transparent: false,
             layout: LayoutOverlay::default(),
             editor_path: None,
+            enable_enhance_all: false,
+            enable_enhance_all_cache_before_apply,
+            enhance_policy: Vec::new(),
         };
         let global = Self::load_ublx_toml(ublx_paths.global_config());
         let local = Self::load_ublx_toml(ublx_paths.toml_path());
@@ -377,7 +430,7 @@ impl UblxOpts {
                     b.push_with_operation(
                         log::Level::Warn,
                         Self::startup_validation_fallback_message(&validation_errors).as_str(),
-                        Some(OPERATION_NAME.ublx_settings()),
+                        Some(OPERATION_NAME.op("settings")),
                     );
                 }
             }
@@ -419,6 +472,9 @@ impl UblxOpts {
             transparent: false,
             layout: LayoutOverlay::default(),
             editor_path: None,
+            enable_enhance_all: true,
+            enable_enhance_all_cache_before_apply: None,
+            enhance_policy: Vec::new(),
         }
     }
 
@@ -511,6 +567,129 @@ impl UblxOpts {
         config.max_workers = self.effective_zahir_workers();
         config
     }
+
+    /// Whether index-time batch ZahirScan should run for this relative path (longest `[[enhance_policy]]` prefix wins; else [`Self::enable_enhance_all`]).
+    #[must_use]
+    pub fn batch_zahir_for_path(&self, rel_path: &str) -> bool {
+        let rel = normalize_rel_path_for_policy(rel_path);
+        let mut best: Option<(usize, EnhancePolicy)> = None;
+        for e in &self.enhance_policy {
+            let p = normalize_rel_path_for_policy(&e.path);
+            if p.is_empty() {
+                continue;
+            }
+            if path_is_under_or_equal(&rel, &p) {
+                let len = p.len();
+                if best.as_ref().is_none_or(|(blen, _)| len > *blen) {
+                    best = Some((len, e.policy));
+                }
+            }
+        }
+        match best.map(|(_, pol)| pol) {
+            Some(EnhancePolicy::Auto) => true,
+            Some(EnhancePolicy::Manual) => false,
+            None => self.enable_enhance_all,
+        }
+    }
+}
+
+#[must_use]
+fn normalize_rel_path_for_policy(s: &str) -> String {
+    let s = s.replace('\\', "/");
+    let s = s.trim_start_matches("./");
+    s.trim_end_matches('/').to_string()
+}
+
+fn path_is_under_or_equal(rel: &str, prefix: &str) -> bool {
+    rel == prefix || (rel.starts_with(prefix) && rel.as_bytes().get(prefix.len()) == Some(&b'/'))
+}
+
+#[cfg(test)]
+mod batch_zahir_policy_tests {
+    use super::{EnhancePolicy, EnhancePolicyEntry, UblxOpts, UblxOverlay};
+    use nefaxer::NefaxOpts;
+    use zahirscan::RuntimeConfig;
+
+    fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> UblxOpts {
+        UblxOpts {
+            nefax: NefaxOpts::default(),
+            zahir: RuntimeConfig::new(),
+            max_workers_available: 1,
+            nefax_workers_override: None,
+            zahir_workers_override: None,
+            ublx_workers_override: None,
+            streaming: false,
+            config_source: None,
+            theme: None,
+            transparent: false,
+            layout: super::LayoutOverlay::default(),
+            editor_path: None,
+            enable_enhance_all,
+            enable_enhance_all_cache_before_apply: None,
+            enhance_policy: entries,
+        }
+    }
+
+    #[test]
+    fn manual_overrides_global_on() {
+        let o = opts_with(
+            true,
+            vec![EnhancePolicyEntry {
+                path: "blocked".into(),
+                policy: EnhancePolicy::Manual,
+            }],
+        );
+        assert!(!o.batch_zahir_for_path("blocked/file.txt"));
+        assert!(o.batch_zahir_for_path("other/file.txt"));
+    }
+
+    #[test]
+    fn auto_overrides_global_off() {
+        let o = opts_with(
+            false,
+            vec![EnhancePolicyEntry {
+                path: "force".into(),
+                policy: EnhancePolicy::Auto,
+            }],
+        );
+        assert!(o.batch_zahir_for_path("force/a.rs"));
+        assert!(!o.batch_zahir_for_path("outside/a.rs"));
+    }
+
+    #[test]
+    fn longest_prefix_wins() {
+        let o = opts_with(
+            true,
+            vec![
+                EnhancePolicyEntry {
+                    path: "a".into(),
+                    policy: EnhancePolicy::Manual,
+                },
+                EnhancePolicyEntry {
+                    path: "a/b".into(),
+                    policy: EnhancePolicy::Auto,
+                },
+            ],
+        );
+        assert!(!o.batch_zahir_for_path("a/x"));
+        assert!(o.batch_zahir_for_path("a/b/x"));
+    }
+
+    #[test]
+    fn deserializes_legacy_always_never_toml() {
+        let s = r#"
+            [[enhance_policy]]
+            path = "legacy"
+            policy = "always"
+            [[enhance_policy]]
+            path = "legacy2"
+            policy = "never"
+        "#;
+        let overlay: UblxOverlay = toml::from_str(s).expect("parse");
+        let entries = overlay.enhance_policy.expect("entries");
+        assert_eq!(entries[0].policy, EnhancePolicy::Auto);
+        assert_eq!(entries[1].policy, EnhancePolicy::Manual);
+    }
 }
 
 /// Write local config with `theme = "display_name"`. Uses existing file at [`UblxPaths::toml_path`] if present, otherwise creates `.ublx.toml`. Preserves other keys from existing file or default. Logs and ignores errors.
@@ -528,6 +707,48 @@ pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
         Ok(s) => {
             if let Err(e) = fs::write(&path, s) {
                 warn!("could not write theme to {}: {}", path.display(), e);
+            }
+        }
+        Err(e) => warn!("could not serialize overlay: {e}"),
+    }
+}
+
+/// Write `ublx.toml` in the indexed directory with only [`UblxOverlay::enable_enhance_all`] set (first-run prompt).
+pub fn write_visible_enhance_only_toml(
+    ublx_paths: &UblxPaths,
+    enable_enhance_all: bool,
+) -> std::io::Result<()> {
+    let overlay = UblxOverlay {
+        enable_enhance_all: Some(enable_enhance_all),
+        ..Default::default()
+    };
+    let s = toml::to_string(&overlay).map_err(std::io::Error::other)?;
+    fs::write(ublx_paths.visible_toml(), s)
+}
+
+/// Merge `[[enhance_policy]]` for `rel_path` into local config (`.ublx.toml` or `ublx.toml`). Preserves other keys.
+pub fn write_local_enhance_policy(paths: &UblxPaths, rel_path: &str, policy: EnhancePolicy) {
+    let path = paths.toml_path().unwrap_or_else(|| paths.hidden_toml());
+    let mut overlay = UblxOpts::load_overlay_from_path(Some(path.clone()));
+    let mut entries = overlay.enhance_policy.unwrap_or_default();
+    let norm = normalize_rel_path_for_policy(rel_path);
+    entries.retain(|e| normalize_rel_path_for_policy(&e.path) != norm);
+    entries.push(EnhancePolicyEntry { path: norm, policy });
+    overlay.enhance_policy = Some(entries);
+    if let Some(parent) = path.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        warn!("could not create config dir {}: {}", parent.display(), e);
+        return;
+    }
+    match toml::to_string_pretty(&overlay) {
+        Ok(s) => {
+            if let Err(e) = fs::write(&path, s) {
+                warn!(
+                    "could not write enhance_policy to {}: {}",
+                    path.display(),
+                    e
+                );
             }
         }
         Err(e) => warn!("could not serialize overlay: {e}"),

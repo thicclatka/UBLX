@@ -2,12 +2,10 @@
 
 use std::path::Path;
 
-use crate::config::{OPERATION_NAME, UblxPaths, write_local_theme};
-use crate::layout::event_loop::RunUblxParams;
-use crate::layout::setup::UblxState;
-use crate::layout::themes;
-use crate::ui::keymap::UblxAction;
-use crate::utils::{format::clamp_selection, notifications::show_toast_slot};
+use crate::config::{UblxPaths, write_local_theme};
+use crate::layout::{event_loop::RunUblxParams, setup::UblxState, themes};
+use crate::ui::{keymap::UblxAction, show_operation_toast};
+use crate::utils::format::clamp_selection;
 
 /// Theme context for the selector: (dir for local config, current theme name for preview/revert).
 pub type ThemeContext<'a> = Option<(&'a Path, Option<&'a str>)>;
@@ -52,20 +50,8 @@ pub fn handle_key(
                 write_local_theme(&UblxPaths::new(dir), display_name);
                 state.config_written_by_us_at = Some(std::time::Instant::now());
             }
-            if let Some(b) = params.bumper {
-                let theme_msg = format!("Changed theme to {display_name}");
-                b.push_with_operation(
-                    log::Level::Info,
-                    theme_msg.as_str(),
-                    Some(OPERATION_NAME.theme_selector()),
-                );
-                show_toast_slot(
-                    &mut state.toasts.slots,
-                    b,
-                    Some(OPERATION_NAME.theme_selector()),
-                    &mut state.toasts.consumed_per_operation,
-                );
-            }
+            let theme_msg = format!("Changed theme to {display_name}");
+            show_operation_toast(state, params, theme_msg, "theme-selector", log::Level::Info);
             state.theme.override_name = Some(display_name.to_string());
             state.theme.selector_visible = false;
         }

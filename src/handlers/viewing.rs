@@ -4,7 +4,7 @@
 use serde_json::{self, Value};
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use zahirscan::FileType;
@@ -106,19 +106,26 @@ fn tree_for_path(state: &mut UblxState, path: &str, full_path: &Path) -> String 
     }
 }
 
-fn tree_content(tree_str: String) -> RightPaneContent {
+fn tree_viewer(
+    tree_str: String,
+    rel_path: &str,
+    abs_path: PathBuf,
+    offer_directory_policy: bool,
+) -> RightPaneContent {
     RightPaneContent {
         templates: String::new(),
         metadata: None,
         writing: None,
         viewer: Some(tree_str),
-        viewer_path: None,
-        viewer_abs_path: None,
+        viewer_path: Some(rel_path.to_string()),
+        viewer_abs_path: Some(abs_path),
         viewer_zahir_type: None,
         viewer_byte_size: None,
         viewer_mtime_ns: None,
         viewer_can_open: false,
         open_hint_label: None,
+        viewer_offer_enhance_zahir: false,
+        viewer_offer_enhance_directory_policy: offer_directory_policy,
     }
 }
 
@@ -131,6 +138,7 @@ pub fn resolve_right_pane_content(
     db_path: &Path,
     view: &ViewData,
     all_rows: Option<&[TuiRow]>,
+    enable_enhance_all: bool,
 ) -> RightPaneContent {
     let selected: Option<&TuiRow> = state
         .panels
@@ -142,11 +150,11 @@ pub fn resolve_right_pane_content(
         let full_path = resolve_under_root(dir_to_ublx, path);
         if *category == CATEGORY_DIRECTORY {
             let tree_str = tree_for_path(state, path, &full_path);
-            tree_content(tree_str)
+            tree_viewer(tree_str, path, full_path, true)
         } else {
             if full_path.is_dir() {
                 let tree_str = tree_for_path(state, path, &full_path);
-                return tree_content(tree_str);
+                return tree_viewer(tree_str, path, full_path, false);
             }
             state.cached_tree = None;
             let viewer_zahir_type = file_type_from_metadata_name(category);
@@ -172,6 +180,8 @@ pub fn resolve_right_pane_content(
                     viewer_mtime_ns,
                     viewer_can_open,
                     open_hint_label: None,
+                    viewer_offer_enhance_zahir: !enable_enhance_all,
+                    viewer_offer_enhance_directory_policy: false,
                 }
             } else {
                 match serde_json::from_str::<Value>(&zahir_json) {
@@ -189,6 +199,8 @@ pub fn resolve_right_pane_content(
                             viewer_mtime_ns,
                             viewer_can_open,
                             open_hint_label: None,
+                            viewer_offer_enhance_zahir: false,
+                            viewer_offer_enhance_directory_policy: false,
                         }
                     }
                     _ => RightPaneContent {
@@ -203,6 +215,8 @@ pub fn resolve_right_pane_content(
                         viewer_mtime_ns,
                         viewer_can_open,
                         open_hint_label: None,
+                        viewer_offer_enhance_zahir: false,
+                        viewer_offer_enhance_directory_policy: false,
                     },
                 }
             }

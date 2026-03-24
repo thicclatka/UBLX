@@ -11,16 +11,19 @@ use crossterm::{
     cursor::Show as ShowCursor,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use log::debug;
 use notify::{RecursiveMode, Watcher};
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::config::{UblxOpts, UblxPaths};
-use crate::engine::db_ops::{SnapshotReaderPreference, load_lens_names};
-use crate::handlers::{nefax_ops::NefaxResult, snapshot};
+use crate::engine::{
+    db_ops::{SnapshotReaderPreference, load_lens_names},
+    orchestrator,
+};
+use crate::handlers::{applets::first_run, nefax_ops::NefaxResult, snapshot};
 use crate::layout::{event_loop, setup};
 use crate::utils::notifications;
-use log::debug;
 
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
@@ -32,6 +35,8 @@ pub struct RunAppParams<'a> {
     pub bumper: Option<&'a notifications::BumperBuffer>,
     pub dev: bool,
     pub start_time: Option<Instant>,
+    /// No `.ublx` DB yet and no local `ublx.toml` / `.ublx.toml` — show first-run enhance prompt (TUI only).
+    pub initial_prompt: bool,
 }
 
 /// Run the app in the selected mode: test (snapshot only, exit) or TUI with background pipeline.
@@ -55,6 +60,7 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
             params.prior_nefax,
             params.bumper,
             params.dev,
+            params.initial_prompt,
         )
     }
 }
@@ -76,25 +82,30 @@ fn run_tui_mode(
     prior_nefax: Option<&NefaxResult>,
     bumper: Option<&notifications::BumperBuffer>,
     dev: bool,
+    initial_prompt: bool,
 ) -> std::io::Result<()> {
     let (tx, rx) = mpsc::channel::<(usize, usize, usize)>();
     let tx_for_tui = tx.clone();
-    let dir_clone = dir_to_ublx.to_path_buf();
-    let opts_clone = ublx_opts.clone();
-    let prior_clone = prior_nefax.cloned();
-    std::thread::spawn(move || {
-        snapshot::run_snapshot_pipeline(
-            &dir_clone,
-            &opts_clone,
-            prior_clone.as_ref(),
-            Some(tx),
-            None,
-        );
-    });
+    if !initial_prompt {
+        let dir_clone = dir_to_ublx.to_path_buf();
+        let opts_clone = ublx_opts.clone();
+        let prior_clone = prior_nefax.cloned();
+        std::thread::spawn(move || {
+            snapshot::run_snapshot_pipeline(
+                &dir_clone,
+                &opts_clone,
+                prior_clone.as_ref(),
+                Some(tx),
+                None,
+            );
+        });
+    }
 
     let config_reload_rx = Some(spawn_config_watcher(dir_to_ublx));
 
     let lens_names = load_lens_names(db_path).unwrap_or_default();
+    let pending_force_full_enhance_toast =
+        !initial_prompt && orchestrator::should_force_full_zahir(ublx_opts);
     let mut params = event_loop::RunUblxParams {
         db_path,
         dir_to_ublx,
@@ -109,6 +120,8 @@ fn run_tui_mode(
         duplicate_groups_rx: None,
         lens_names,
         config_reload_rx,
+        defer_first_snapshot: initial_prompt,
+        pending_force_full_enhance_toast,
     };
     run_ublx(&mut params, ublx_opts)?;
     if let Some(b) = bumper
@@ -163,6 +176,9 @@ pub fn run_ublx(
     let (mut categories, mut all_rows) =
         event_loop::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
+    if params.defer_first_snapshot {
+        first_run::init_prompt_state(&mut state);
+    }
     debug!(
         "clipboard copy command: {}",
         state
@@ -172,6 +188,10 @@ pub fn run_ublx(
     );
     // Already-done dir: we have data, skip polling to avoid redundant first-tick load (stutter).
     if !categories.is_empty() || !all_rows.is_empty() {
+        state.snapshot_bg.done_received = true;
+    }
+    // First-run prompt defers the background snapshot; treat as idle for scheduling (not "snapshot in flight").
+    if params.defer_first_snapshot {
         state.snapshot_bg.done_received = true;
     }
 

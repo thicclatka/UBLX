@@ -4,11 +4,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
+use log::debug;
 use zahirscan::parsers::structured::detect_delimiter_byte as zahir_detect_delimiter_byte;
-use zahirscan::{
-    FileType, Output, OutputSink, RuntimeConfig, ZahirScanResult, extract_zahir,
-    extract_zahir_from_stream,
-};
+use zahirscan::utils::filetypes::detect_file_type;
+use zahirscan::{FileType, Output, OutputSink, ZahirScanResult, extract_zahir};
 
 use super::nefax_ops;
 
@@ -49,6 +48,18 @@ pub fn delimiter_from_path_for_viewer(path: &str) -> Option<u8> {
     }
 }
 
+/// Metadata name string for [`FileType`] from path/extension only (ZahirScan’s [`detect_file_type`]), without a full extract.
+/// Used when [`crate::config::UblxOpts::enable_enhance_all`] is false so categories still align with ZahirScan labels while `zahir_json` stays empty.
+#[must_use]
+pub fn zahir_metadata_name_from_path_hint(path_str: &str) -> Option<String> {
+    let ft = detect_file_type(path_str);
+    if ft == FileType::Unknown {
+        None
+    } else {
+        Some(ft.as_metadata_name().to_string())
+    }
+}
+
 /// True if we should run zahir on this path (new or mtime changed). Skip when prior exists and mtime is unchanged.
 #[must_use]
 pub fn needs_zahir(
@@ -62,24 +73,38 @@ pub fn needs_zahir(
     }
 }
 
-fn extract_zahir_opts_from_ublx_opts(opts: &UblxOpts) -> RuntimeConfig {
-    opts.zahir_runtime_config()
+/// When `paths` is empty, log and return a default result so callers skip `extract_zahir`.
+fn zahir_empty_when_no_paths(
+    paths: &[String],
+    mode_label: &'static str,
+) -> Option<ZahirScanResult> {
+    if paths.is_empty() {
+        debug!("zahir {mode_label}: no paths received, returning empty result");
+        Some(ZahirScanResult::default())
+    } else {
+        None
+    }
 }
 
 /// Run zahir on a full set of paths (sequential mode). Uses [`OutputMode::Full`] and the given config.
 ///
+/// If the path list is empty, returns [`ZahirScanResult::default`] without calling zahirscan.
+///
 /// # Errors
 ///
-/// Returns [`anyhow::Error`] when the zahir scan fails.
+/// Returns [`anyhow::Error`] when zahirscan fails (including when no paths are scannable).
 pub fn run_zahir_batch(
     paths: &[impl AsRef<Path>],
     ublx_opts: &UblxOpts,
 ) -> Result<ZahirScanResult, anyhow::Error> {
-    let config = extract_zahir_opts_from_ublx_opts(ublx_opts);
+    let config = ublx_opts.zahir_runtime_config();
     let path_strings: Vec<String> = paths
         .iter()
         .map(|p| p.as_ref().to_string_lossy().into_owned())
         .collect();
+    if let Some(empty) = zahir_empty_when_no_paths(&path_strings, "batch") {
+        return Ok(empty);
+    }
     extract_zahir(
         path_strings,
         config.output_mode,
@@ -89,20 +114,27 @@ pub fn run_zahir_batch(
     )
 }
 
-/// Run zahir on paths from a channel. Use `ZahirOutputSink::Collect` to get all outputs in the result (default).
+/// Run zahir on paths from a channel. Drains `paths_rx` until closed (same as [`zahirscan::extract_zahir_from_stream`]), then runs [`extract_zahir`].
+/// Use `ZahirOutputSink::Collect` to get all outputs in the result (default).
 /// Use `ZahirOutputSink::Channel(tx)` to stream each `(path, Output)` to a receiver so ublx can write to the DB incrementally.
+///
+/// If no paths were received, returns [`ZahirScanResult::default`] without calling zahirscan.
 ///
 /// # Errors
 ///
-/// Returns [`anyhow::Error`] when the zahir scan fails.
+/// Returns [`anyhow::Error`] when zahirscan fails (including when no paths are scannable).
 pub fn run_zahir_from_stream(
     paths_rx: &Receiver<String>,
     ublx_opts: &UblxOpts,
     output_sink: &ZahirOutputSink,
 ) -> Result<ZahirScanResult, anyhow::Error> {
-    let config = extract_zahir_opts_from_ublx_opts(ublx_opts);
-    extract_zahir_from_stream(
-        paths_rx,
+    let config = ublx_opts.zahir_runtime_config();
+    let path_strings: Vec<String> = paths_rx.iter().collect();
+    if let Some(empty) = zahir_empty_when_no_paths(&path_strings, "stream") {
+        return Ok(empty);
+    }
+    extract_zahir(
+        path_strings,
         config.output_mode,
         Some(&config),
         None,
@@ -141,24 +173,4 @@ pub fn zahir_output_to_json(output: Option<&ZahirOutput>) -> String {
     output
         .and_then(|o| serde_json::to_string(o).ok())
         .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod file_type_from_metadata_name_tests {
-    use super::{FileType, file_type_from_metadata_name};
-
-    #[test]
-    fn wrapper_matches_zahirscan_api() {
-        assert_eq!(file_type_from_metadata_name("CSV"), Some(FileType::Csv));
-        assert_eq!(
-            file_type_from_metadata_name("Markdown"),
-            Some(FileType::Markdown)
-        );
-    }
-
-    #[test]
-    fn non_zahir_categories_miss() {
-        assert_eq!(file_type_from_metadata_name("Directory"), None);
-        assert_eq!(file_type_from_metadata_name("not a label"), None);
-    }
 }

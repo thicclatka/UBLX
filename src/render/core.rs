@@ -66,6 +66,9 @@ pub fn draw_ublx_frame(
         overlays::render_theme_selector(f, state.theme.selector_index);
     }
     draw_popups(f, state, &body, args);
+    if let Some(ref prompt) = state.initial_prompt {
+        overlays::popup::render_initial_prompt(f, prompt.selected_index);
+    }
 }
 
 /// Render open menu, lens menu, space menu, and delete confirm popups when visible.
@@ -101,6 +104,14 @@ fn draw_popups(
             middle,
             content_sel,
             lens_names,
+        );
+    }
+    if state.enhance_policy_menu.visible && in_snapshot_or_lenses {
+        overlays::popup::render_enhance_policy_menu(
+            f,
+            state.enhance_policy_menu.selected_index,
+            middle,
+            content_sel,
         );
     }
     if state.space_menu.visible

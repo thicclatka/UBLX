@@ -1,4 +1,5 @@
 use log::{debug, error};
+use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -8,21 +9,37 @@ use rayon::prelude::*;
 use crate::config::{PARALLEL, RunMode, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
 use crate::handlers::{nefax_ops, zahir_ops};
-use crate::utils::{canonicalize_dir_to_ublx, error_writer, exit_error};
+use crate::utils::{
+    canonicalize_dir_to_ublx, error_writer, exit_error, path_to_slash_string, rel_path_is_directory,
+};
 
-type PreRunSetup = (PathBuf, std::collections::HashMap<String, String>);
+type PreRunSetup = (PathBuf, HashMap<String, String>, HashMap<String, String>);
 
 fn pre_run_setup(dir_to_ublx: &Path) -> PreRunSetup {
     let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
     let db_path = UblxPaths::new(dir_to_ublx).db();
     let prior_zahir_json = db_ops::load_snapshot_zahir_json_map(&db_path).unwrap_or_default();
-    (dir_to_ublx_abs, prior_zahir_json)
+    let prior_category = db_ops::load_snapshot_category_map(&db_path).unwrap_or_default();
+    (dir_to_ublx_abs, prior_zahir_json, prior_category)
+}
+
+#[inline]
+fn snapshot_prior_ctx<'a>(
+    prior_zahir_json: &'a HashMap<String, String>,
+    prior_category: &'a HashMap<String, String>,
+    ublx_opts: &'a UblxOpts,
+) -> db_ops::SnapshotPriorContext<'a> {
+    db_ops::SnapshotPriorContext {
+        prior_zahir_json,
+        prior_category,
+        ublx_opts,
+    }
 }
 
 /// Log nefax error and exit. Use in both sequential and stream error paths.
 fn on_nefax_error(dir_to_ublx: &Path, e: &impl std::fmt::Display) -> ! {
     let _ = error_writer::write_nefax_error_to_log(dir_to_ublx, e);
-    error!("nefax failed: {e}");
+    error!("{}", error_writer::NefaxZahirErrors::nefax_failed(e));
     exit_error();
 }
 
@@ -42,25 +59,97 @@ where
     }
 }
 
-/// Paths that need zahir this run: non-empty files whose mtime changed or are new.
+/// True when this index run should invoke Zahir for the path: mtime/new-file, global force-full, or no usable prior `zahir_json` in the DB (e.g. new `[[enhance_policy]]` = auto on a subtree that was previously path-hint-only).
+#[inline]
+fn path_needs_zahir_extract(
+    force_full_zahir: bool,
+    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    path: &PathBuf,
+    mtime_ns: i64,
+    rel_str: &str,
+    prior_zahir_json: &HashMap<String, String>,
+) -> bool {
+    force_full_zahir
+        || zahir_ops::needs_zahir(prior_nefax, path, mtime_ns)
+        || prior_zahir_json.get(rel_str).is_none_or(String::is_empty)
+}
+
+/// Shared inputs for [`entry_should_batch_zahir`] (sequential + streaming).
+struct BatchZahirCtx<'a> {
+    dir_to_ublx_abs: &'a Path,
+    ublx_opts: &'a UblxOpts,
+    force_full_zahir: bool,
+    prior_nefax: Option<&'a nefax_ops::NefaxResult>,
+    prior_zahir_json: &'a HashMap<String, String>,
+}
+
+/// True when this indexed path should be sent to index-time batch Zahir (sequential list or stream channel).
+fn entry_should_batch_zahir(
+    ctx: &BatchZahirCtx<'_>,
+    path: &PathBuf,
+    size: u64,
+    mtime_ns: i64,
+) -> bool {
+    if size == 0 {
+        return false;
+    }
+    let rel_str = path_to_slash_string(path);
+    if !ctx.ublx_opts.batch_zahir_for_path(&rel_str) {
+        return false;
+    }
+    if rel_path_is_directory(ctx.dir_to_ublx_abs, path) {
+        return false;
+    }
+    path_needs_zahir_extract(
+        ctx.force_full_zahir,
+        ctx.prior_nefax,
+        path,
+        mtime_ns,
+        rel_str.as_str(),
+        ctx.prior_zahir_json,
+    )
+}
+
+/// Index-time batch ZahirScan: paths that pass [`UblxOpts::batch_zahir_for_path`] and still need a Zahir extract (see [`path_needs_zahir_extract`]).
 fn paths_needing_zahir(
     nefax: &nefax_ops::NefaxResult,
     prior_nefax: Option<&nefax_ops::NefaxResult>,
     dir_to_ublx_abs: &Path,
+    ublx_opts: &UblxOpts,
+    force_full_zahir: bool,
+    prior_zahir_json: &HashMap<String, String>,
 ) -> Vec<PathBuf> {
+    let ctx = BatchZahirCtx {
+        dir_to_ublx_abs,
+        ublx_opts,
+        force_full_zahir,
+        prior_nefax,
+        prior_zahir_json,
+    };
     let entries: Vec<_> = nefax.iter().collect();
     let filter_map = |(path, meta): &(&PathBuf, &nefax_ops::NefaxPathMeta)| {
-        if meta.size > 0 && zahir_ops::needs_zahir(prior_nefax, path, meta.mtime_ns) {
-            Some(dir_to_ublx_abs.join(path))
-        } else {
-            None
+        if !entry_should_batch_zahir(&ctx, path, meta.size, meta.mtime_ns) {
+            return None;
         }
+        Some(dir_to_ublx_abs.join(path))
     };
     if entries.len() >= PARALLEL.paths_needing_zahir {
         entries.par_iter().filter_map(filter_map).collect()
     } else {
         entries.iter().filter_map(filter_map).collect()
     }
+}
+
+/// True when `enable_enhance_all` just flipped to `true` vs the value that was in the config cache before this process applied the merged overlay (see [`UblxOpts::enable_enhance_all_cache_before_apply`]).
+#[must_use]
+pub fn should_force_full_zahir(ublx_opts: &UblxOpts) -> bool {
+    if !ublx_opts.enable_enhance_all {
+        return false;
+    }
+    let prev = ublx_opts
+        .enable_enhance_all_cache_before_apply
+        .unwrap_or(false);
+    ublx_opts.enable_enhance_all && !prev
 }
 
 /// Run the index → zahir pipeline. Mode (sequential vs stream) is derived from [`UblxOpts`].
@@ -74,6 +163,11 @@ pub fn run(
     ublx_opts: &UblxOpts,
     prior_nefax: Option<&nefax_ops::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
+    let db_path = UblxPaths::new(dir_to_ublx).db();
+    // No snapshot rows yet but a leftover `.nefaxer` lets nefax match disk → empty diff (0/0/0) and a stuck first-run TUI.
+    if !db_ops::snapshot_has_any_row(&db_path) {
+        let _ = db_ops::UblxCleanup::delete_nefaxer_files(dir_to_ublx);
+    }
     let mode = RunMode::from_opts(ublx_opts);
     match mode {
         RunMode::Sequential => run_sequential(dir_to_ublx, ublx_opts, prior_nefax),
@@ -91,7 +185,7 @@ pub fn run_sequential(
     ublx_opts: &UblxOpts,
     prior_nefax: Option<&nefax_ops::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
-    let (dir_to_ublx_abs, prior_zahir_json) = pre_run_setup(dir_to_ublx);
+    let (dir_to_ublx_abs, prior_zahir_json, prior_category) = pre_run_setup(dir_to_ublx);
     let (nefax, diff) =
         run_nefax_exiting::<fn(&nefax_ops::NefaxEntry)>(dir_to_ublx, ublx_opts, prior_nefax, None);
 
@@ -102,35 +196,40 @@ pub fn run_sequential(
         diff.removed.len(),
         diff.modified.len()
     );
-    let path_list = paths_needing_zahir(&nefax, prior_nefax, &dir_to_ublx_abs);
+    let force_full = should_force_full_zahir(ublx_opts);
+    let path_list = paths_needing_zahir(
+        &nefax,
+        prior_nefax,
+        &dir_to_ublx_abs,
+        ublx_opts,
+        force_full,
+        &prior_zahir_json,
+    );
 
     debug!(
-        "zahir running on {} paths (mtime changed or new)",
+        "zahir running on {} paths (force_full={force_full})",
         path_list.len()
     );
-    let zahir_result = if path_list.is_empty() {
-        debug!("zahir skipped: no new paths provided from nefaxer");
-        None
-    } else {
-        let r = match zahir_ops::run_zahir_batch(&path_list, ublx_opts) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("zahir (sequential) failed: {e}");
-                exit_error();
-            }
-        };
-        if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &r) {
-            error!("failed to write zahir failures to ublx.log: {e}");
+
+    let zahir_result = match zahir_ops::run_zahir_batch(&path_list, ublx_opts) {
+        Ok(r) => r,
+        Err(e) => {
+            error!(
+                "{}",
+                error_writer::NefaxZahirErrors::zahir_sequential_failed(&e)
+            );
+            exit_error();
         }
-        Some(r)
     };
+    error_writer::write_zahir_failures_to_log_error(dir_to_ublx, &zahir_result);
+    let prior_ctx = snapshot_prior_ctx(&prior_zahir_json, &prior_category, ublx_opts);
     if let Err(e) = db_ops::write_snapshot_to_db(
         dir_to_ublx,
         &nefax,
-        zahir_result.as_ref(),
+        Some(&zahir_result),
         &diff,
         &ublx_opts.to_ublx_settings(),
-        &prior_zahir_json,
+        &prior_ctx,
     ) {
         error!("failed to write snapshot: {e}");
         exit_error();
@@ -148,20 +247,29 @@ pub fn run_stream(
     ublx_opts: &UblxOpts,
     prior_nefax: Option<&nefax_ops::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
-    let (dir_to_ublx_abs, prior_zahir_json) = pre_run_setup(dir_to_ublx);
+    let (dir_to_ublx_abs, prior_zahir_json, prior_category) = pre_run_setup(dir_to_ublx);
 
     let ublx_opts_for_zahir = ublx_opts.clone();
+    let force_full = should_force_full_zahir(ublx_opts);
     let (path_tx, path_rx) = mpsc::channel();
     let (output_tx, output_rx) = mpsc::channel();
     let zahir_handle = std::thread::spawn(move || {
         let output_sink = zahir_ops::ZahirOutputSink::Channel(output_tx);
         zahir_ops::run_zahir_from_stream(&path_rx, &ublx_opts_for_zahir, &output_sink)
     });
+    let batch_zahir_ctx = BatchZahirCtx {
+        dir_to_ublx_abs: dir_to_ublx_abs.as_path(),
+        ublx_opts,
+        force_full_zahir: force_full,
+        prior_nefax,
+        prior_zahir_json: &prior_zahir_json,
+    };
     let on_entry = |e: &nefax_ops::NefaxEntry| {
-        if e.size > 0 && zahir_ops::needs_zahir(prior_nefax, &e.path, e.mtime_ns) {
-            let abs = dir_to_ublx_abs.join(&e.path).to_string_lossy().into_owned();
-            let _ = path_tx.send(abs);
+        if !entry_should_batch_zahir(&batch_zahir_ctx, &e.path, e.size, e.mtime_ns) {
+            return;
         }
+        let abs = dir_to_ublx_abs.join(&e.path).to_string_lossy().into_owned();
+        let _ = path_tx.send(abs);
     };
     let (nefax, diff) =
         match nefax_ops::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax, Some(on_entry)) {
@@ -175,13 +283,14 @@ pub fn run_stream(
 
     drop(path_tx);
     debug!("indexed {} paths (streaming)", nefax.len());
+    let prior_ctx = snapshot_prior_ctx(&prior_zahir_json, &prior_category, ublx_opts);
     if let Err(e) = db_ops::write_snapshot_to_db_streaming(
         dir_to_ublx,
         &nefax,
         &diff,
         &ublx_opts.to_ublx_settings(),
         &output_rx,
-        &prior_zahir_json,
+        &prior_ctx,
     ) {
         error!("failed to write snapshot: {e}");
         exit_error();
@@ -189,19 +298,17 @@ pub fn run_stream(
 
     match zahir_handle.join() {
         Ok(Ok(r)) => {
-            if let Err(e) = error_writer::write_zahir_failures_to_log(dir_to_ublx, &r) {
-                error!("failed to write zahir failures to log: {e}");
-            }
+            error_writer::write_zahir_failures_to_log_error(dir_to_ublx, &r);
         }
         Ok(Err(e)) => {
-            if !e.to_string().contains("No file paths provided") {
-                error!("zahir (stream) failed: {e}");
-                exit_error();
-            }
-            debug!("zahir (stream) skipped: {e}");
+            error!(
+                "{}",
+                error_writer::NefaxZahirErrors::zahir_stream_failed(&e)
+            );
+            exit_error();
         }
         Err(_) => {
-            error!("zahir thread panicked");
+            error!("{}", error_writer::NefaxZahirErrors::ZAHIR_THREAD_PANICKED);
             exit_error();
         }
     }

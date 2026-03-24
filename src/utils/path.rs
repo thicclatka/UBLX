@@ -1,5 +1,6 @@
 //! Path helpers (extensions, etc.).
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Resolve a path string from the DB or snapshot against `base` when relative, or use it as-is when absolute.
@@ -8,6 +9,23 @@ use std::path::{Path, PathBuf};
 #[must_use]
 pub fn resolve_under_root(base: &Path, path: &str) -> PathBuf {
     base.join(path)
+}
+
+/// True if `path` relative to `root` exists on disk and is a directory (`fs::metadata` / `is_dir`).
+/// Matches how snapshot rows get category `"Directory"` (see db_ops category fallback).
+#[must_use]
+pub fn rel_path_is_directory(root: &Path, path: &Path) -> bool {
+    fs::metadata(root.join(path))
+        .map(|m| m.is_dir())
+        .unwrap_or(false)
+}
+
+/// Path as a string with `/` separators (TOML paths, policy prefix checks, DB keys, cross-platform snapshot maps).
+///
+/// On Windows, normalizes `\\` to `/` so comparisons match Unix-style config and stored strings.
+#[must_use]
+pub fn path_to_slash_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 /// True if `path`'s file extension equals any of `exts` (ASCII case-insensitive, OR semantics).

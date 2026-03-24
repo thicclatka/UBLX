@@ -18,14 +18,20 @@ fn replace_newlines(s: &str) -> String {
 /// Bullets for unordered lists by nesting depth: -, •, +, then repeat.
 const LIST_BULLETS: [char; 3] = ['-', '•', '+'];
 
-fn prepend_list_bullet(lines: &mut StyledLines, list_ordered: bool, list_depth: usize) {
-    let bullet = if list_ordered {
-        '•'
-    } else {
-        LIST_BULLETS[list_depth.saturating_sub(1) % LIST_BULLETS.len()]
-    };
+#[derive(Clone, Copy)]
+enum ListKind {
+    Ordered { next: u64 },
+    Unordered,
+}
+
+fn prepend_list_prefix(lines: &mut StyledLines, item_num: Option<u64>, list_depth: usize) {
     let indent = "  ".repeat(list_depth.saturating_sub(1));
-    let prefix = format!("{indent}{bullet} ");
+    let prefix = if let Some(n) = item_num {
+        format!("{indent}{n}. ")
+    } else {
+        let bullet = LIST_BULLETS[list_depth.saturating_sub(1) % LIST_BULLETS.len()];
+        format!("{indent}{bullet} ")
+    };
     let fg = Style::default().fg(themes::current().text);
     if let Some(first) = lines.first_mut() {
         let mut new_spans = vec![Span::styled(prefix.clone(), fg)];
@@ -42,7 +48,7 @@ fn block_from_closed_tag(
     code_lang: Option<String>,
     text: String,
     rich: &mut Option<RichBuilder>,
-    list_ordered: bool,
+    list_item_num: Option<u64>,
     list_depth: usize,
 ) -> Option<Block> {
     match start_tag {
@@ -73,9 +79,10 @@ fn block_from_closed_tag(
             let mut lines = rich
                 .take()
                 .map_or_else(|| vec![Line::from(text.clone())], RichBuilder::finish);
-            prepend_list_bullet(&mut lines, list_ordered, list_depth);
+            let ordered = list_item_num.is_some();
+            prepend_list_prefix(&mut lines, list_item_num, list_depth);
             Some(Block::ListItem {
-                ordered: list_ordered,
+                ordered,
                 depth: list_depth.saturating_sub(1),
                 prefix: String::new(),
                 lines,
@@ -97,7 +104,7 @@ fn block_from_closed_tag(
 struct MarkdownParseState<'a> {
     buf: String,
     block_tag: Option<(Tag<'a>, Option<String>)>,
-    list_ordered: bool,
+    list_stack: Vec<ListKind>,
     list_depth: usize,
     table_header: Option<Vec<String>>,
     table_rows: Vec<Vec<String>>,
@@ -151,9 +158,9 @@ impl<'a> MarkdownParseState<'a> {
                     self.table_link_depth += 1;
                 }
             }
-            Tag::Image { .. } => {
+            Tag::Image { dest_url, .. } => {
                 if let Some(r) = self.rich.as_mut() {
-                    r.begin_image();
+                    r.begin_image(dest_url.as_ref());
                 }
             }
             _ => {}
@@ -171,8 +178,11 @@ impl<'a> MarkdownParseState<'a> {
                 self.block_tag = Some((tag, lang));
             }
             Tag::List(opt) => {
-                self.list_ordered = opt.is_some();
                 self.list_depth += 1;
+                match opt {
+                    Some(start) => self.list_stack.push(ListKind::Ordered { next: *start }),
+                    None => self.list_stack.push(ListKind::Unordered),
+                }
                 self.block_tag = Some((tag, None));
             }
             Tag::Table(_) => {
@@ -271,6 +281,7 @@ impl<'a> MarkdownParseState<'a> {
             }
             TagEnd::List(_) => {
                 self.list_depth = self.list_depth.saturating_sub(1);
+                self.list_stack.pop();
             }
             _ => {}
         }
@@ -303,12 +314,24 @@ impl<'a> MarkdownParseState<'a> {
         let Some((start_tag, code_lang)) = self.block_tag.take() else {
             return;
         };
+        let list_item_num = if matches!(start_tag, Tag::Item) {
+            match self.list_stack.last_mut() {
+                Some(ListKind::Ordered { next }) => {
+                    let n = *next;
+                    *next = n.saturating_add(1);
+                    Some(n)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
         if let Some(block) = block_from_closed_tag(
             &start_tag,
             code_lang,
             text,
             &mut self.rich,
-            self.list_ordered,
+            list_item_num,
             self.list_depth,
         ) {
             blocks.push(block);
@@ -370,7 +393,7 @@ pub fn parse_markdown(s: &str) -> MarkdownDoc {
     let mut st = MarkdownParseState {
         buf: String::new(),
         block_tag: None,
-        list_ordered: false,
+        list_stack: Vec::new(),
         list_depth: 0,
         table_header: None,
         table_rows: Vec::new(),

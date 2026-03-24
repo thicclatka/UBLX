@@ -6,7 +6,9 @@ pub mod path;
 pub mod tools;
 
 pub use clipboard::ClipboardCopyCommand;
-pub use error_writer::exit_error;
+pub use error_writer::{NefaxZahirErrors, exit_error};
 pub use format::*;
-pub use path::{path_has_extension, resolve_under_root};
+pub use path::{
+    path_has_extension, path_to_slash_string, rel_path_is_directory, resolve_under_root,
+};
 pub use tools::*;

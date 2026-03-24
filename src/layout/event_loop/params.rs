@@ -27,4 +27,8 @@ pub struct RunUblxParams<'a> {
     pub lens_names: Vec<String>,
     /// When some, a file watcher sends () on global/local config save; main loop triggers hot reload.
     pub config_reload_rx: Option<mpsc::Receiver<()>>,
+    /// First launch in this dir: show enhance-all prompt; defer first background snapshot until answered.
+    pub defer_first_snapshot: bool,
+    /// When set, next tick shows a toast that index-time Zahir is running in the background ([`crate::engine::orchestrator::should_force_full_zahir`]).
+    pub pending_force_full_enhance_toast: bool,
 }

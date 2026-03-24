@@ -17,20 +17,23 @@ pub fn render_space_menu(
     anchor_row_index: usize,
 ) {
     let (title, items): (&str, Vec<&str>) = match kind {
-        SpaceMenuKind::FileActions { .. } => {
-            let items: Vec<&str> = if main_mode == MainMode::Lenses {
-                vec![
-                    UI_STRINGS.space.open,
-                    UI_STRINGS.space.show_in_folder,
-                    UI_STRINGS.space.remove_from_lens,
-                ]
+        SpaceMenuKind::FileActions {
+            show_enhance_directory_policy,
+            show_enhance_zahir,
+            ..
+        } => {
+            let mut items = vec![UI_STRINGS.space.open, UI_STRINGS.space.show_in_folder];
+            if *show_enhance_directory_policy {
+                items.push(UI_STRINGS.space.enhance_policy);
+            }
+            if *show_enhance_zahir {
+                items.push(UI_STRINGS.space.enhance_with_zahirscan);
+            }
+            if main_mode == MainMode::Lenses {
+                items.push(UI_STRINGS.space.remove_from_lens);
             } else {
-                vec![
-                    UI_STRINGS.space.open,
-                    UI_STRINGS.space.show_in_folder,
-                    UI_STRINGS.space.add_to_lens,
-                ]
-            };
+                items.push(UI_STRINGS.space.add_to_lens);
+            }
             (" Actions ", items)
         }
         SpaceMenuKind::LensPanelActions { .. } => (
@@ -46,7 +49,7 @@ pub fn render_space_menu(
             selected_index,
             anchor_area,
             anchor_row_index,
-            max_width: 26,
+            max_width: 34,
             max_items: None,
         },
     );

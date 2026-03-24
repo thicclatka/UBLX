@@ -93,7 +93,7 @@ impl ToastConfig {
 
 pub const TOAST_CONFIG: ToastConfig = ToastConfig::new();
 
-/// Operation names for toasts: `{executable}-{op}` (e.g. "ublx-snapshot", "ublx-export").
+/// Operation names for toasts and bumper grouping: `{executable}: {name}` (e.g. `ublx: snapshot`, `ublx: lens`).
 pub struct OperationName {
     executable: &'static str,
 }
@@ -112,28 +112,10 @@ impl OperationName {
         }
     }
 
-    #[must_use]
-    pub fn snapshot(&self) -> String {
-        format!("{}-snapshot", self.executable)
-    }
-
-    /// Hot-reload config toast: e.g. "ublx-settings".
-    #[must_use]
-    pub fn ublx_settings(&self) -> String {
-        format!("{}-settings", self.executable)
-    }
-
-    /// Theme selector toast: operation name is just "theme-selector" (no executable prefix).
-    #[must_use]
-    pub fn theme_selector(&self) -> &'static str {
-        "theme-selector"
-    }
-
-    /// For future operations: e.g. `op("export")` → "ublx-export".
-    #[allow(dead_code)]
+    /// e.g. `op("snapshot")` → `"ublx: snapshot"`, `op("theme-selector")` → `"ublx: theme-selector"`.
     #[must_use]
     pub fn op(&self, name: &str) -> String {
-        format!("{}-{}", self.executable, name)
+        format!("{}: {}", self.executable, name)
     }
 }
 
