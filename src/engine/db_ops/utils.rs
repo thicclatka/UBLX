@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use log::warn;
+use log::{debug, warn};
 use rayon::prelude::*;
 use rusqlite::{Connection, Statement};
 
@@ -16,6 +16,29 @@ use crate::handlers::{
     zahir_ops::{ZahirOutput, zahir_metadata_name_from_path_hint, zahir_output_to_json},
 };
 use crate::utils::path::snapshot_rel_path_buf;
+
+/// How often to emit [`debug_snapshot_write_progress`] (also logs the first step, and the last when `total` is known).
+pub const SNAPSHOT_DB_WRITE_PROGRESS_LOG_EVERY: u64 = 10_000;
+
+/// Debug progress while building `.ublx_tmp` (snapshot inserts, streamed Zahir updates, etc.).
+/// With `total`: logs at 1, every [`SNAPSHOT_DB_WRITE_PROGRESS_LOG_EVERY`], and at `total`.
+/// Without `total` (unknown count): logs at 1 and every [`SNAPSHOT_DB_WRITE_PROGRESS_LOG_EVERY`] steps.
+#[inline]
+pub fn debug_snapshot_write_progress(phase: &str, n: u64, total: Option<u64>) {
+    let every = SNAPSHOT_DB_WRITE_PROGRESS_LOG_EVERY;
+    let log = match total {
+        Some(0) => return,
+        Some(t) => n == 1 || n == t || n.is_multiple_of(every),
+        None => n == 1 || n.is_multiple_of(every),
+    };
+    if !log {
+        return;
+    }
+    match total {
+        Some(t) => debug!("snapshot DB: {n} of {t} — {phase}"),
+        None => debug!("snapshot DB: {n} — {phase} (so far)"),
+    }
+}
 
 /// Prior snapshot maps and options passed through snapshot rebuild (keeps clippy arg counts down).
 pub struct SnapshotPriorContext<'a> {
@@ -128,7 +151,10 @@ pub fn insert_results_into_snapshot(
                 )
             })
             .collect();
-        for (path_str, category, zahir_json, mtime_ns, size, hash) in prepared {
+        let total = prepared.len() as u64;
+        for (i, (path_str, category, zahir_json, mtime_ns, size, hash)) in
+            prepared.into_iter().enumerate()
+        {
             stmt.execute(rusqlite::params![
                 path_str,
                 mtime_ns,
@@ -137,9 +163,15 @@ pub fn insert_results_into_snapshot(
                 category,
                 zahir_json,
             ])?;
+            debug_snapshot_write_progress(
+                "snapshot rows insert (Nefax)",
+                i as u64 + 1,
+                Some(total),
+            );
         }
     } else {
-        for (path, meta) in nefax {
+        let total = nefax.len() as u64;
+        for (i, (path, meta)) in nefax.iter().enumerate() {
             let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
                 dir_to_ublx,
                 path,
@@ -157,6 +189,11 @@ pub fn insert_results_into_snapshot(
                 category,
                 zahir_json,
             ])?;
+            debug_snapshot_write_progress(
+                "snapshot rows insert (Nefax)",
+                i as u64 + 1,
+                Some(total),
+            );
         }
     }
     insert_global_config_row_if_exists(stmt, ublx_paths)?;
@@ -212,7 +249,8 @@ pub fn insert_nefax_only_into_snapshot(
     ublx_paths: Option<&UblxPaths>,
     prior: &SnapshotPriorContext<'_>,
 ) -> Result<(), anyhow::Error> {
-    for (path, meta) in nefax {
+    let total = nefax.len() as u64;
+    for (i, (path, meta)) in nefax.iter().enumerate() {
         let (full_path, path_str) = get_full_path_and_path_str(dir_to_ublx, path);
         let category =
             category_for_snapshot_row(&full_path, &path_str, ublx_paths, prior.prior_category);
@@ -229,6 +267,7 @@ pub fn insert_nefax_only_into_snapshot(
             category,
             zahir_json,
         ])?;
+        debug_snapshot_write_progress("snapshot rows insert (Nefax)", i as u64 + 1, Some(total));
     }
     insert_global_config_row_if_exists(stmt, ublx_paths)?;
     Ok(())

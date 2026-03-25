@@ -27,7 +27,7 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("Shift+Tab", "Alternate between Main tabs"),
     ("Ctrl+d", "Run duplicate detection, show Duplicates tab"),
     ("/", "Search (strict substring search)"),
-    ("Shift+S", "Take snapshot"),
+    ("Ctrl+s", "Take snapshot"),
     ("h | l", "Focus on Left or Middle panes"),
     ("j | k", "Move down / up in Left or Middle panes"),
     (
@@ -43,13 +43,13 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("t", "Focus on Templates tab in right pane (if tab exists)"),
     ("m", "Focus on Metadata tab in right pane (if tab exists)"),
     ("w", "Focus on Writing tab in right pane (if tab exists)"),
-    ("Shift+V", "Cycle right pane tab"),
+    ("Ctrl+v", "Cycle right pane tab"),
     (
         "Ctrl+t",
         "Theme selector (j/k preview, Enter save to .ublx.toml, Esc cancel)"
     ),
     (
-        "Shift+L",
+        "Ctrl+l",
         "Add to lens: menu (Create New Lens or pick lens), then add current file"
     ),
     ("Space", "Open context menu"),

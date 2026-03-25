@@ -93,7 +93,7 @@ impl ClipboardCopyCommand {
 #[cfg(unix)]
 fn unix_has_executable(name: &str) -> bool {
     Command::new("sh")
-        .args(["-c", &format!("command -v {}", name)])
+        .args(["-c", &format!("command -v {name}")])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()

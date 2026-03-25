@@ -70,10 +70,10 @@ pub fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Opt
     let f = fs::File::open(path).ok()?;
     let cap = HALF_MIB_BYTES_USIZE.min(u64_to_usize_saturating(meta.len()));
     let mut buf = Vec::with_capacity(cap);
-    let take_limit = u64::try_from(HALF_MIB_BYTES_USIZE).expect("half MiB fits in u64");
-    let n = f.take(take_limit).read_to_end(&mut buf).ok()?;
+    let n = f.take(HALF_MIB_BYTES).read_to_end(&mut buf).ok()?;
     let s = String::from_utf8_lossy(&buf[..n]).into_owned();
-    let n_u64 = u64::try_from(n).expect("bytes read fits in u64");
+    // `take(HALF_MIB_BYTES)` bounds `n` to at most [`HALF_MIB_BYTES`], which fits in `u64`.
+    let n_u64 = n as u64;
     let out = if n_u64 >= meta.len() {
         s
     } else {
@@ -184,6 +184,7 @@ pub fn format_bytes(n: u64) -> String {
 }
 
 /// Unique stamp for temporary files (nanos XOR pid).
+#[must_use]
 pub fn unique_stamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

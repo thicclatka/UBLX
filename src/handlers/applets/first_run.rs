@@ -50,7 +50,7 @@ fn finish_prompt(
     }
     state.config_written_by_us_at = Some(std::time::Instant::now());
     settings::apply_config_reload(params, ublx_opts, state, Option::<&str>::None);
-    if params.defer_first_snapshot {
+    if params.startup.defer_first_snapshot {
         snapshot::spawn_snapshot_from_dir_db(
             params.dir_to_ublx,
             params.db_path,
@@ -58,7 +58,7 @@ fn finish_prompt(
             params.bumper,
             Some(ublx_opts),
         );
-        params.defer_first_snapshot = false;
+        params.startup.defer_first_snapshot = false;
     }
 }
 

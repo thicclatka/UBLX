@@ -7,6 +7,8 @@ use crate::layout::setup::{
 use crate::ui::keymap::UblxAction;
 use crate::utils::clamp_selection;
 
+pub const PREVIEW_SCROLL_STEP_LINES: u16 = 5;
+
 fn apply_quit(state: &mut UblxState) -> bool {
     if state.chrome.viewer_fullscreen {
         state.chrome.viewer_fullscreen = false;
@@ -44,12 +46,13 @@ fn apply_mode_switch(
 }
 
 fn apply_preview_scroll(state: &mut UblxState, action: UblxAction) {
+    let step = PREVIEW_SCROLL_STEP_LINES;
     match action {
         UblxAction::ScrollPreviewUp => {
-            state.panels.preview_scroll = state.panels.preview_scroll.saturating_sub(1);
+            state.panels.preview_scroll = state.panels.preview_scroll.saturating_sub(step);
         }
         UblxAction::ScrollPreviewDown => {
-            state.panels.preview_scroll = state.panels.preview_scroll.saturating_add(1);
+            state.panels.preview_scroll = state.panels.preview_scroll.saturating_add(step);
         }
         UblxAction::PreviewTop => state.panels.preview_scroll = 0,
         UblxAction::PreviewBottom => state.panels.preview_scroll = u16::MAX,
@@ -64,21 +67,21 @@ fn pdf_page_nav_applies(state: &UblxState, right: &RightPaneContent) -> bool {
 }
 
 fn apply_pdf_page_scroll(state: &mut UblxState, action: UblxAction) {
-    let max = state.viewer_image.pdf_page_count;
+    let max = state.viewer_image.pdf.page_count;
     match action {
         UblxAction::ScrollPreviewDown => {
-            let next = state.viewer_image.pdf_page.saturating_add(1);
-            state.viewer_image.pdf_page = if let Some(m) = max { next.min(m) } else { next };
+            let next = state.viewer_image.pdf.page.saturating_add(1);
+            state.viewer_image.pdf.page = if let Some(m) = max { next.min(m) } else { next };
         }
         UblxAction::ScrollPreviewUp => {
-            state.viewer_image.pdf_page = state.viewer_image.pdf_page.saturating_sub(1).max(1);
+            state.viewer_image.pdf.page = state.viewer_image.pdf.page.saturating_sub(1).max(1);
         }
         UblxAction::PreviewTop => {
-            state.viewer_image.pdf_page = 1;
+            state.viewer_image.pdf.page = 1;
         }
         UblxAction::PreviewBottom => {
             if let Some(m) = max {
-                state.viewer_image.pdf_page = m;
+                state.viewer_image.pdf.page = m;
             }
         }
         _ => {}

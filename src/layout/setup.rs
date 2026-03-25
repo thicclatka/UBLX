@@ -5,7 +5,9 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, mpsc};
+use std::time::Instant;
 
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
@@ -14,6 +16,10 @@ use super::style;
 
 use crate::engine::db_ops::DeltaType;
 use crate::handlers::zahir_ops::ZahirFileType as FileType;
+use crate::render::{
+    cache::ViewerTextCacheEntry,
+    viewers::pdf_preview::PDFPrefetch,
+};
 use crate::utils::ClipboardCopyCommand;
 
 /// Re-export snapshot row type for layout/view/render (`path`, category, size).
@@ -141,28 +147,64 @@ pub struct DuplicateLoadGate {
     pub requested: bool,
 }
 
-/// One-shot session flags: initial tick and redraw after external editor.
-pub struct SessionFlow {
+/// First real frame vs later ticks; redraw after returning from external editor.
+#[derive(Clone, Copy, Debug)]
+pub struct SessionTickFlags {
     pub first_tick: bool,
     pub refresh_terminal_after_editor: bool,
-    /// After single-file `ZahirScan` enhance, reload snapshot rows from DB on next tick.
-    pub reload_snapshot_rows: bool,
-    /// After we show the "enhancing in background" toast for [`crate::engine::orchestrator::should_force_full_zahir`], suppress duplicates until restart.
-    pub force_full_enhance_toast_shown: bool,
 }
 
-impl Default for SessionFlow {
+impl Default for SessionTickFlags {
     fn default() -> Self {
         Self {
             first_tick: true,
             refresh_terminal_after_editor: false,
-            reload_snapshot_rows: false,
-            force_full_enhance_toast_shown: false,
+        }
+    }
+}
+
+/// Snapshot table reload and one-shot dedup for the background full-enhance toast.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SessionReloadFlags {
+    /// After single-file `ZahirScan` enhance, reload snapshot rows from DB on next tick.
+    pub snapshot_rows: bool,
+    /// After we show the "enhancing in background" toast for [`crate::engine::orchestrator::should_force_full_zahir`], suppress duplicates until restart.
+    pub force_full_enhance_toast_shown: bool,
+}
+
+/// One-shot session coordination for ticks, editor handoff, and DB reload.
+#[derive(Default)]
+pub struct SessionFlow {
+    pub tick: SessionTickFlags,
+    pub reload: SessionReloadFlags,
+}
+
+pub struct PDF {
+    pub page: u32,
+    pub page_count: Option<u32>,
+    pub for_path: Option<PathBuf>,
+    pub page_count_rx: Option<mpsc::Receiver<Result<u32, String>>>,
+    pub prefetch_cancel: Arc<AtomicU64>,
+    pub prefetch_earliest: Option<Instant>,
+    pub prefetch_rx: Option<mpsc::Receiver<(String, Result<image::DynamicImage, String>)>>,
+}
+
+impl Default for PDF {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            page_count: None,
+            for_path: None,
+            page_count_rx: None,
+            prefetch_cancel: Arc::new(AtomicU64::new(0)),
+            prefetch_earliest: None,
+            prefetch_rx: None,
         }
     }
 }
 
 /// State for the image viewer in the right pane (`ratatui-image`, tiered downscale, optional background decode).
+#[derive(Default)]
 pub struct ViewerImageState {
     pub protocol: Option<ratatui_image::protocol::StatefulProtocol>,
     pub picker: Option<ratatui_image::picker::Picker>,
@@ -171,35 +213,16 @@ pub struct ViewerImageState {
     /// When set, a background thread is decoding/downsizing; poll in [`crate::render::viewers::image::ensure_viewer_image`].
     pub decode_rx: Option<mpsc::Receiver<Result<image::DynamicImage, String>>>,
     pub err: Option<String>,
-    /// Recent previews (not the current row) for instant navigation back within [`Self::LRU_CAP`] paths.
+    /// Recent previews (not the current row). Size [`Self::LRU_CAP`] is tied to PDF prefetch (see [`ViewerImageState::LRU_CAP`]).
     pub image_lru: VecDeque<(String, ratatui_image::protocol::StatefulProtocol)>,
     /// PDF: one-based page; PDF: selected file this state applies to.
-    pub pdf_page: u32,
-    pub pdf_page_count: Option<u32>,
-    pub pdf_for_path: Option<PathBuf>,
-    /// Background [`pdf_preview::pdf_page_count`] result.
-    pub pdf_page_count_rx: Option<mpsc::Receiver<Result<u32, String>>>,
-}
-
-impl Default for ViewerImageState {
-    fn default() -> Self {
-        Self {
-            protocol: None,
-            picker: None,
-            key: None,
-            decode_rx: None,
-            err: None,
-            image_lru: VecDeque::new(),
-            pdf_page: 1,
-            pdf_page_count: None,
-            pdf_for_path: None,
-            pdf_page_count_rx: None,
-        }
-    }
+    pub pdf: PDF,
 }
 
 impl ViewerImageState {
-    pub const LRU_CAP: usize = 3;
+    /// `PDFPrefetch::MAX_EXTRA_PAGES` prefetched PDFs (pages 2..) plus **four** slots to stash the previous page
+    pub const LRU_EXTRA_SLOTS: usize = 4;
+    pub const LRU_CAP: usize = PDFPrefetch::MAX_EXTRA_PAGES as usize + Self::LRU_EXTRA_SLOTS;
 
     /// Push a finished preview into the LRU ring; drops the oldest entry when full.
     pub fn push_lru(&mut self, path: String, proto: ratatui_image::protocol::StatefulProtocol) {
@@ -218,21 +241,31 @@ impl ViewerImageState {
         self.image_lru.remove(pos).map(|(_, proto)| proto)
     }
 
+    /// Drop an LRU entry matching `key` so a prefetch can replace it.
+    pub fn remove_lru_key(&mut self, key: &str) {
+        if let Some(pos) = self.image_lru.iter().position(|(k, _)| k == key) {
+            self.image_lru.remove(pos);
+        }
+    }
+
     /// Clear loaded image, error, and async decode channel; **retains** [`Self::picker`] so the
     /// terminal is not re-queried on every selection (matches previous flat-field behavior).
     /// Finished previews are moved into [`Self::image_lru`] so returning to an image can be instant.
     pub fn clear(&mut self) {
+        self.pdf.prefetch_cancel.fetch_add(1, Ordering::SeqCst);
+        self.pdf.prefetch_rx = None;
+        self.pdf.prefetch_earliest = None;
         self.decode_rx = None;
-        self.pdf_page_count_rx = None;
+        self.pdf.page_count_rx = None;
         self.err = None;
         let k = self.key.take();
         let p = self.protocol.take();
         if let (Some(k), Some(p)) = (k, p) {
             self.push_lru(k, p);
         }
-        self.pdf_for_path = None;
-        self.pdf_page = 1;
-        self.pdf_page_count = None;
+        self.pdf.for_path = None;
+        self.pdf.page = 1;
+        self.pdf.page_count = None;
     }
 }
 
@@ -251,8 +284,8 @@ pub struct UblxState {
     pub lens_confirm: LensConfirmState,
     pub chrome: ViewerChrome,
     pub cached_tree: Option<(String, String)>,
-    /// CSV viewer: (path, `content_width`, `table_string`, `line_count`) to avoid re-parsing every frame.
-    pub viewer_csv_cache: Option<(String, u16, String, usize)>,
+    /// Viewer: delimiter tables and large markdown — cached styled [`Text`] + viewport slice on scroll.
+    pub viewer_text_cache: Option<ViewerTextCacheEntry>,
     /// Image category viewer ([`RightPaneContent::viewer_abs_path`] + [`crate::render::viewers::image`]).
     pub viewer_image: ViewerImageState,
     pub last_key_for_double: Option<char>,
@@ -289,7 +322,7 @@ impl UblxState {
             lens_confirm: LensConfirmState::default(),
             chrome: ViewerChrome::default(),
             cached_tree: None,
-            viewer_csv_cache: None,
+            viewer_text_cache: None,
             viewer_image: ViewerImageState::default(),
             last_key_for_double: None,
             snapshot_bg: BackgroundSnapshot::default(),
@@ -515,6 +548,8 @@ pub struct RightPaneContent {
     pub viewer_offer_enhance_zahir: bool,
     /// Space menu: offer `[[enhance_policy]]` for this path when the row is a Directory in the snapshot.
     pub viewer_offer_enhance_directory_policy: bool,
+    /// Embedded cover image bytes (audio tags / EPUB) for raster preview; [`None`] uses normal text/binary viewer.
+    pub viewer_embedded_cover_raster: Option<Vec<u8>>,
 }
 
 impl RightPaneContent {

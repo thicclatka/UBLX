@@ -1,4 +1,5 @@
 pub mod clipboard;
+pub mod embedded_cover;
 pub mod error_writer;
 pub mod format;
 pub mod notifications;

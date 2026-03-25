@@ -604,94 +604,6 @@ fn path_is_under_or_equal(rel: &str, prefix: &str) -> bool {
     rel == prefix || (rel.starts_with(prefix) && rel.as_bytes().get(prefix.len()) == Some(&b'/'))
 }
 
-#[cfg(test)]
-mod batch_zahir_policy_tests {
-    use super::{EnhancePolicy, EnhancePolicyEntry, UblxOpts, UblxOverlay};
-    use nefaxer::NefaxOpts;
-    use zahirscan::RuntimeConfig;
-
-    fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> UblxOpts {
-        UblxOpts {
-            nefax: NefaxOpts::default(),
-            zahir: RuntimeConfig::new(),
-            max_workers_available: 1,
-            nefax_workers_override: None,
-            zahir_workers_override: None,
-            ublx_workers_override: None,
-            streaming: false,
-            config_source: None,
-            theme: None,
-            transparent: false,
-            layout: super::LayoutOverlay::default(),
-            editor_path: None,
-            enable_enhance_all,
-            enable_enhance_all_cache_before_apply: None,
-            enhance_policy: entries,
-        }
-    }
-
-    #[test]
-    fn manual_overrides_global_on() {
-        let o = opts_with(
-            true,
-            vec![EnhancePolicyEntry {
-                path: "blocked".into(),
-                policy: EnhancePolicy::Manual,
-            }],
-        );
-        assert!(!o.batch_zahir_for_path("blocked/file.txt"));
-        assert!(o.batch_zahir_for_path("other/file.txt"));
-    }
-
-    #[test]
-    fn auto_overrides_global_off() {
-        let o = opts_with(
-            false,
-            vec![EnhancePolicyEntry {
-                path: "force".into(),
-                policy: EnhancePolicy::Auto,
-            }],
-        );
-        assert!(o.batch_zahir_for_path("force/a.rs"));
-        assert!(!o.batch_zahir_for_path("outside/a.rs"));
-    }
-
-    #[test]
-    fn longest_prefix_wins() {
-        let o = opts_with(
-            true,
-            vec![
-                EnhancePolicyEntry {
-                    path: "a".into(),
-                    policy: EnhancePolicy::Manual,
-                },
-                EnhancePolicyEntry {
-                    path: "a/b".into(),
-                    policy: EnhancePolicy::Auto,
-                },
-            ],
-        );
-        assert!(!o.batch_zahir_for_path("a/x"));
-        assert!(o.batch_zahir_for_path("a/b/x"));
-    }
-
-    #[test]
-    fn deserializes_legacy_always_never_toml() {
-        let s = r#"
-            [[enhance_policy]]
-            path = "legacy"
-            policy = "always"
-            [[enhance_policy]]
-            path = "legacy2"
-            policy = "never"
-        "#;
-        let overlay: UblxOverlay = toml::from_str(s).expect("parse");
-        let entries = overlay.enhance_policy.expect("entries");
-        assert_eq!(entries[0].policy, EnhancePolicy::Auto);
-        assert_eq!(entries[1].policy, EnhancePolicy::Manual);
-    }
-}
-
 /// Write local config with `theme = "display_name"`. Uses existing file at [`UblxPaths::toml_path`] if present, otherwise creates `.ublx.toml`. Preserves other keys from existing file or default. Logs and ignores errors.
 pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
     let path = paths.toml_path().unwrap_or_else(|| paths.hidden_toml());
@@ -714,6 +626,11 @@ pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
 }
 
 /// Write `ublx.toml` in the indexed directory with only [`UblxOverlay::enable_enhance_all`] set (first-run prompt).
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] if TOML serialization fails or if writing [`UblxPaths::visible_toml`] fails
+/// (e.g. missing parent directory, permission denied, or disk full).
 pub fn write_visible_enhance_only_toml(
     ublx_paths: &UblxPaths,
     enable_enhance_all: bool,

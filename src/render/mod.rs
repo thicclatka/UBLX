@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod core;
 pub mod kv_tables;
 pub mod overlays;

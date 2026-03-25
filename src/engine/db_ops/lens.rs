@@ -7,6 +7,7 @@ use rusqlite::Connection;
 
 use super::SnapshotTuiRow;
 use super::consts::UblxDbStatements;
+use super::core::open_for_snapshot_tui_read;
 
 /// Load lens names in id order for the TUI left bar. Returns empty if DB missing or no lenses.
 ///
@@ -17,7 +18,7 @@ pub fn load_lens_names(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
     if !db_path.exists() {
         return Ok(Vec::new());
     }
-    let conn = Connection::open(db_path)?;
+    let conn = open_for_snapshot_tui_read(db_path)?;
     let mut stmt = conn.prepare(UblxDbStatements::SELECT_LENS_NAMES)?;
     let names: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(0))?
@@ -37,7 +38,7 @@ pub fn load_lens_paths(
     if !db_path.exists() {
         return Ok(Vec::new());
     }
-    let conn = Connection::open(db_path)?;
+    let conn = open_for_snapshot_tui_read(db_path)?;
     let lens_id: i64 = match conn.query_row(
         UblxDbStatements::SELECT_LENS_ID_BY_NAME,
         [lens_name],

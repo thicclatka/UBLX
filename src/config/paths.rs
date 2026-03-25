@@ -11,7 +11,7 @@ pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub const NEFAX_DB: &str = ".nefaxer";
 
 /// Stable hex string for a path (for cache filenames). Same path => same string.
-fn path_to_hex(path: &Path) -> String {
+pub fn path_to_hex(path: &Path) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     path.to_string_lossy().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
@@ -141,6 +141,18 @@ impl UblxPaths {
         self.dir_to_ublx_abs.join(format!(".{PKG_NAME}_tmp"))
     }
 
+    /// WAL file for [`Self::tmp`] when snapshot build uses `journal_mode=WAL`. e.g. `.ublx_tmp-wal`.
+    #[must_use]
+    pub fn tmp_wal(&self) -> PathBuf {
+        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}_tmp-wal"))
+    }
+
+    /// Shared-memory file for [`Self::tmp`] in WAL mode. e.g. `.ublx_tmp-shm`.
+    #[must_use]
+    pub fn tmp_shm(&self) -> PathBuf {
+        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}_tmp-shm"))
+    }
+
     /// `SQLite` WAL file (created by `SQLite` when WAL mode is on). e.g. `dir_to_ublx_abs/.ublx-wal`.
     #[must_use]
     pub fn wal(&self) -> PathBuf {
@@ -156,10 +168,17 @@ impl UblxPaths {
     /// Paths to exclude from indexing (db, tmp, wal, shm). Returns segment-style names so nefaxer’s exclude (matched per path component) works, e.g. `.ublx`, `.ublx_tmp`.
     #[must_use]
     pub fn exclude(&self) -> Vec<String> {
-        [self.db(), self.tmp(), self.wal(), self.shm()]
-            .into_iter()
-            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .collect()
+        [
+            self.db(),
+            self.tmp(),
+            self.tmp_wal(),
+            self.tmp_shm(),
+            self.wal(),
+            self.shm(),
+        ]
+        .into_iter()
+        .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .collect()
     }
 
     /// Remove tmp, WAL, and SHM files if they exist. No error if any are missing.
@@ -169,7 +188,13 @@ impl UblxPaths {
     ///
     /// Returns [`anyhow::Error`] when removing an existing auxiliary file fails (e.g. I/O permission denied).
     pub fn remove_aux_files(&self) -> Result<(), anyhow::Error> {
-        for p in [self.tmp(), self.wal(), self.shm()] {
+        for p in [
+            self.tmp(),
+            self.tmp_wal(),
+            self.tmp_shm(),
+            self.wal(),
+            self.shm(),
+        ] {
             if p.exists() {
                 fs::remove_file(&p)?;
             }

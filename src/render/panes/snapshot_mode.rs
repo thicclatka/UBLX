@@ -6,9 +6,27 @@ use ratatui::text::Line;
 use ratatui::widgets::ListItem;
 
 use crate::config::UblxPaths;
-use crate::layout::setup;
+use crate::layout::setup::{self, ViewContents};
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
+
+/// Build full `ListItem` vecs only below this; larger snapshot lists use a viewport window.
+const SNAPSHOT_CONTENTS_LIST_VIRTUALIZE_MIN: usize = 512;
+/// Extra rows above/below the visible block (single-line items assumed).
+const SNAPSHOT_CONTENTS_LIST_OVERSCAN_LINES: usize = 8;
+
+/// `(start, end)` view indices: `end` exclusive. Keeps `global_sel` inside `[start, end)`.
+fn snapshot_contents_window(total: usize, global_sel: usize, inner_h: usize) -> (usize, usize) {
+    let inner_h = inner_h.max(1);
+    let cap = (inner_h + SNAPSHOT_CONTENTS_LIST_OVERSCAN_LINES * 2).min(total);
+    let mut w_start =
+        global_sel.saturating_sub(inner_h / 2 + SNAPSHOT_CONTENTS_LIST_OVERSCAN_LINES);
+    if w_start + cap > total {
+        w_start = total.saturating_sub(cap);
+    }
+    let w_end = (w_start + cap).min(total);
+    (w_start, w_end)
+}
 
 /// Draw the categories (left) pane. `chunks` must have at least 1 element; uses `chunks[0]`.
 pub fn draw_categories_pane(
@@ -89,20 +107,68 @@ pub fn draw_contents_panel(
             state.panels.content_state.selected(),
             view.content_len,
         ));
-    let items: Vec<ListItem> = if view.content_len == 0 {
-        vec![ListItem::new(if state.search.query.is_empty() {
-            UI_STRINGS.list.no_contents
-        } else {
-            UI_STRINGS.list.no_matches
-        })]
-    } else {
-        view.iter_contents(all_rows)
-            .map(|(path, category, _)| {
-                let label = contents_display_label(path.as_str(), category.as_str(), dir_to_ublx);
-                ListItem::new(label)
+    let total = view.content_len;
+
+    let (items, window_start) = if total == 0 {
+        (
+            vec![ListItem::new(if state.search.query.is_empty() {
+                UI_STRINGS.list.no_contents
+            } else {
+                UI_STRINGS.list.no_matches
+            })],
+            None,
+        )
+    } else if total >= SNAPSHOT_CONTENTS_LIST_VIRTUALIZE_MIN
+        && matches!(&view.contents, ViewContents::SnapshotIndices(_))
+        && let Some(all_rows_slice) = all_rows
+    {
+        let inner_h = area.height.saturating_sub(2).max(1) as usize;
+        let global_sel = state
+            .panels
+            .content_state
+            .selected()
+            .unwrap_or(0)
+            .min(total - 1);
+        let (w_start, w_end) = snapshot_contents_window(total, global_sel, inner_h);
+        let items = (w_start..w_end)
+            .filter_map(|i| {
+                view.row_at(i, Some(all_rows_slice))
+                    .map(|(path, category, _)| {
+                        ListItem::new(contents_display_label(
+                            path.as_str(),
+                            category.as_str(),
+                            dir_to_ublx,
+                        ))
+                    })
             })
-            .collect()
+            .collect();
+        (items, Some(w_start))
+    } else {
+        let items = view
+            .iter_contents(all_rows)
+            .map(|(path, category, _)| {
+                ListItem::new(contents_display_label(
+                    path.as_str(),
+                    category.as_str(),
+                    dir_to_ublx,
+                ))
+            })
+            .collect();
+        (items, None)
     };
+
+    let saved_sel = state.panels.content_state.selected();
+    let saved_off = state.panels.content_state.offset();
+
+    if let Some(ws) = window_start {
+        let g = saved_sel.unwrap_or(0).min(total.saturating_sub(1));
+        state
+            .panels
+            .content_state
+            .select(Some(g.saturating_sub(ws)));
+        *state.panels.content_state.offset_mut() = 0;
+    }
+
     super::draw_list_panel(
         f,
         items,
@@ -111,4 +177,9 @@ pub fn draw_contents_panel(
         &mut state.panels.content_state,
         area,
     );
+
+    if window_start.is_some() {
+        state.panels.content_state.select(saved_sel);
+        *state.panels.content_state.offset_mut() = saved_off;
+    }
 }

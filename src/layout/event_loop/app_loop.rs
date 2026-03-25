@@ -60,20 +60,20 @@ fn run_tick(
 ) -> io::Result<bool> {
     applets::settings::on_first_tick(state, params);
 
-    if params.pending_force_full_enhance_toast {
-        params.pending_force_full_enhance_toast = false;
-        if !state.session.force_full_enhance_toast_shown {
-            state.session.force_full_enhance_toast_shown = true;
+    if params.startup.pending_force_full_enhance_toast {
+        params.startup.pending_force_full_enhance_toast = false;
+        if !state.session.reload.force_full_enhance_toast_shown {
+            state.session.reload.force_full_enhance_toast_shown = true;
             show_force_full_enhance_started_toast(state, params);
         }
     }
 
-    if state.session.reload_snapshot_rows {
+    if state.session.reload.snapshot_rows {
         let (c, r) =
             load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
         *categories = c;
         *all_rows = r;
-        state.session.reload_snapshot_rows = false;
+        state.session.reload.snapshot_rows = false;
     }
 
     // Drain completed duplicate load from background thread (non-blocking).
@@ -97,7 +97,7 @@ fn run_tick(
     handle_snapshot_done(state, categories, all_rows, params);
     poll_snapshot_if_due(state, categories, all_rows, params);
 
-    if params.dev {
+    if params.display.dev {
         notifications::move_log_events();
     }
 
@@ -143,8 +143,8 @@ fn run_tick(
         params,
         ublx_opts,
     )?;
-    if state.session.refresh_terminal_after_editor {
-        state.session.refresh_terminal_after_editor = false;
+    if state.session.tick.refresh_terminal_after_editor {
+        state.session.tick.refresh_terminal_after_editor = false;
         reapply_terminal_after_editor()?;
         terminal.clear()?;
         let draw_inputs = DrawInputs {
@@ -201,10 +201,10 @@ fn build_draw_args<'a>(
         all_rows: rows_for_draw,
         dir_to_ublx: Some(params.dir_to_ublx),
         theme_name,
-        transparent: params.transparent,
+        transparent: params.display.transparent,
         layout: &params.layout,
         latest_snapshot_ns,
-        dev: params.dev,
+        dev: params.display.dev,
         duplicate_groups: if params.duplicate_groups.is_empty() {
             None
         } else {
@@ -234,9 +234,9 @@ fn handle_snapshot_request(
         return;
     }
     if orchestrator::should_force_full_zahir(ublx_opts)
-        && !state.session.force_full_enhance_toast_shown
+        && !state.session.reload.force_full_enhance_toast_shown
     {
-        params.pending_force_full_enhance_toast = true;
+        params.startup.pending_force_full_enhance_toast = true;
     }
     snapshot::spawn_snapshot_from_dir_db(
         params.dir_to_ublx,

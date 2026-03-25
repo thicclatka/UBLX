@@ -5,10 +5,18 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use image::DynamicImage;
 
 use crate::utils::unique_stamp;
+
+pub struct PDFPrefetch;
+
+impl PDFPrefetch {
+    pub const DEBOUNCE: Duration = Duration::from_millis(280);
+    pub const MAX_EXTRA_PAGES: u32 = 4;
+}
 
 /// Extra scale on the PDF raster longest edge vs plain images (applied after viewport + tier caps).
 ///
@@ -36,6 +44,11 @@ struct ToolAttempt {
 }
 
 /// Page count from Poppler [`pdfinfo`] (same package as `pdftoppm`).
+///
+/// # Errors
+///
+/// Returns a message string when `pdfinfo` cannot be spawned, exits non-zero (stderr is used as the message),
+/// prints an unparsable `Pages:` line, or omits `Pages:` entirely.
 pub fn pdf_page_count(pdf: &Path) -> Result<u32, String> {
     try_pdfinfo_pages(pdf)
 }
@@ -62,18 +75,23 @@ fn try_pdfinfo_pages(pdf: &Path) -> Result<u32, String> {
 }
 
 /// Rasterize one-based page index `page` (≥ 1) with longest edge at most `max_dim` pixels.
+///
+/// # Errors
+///
+/// Returns a message string when neither Poppler (`pdftoppm`) nor MuPDF (`mutool`) is available,
+/// when both tools fail to render (messages are combined), or when the temporary PNG cannot be decoded.
 pub fn render_pdf_page(pdf: &Path, page: u32, max_dim: u32) -> Result<DynamicImage, String> {
     let page = page.max(1);
     let tmp = std::env::temp_dir();
     let stamp = unique_stamp();
 
     let err_poppler = match try_pdftoppm(pdf, page, max_dim, &tmp, stamp) {
-        Ok(png) => return load_png_remove(png),
+        Ok(png) => return load_png_remove(&png),
         Err(a) => a,
     };
 
     let err_mutool = match try_mutool_draw(pdf, page, max_dim, &tmp, stamp) {
-        Ok(png) => return load_png_remove(png),
+        Ok(png) => return load_png_remove(&png),
         Err(a) => a,
     };
 
@@ -87,9 +105,9 @@ pub fn render_pdf_page(pdf: &Path, page: u32, max_dim: u32) -> Result<DynamicIma
     Err(format!("{}; {}", err_poppler.message, err_mutool.message))
 }
 
-fn load_png_remove(path: PathBuf) -> Result<DynamicImage, String> {
-    let img = image::open(&path).map_err(|e| format!("decode rendered PNG: {e}"))?;
-    let _ = fs::remove_file(&path);
+fn load_png_remove(path: &PathBuf) -> Result<DynamicImage, String> {
+    let img = image::open(path).map_err(|e| format!("decode rendered PNG: {e}"))?;
+    let _ = fs::remove_file(path);
     Ok(img)
 }
 

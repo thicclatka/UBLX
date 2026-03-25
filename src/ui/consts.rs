@@ -169,110 +169,170 @@ impl StringObjTraits for UiStrings {
 }
 
 impl UiStrings {
+    const fn loading() -> UiStringsLoading {
+        UiStringsLoading {
+            general: "Loading…",
+        }
+    }
+
+    const fn delta() -> UiStringsDelta {
+        UiStringsDelta {
+            added: "Added",
+            modified: "Modified",
+            removed: "Removed",
+            right_title: "Snapshot overview",
+            left_block_title: "Delta",
+            placeholder_dash: "—",
+            type_label: "Delta type",
+        }
+    }
+
+    const fn pane() -> UiStringsPane {
+        UiStringsPane {
+            categories: "Categories",
+            contents: "Contents",
+            viewer: "Viewer",
+            templates: "Templates",
+            metadata: "Metadata",
+            writing: "Writing",
+            tab_templates: "Templates",
+            tab_viewer: "Viewer",
+            tab_metadata: "Metadata",
+            tab_writing: "Writing",
+            not_available: "(not available for this item)",
+            viewer_placeholder: "(viewer — file content will load here)",
+        }
+    }
+
+    const fn list() -> UiStringsList {
+        UiStringsList {
+            all_categories: "All",
+            no_contents: "(no contents)",
+            no_matches: "(no matches)",
+            list_symbol: "  ",
+        }
+    }
+
+    const fn main_tabs() -> UiStringsMainTabs {
+        UiStringsMainTabs {
+            snapshot: "Snapshot",
+            delta: "Delta",
+            duplicates: "Duplicates",
+            lenses: "Lenses",
+        }
+    }
+
+    const fn search() -> UiStringsSearchStatus {
+        UiStringsSearchStatus {
+            search_label: "Search: ",
+            esc_to_clear: "Esc to clear",
+            latest_snapshot: "Latest Snapshot",
+        }
+    }
+
+    const fn config() -> UiStringsConfig {
+        UiStringsConfig {
+            global: "Global",
+            local: "Local",
+        }
+    }
+
+    const fn paths() -> UiStringsPaths {
+        UiStringsPaths {
+            paths: "Paths",
+            duplicate_group: "Duplicate",
+            lens_group: "Lens",
+        }
+    }
+
+    const fn brand() -> UiStringsBrand {
+        UiStringsBrand {
+            brand: "UBLX",
+            fullscreen_suffix: "(Esc to exit fullscreen)",
+        }
+    }
+
+    const fn tables() -> UiStringsTables {
+        UiStringsTables {
+            header_key: "Key",
+            header_value: "Value",
+            first_title: "General",
+            contents_title: "Contents",
+            columns_title: "Columns",
+        }
+    }
+
+    const fn dialogs() -> UiStringsDialogs {
+        UiStringsDialogs {
+            help: "Help",
+            theme: "Theme",
+            notification: "Notification",
+            help_command: "Command",
+            help_action: "Action",
+        }
+    }
+
+    const fn toasts() -> UiStringsToasts {
+        UiStringsToasts {
+            config_reloaded: "Config reloaded",
+            no_duplicates: "No duplicates found",
+            force_full_enhance_background: "Getting metadata for all files.",
+        }
+    }
+
+    const fn lens() -> UiStringsLens {
+        UiStringsLens {
+            menu_create_new: "Create New Lens",
+            name_prompt: "Lens name: ",
+            rename_prompt: "Rename lens: ",
+            delete_confirm_title: "Delete lens ",
+            delete_yes: "Yes",
+            delete_no: "No",
+        }
+    }
+
+    const fn space() -> UiStringsSpaceMenu {
+        UiStringsSpaceMenu {
+            open: "Open",
+            show_in_folder: "Show in folder",
+            enhance_policy: "Enhance policy",
+            enhance_policy_always: "Always (automatic)",
+            enhance_policy_never: "Per-file (manual)",
+            enhance_with_zahirscan: "Enhance with ZahirScan",
+            add_to_lens: "Add to Lens",
+            remove_from_lens: "Remove from Lens",
+            rename: "Rename",
+            delete: "Delete",
+        }
+    }
+
+    const fn first_run() -> UiStringsFirstRun {
+        UiStringsFirstRun {
+            enhance_prompt_title: "Index with full ZahirScan for all files automatically?",
+            enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in settings file (`enable_enhance_all`).",
+            enhance_yes: "Yes",
+            enhance_no: "No",
+        }
+    }
+
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            loading: UiStringsLoading {
-                general: "Loading…",
-            },
-            delta: UiStringsDelta {
-                added: "Added",
-                modified: "Modified",
-                removed: "Removed",
-                right_title: "Snapshot overview",
-                left_block_title: "Delta",
-                placeholder_dash: "—",
-                type_label: "Delta type",
-            },
-            pane: UiStringsPane {
-                categories: "Categories",
-                contents: "Contents",
-                viewer: "Viewer",
-                templates: "Templates",
-                metadata: "Metadata",
-                writing: "Writing",
-                tab_templates: "Templates",
-                tab_viewer: "Viewer",
-                tab_metadata: "Metadata",
-                tab_writing: "Writing",
-                not_available: "(not available for this item)",
-                viewer_placeholder: "(viewer — file content will load here)",
-            },
-            list: UiStringsList {
-                all_categories: "All",
-                no_contents: "(no contents)",
-                no_matches: "(no matches)",
-                list_symbol: "  ",
-            },
-            main_tabs: UiStringsMainTabs {
-                snapshot: "Snapshot",
-                delta: "Delta",
-                duplicates: "Duplicates",
-                lenses: "Lenses",
-            },
-            search: UiStringsSearchStatus {
-                search_label: "Search: ",
-                esc_to_clear: "Esc to clear",
-                latest_snapshot: "Latest Snapshot",
-            },
-            config: UiStringsConfig {
-                global: "Global",
-                local: "Local",
-            },
-            paths: UiStringsPaths {
-                paths: "Paths",
-                duplicate_group: "Duplicate",
-                lens_group: "Lens",
-            },
-            brand: UiStringsBrand {
-                brand: "UBLX",
-                fullscreen_suffix: "(Esc to exit fullscreen)",
-            },
-            tables: UiStringsTables {
-                header_key: "Key",
-                header_value: "Value",
-                first_title: "General",
-                contents_title: "Contents",
-                columns_title: "Columns",
-            },
-            dialogs: UiStringsDialogs {
-                help: "Help",
-                theme: "Theme",
-                notification: "Notification",
-                help_command: "Command",
-                help_action: "Action",
-            },
-            toasts: UiStringsToasts {
-                config_reloaded: "Config reloaded",
-                no_duplicates: "No duplicates found",
-                force_full_enhance_background: "Getting metadata for all files.",
-            },
-            lens: UiStringsLens {
-                menu_create_new: "Create New Lens",
-                name_prompt: "Lens name: ",
-                rename_prompt: "Rename lens: ",
-                delete_confirm_title: "Delete lens ",
-                delete_yes: "Yes",
-                delete_no: "No",
-            },
-            space: UiStringsSpaceMenu {
-                open: "Open",
-                show_in_folder: "Show in folder",
-                enhance_policy: "Enhance policy",
-                enhance_policy_always: "Always (automatic)",
-                enhance_policy_never: "Per-file (manual)",
-                enhance_with_zahirscan: "Enhance with ZahirScan",
-                add_to_lens: "Add to Lens",
-                remove_from_lens: "Remove from Lens",
-                rename: "Rename",
-                delete: "Delete",
-            },
-            first_run: UiStringsFirstRun {
-                enhance_prompt_title: "Index with full ZahirScan for all files automatically?",
-                enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in settings file (`enable_enhance_all`).",
-                enhance_yes: "Yes",
-                enhance_no: "No",
-            },
+            loading: Self::loading(),
+            delta: Self::delta(),
+            pane: Self::pane(),
+            list: Self::list(),
+            main_tabs: Self::main_tabs(),
+            search: Self::search(),
+            config: Self::config(),
+            paths: Self::paths(),
+            brand: Self::brand(),
+            tables: Self::tables(),
+            dialogs: Self::dialogs(),
+            toasts: Self::toasts(),
+            lens: Self::lens(),
+            space: Self::space(),
+            first_run: Self::first_run(),
         }
     }
 

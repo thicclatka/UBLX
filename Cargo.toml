@@ -39,15 +39,17 @@ ratatui-image = { version = "10", default-features = false, features = [
   "image-defaults",
 ] }
 image = "0.25"
+lofty = "0.23.3"
 rayon = "1.10"
 ratatui-notifications = "0.1.0"
-rusqlite = { version = "0.38.0", features = ["backup", "bundled-sqlcipher"] }
+rusqlite = { version = "0.38.0", features = ["bundled-sqlcipher"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 tokio = "1.50.0"
 toml = "1.0.7"
 tui-logger = { version = "0.18.1", features = ["crossterm"] }
 unicode-width = "0.2"
+zip = { version = "8.4.0", default-features = false, features = ["deflate"] }
 zahirscan = "0.2.14"
 
 [patch.crates-io]

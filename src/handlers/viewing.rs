@@ -10,7 +10,9 @@ use crate::handlers::zahir_ops::{ZahirFileType as FileType, file_type_from_metad
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState, ViewData,
 };
-use crate::utils::{file_content_for_viewer, is_likely_binary, path::resolve_under_root};
+use crate::utils::{
+    embedded_cover, file_content_for_viewer, is_likely_binary, path::resolve_under_root,
+};
 
 /// Run `tree` on `full_path`; use cached result if keyed by `path`. Updates `state.cached_tree`.
 fn tree_for_path(state: &mut UblxState, path: &str, full_path: &Path) -> String {
@@ -62,6 +64,7 @@ fn tree_viewer(
         open_hint_label: None,
         viewer_offer_enhance_zahir: false,
         viewer_offer_enhance_directory_policy: offer_directory_policy,
+        viewer_embedded_cover_raster: None,
     }
 }
 
@@ -94,11 +97,24 @@ pub fn resolve_right_pane_content(
             }
             state.cached_tree = None;
             let viewer_zahir_type = file_type_from_metadata_name(category);
-            let viewer_str = file_content_for_viewer(&full_path, viewer_zahir_type);
+            let embedded_cover = match viewer_zahir_type {
+                Some(ft @ (FileType::Audio | FileType::Epub)) => {
+                    embedded_cover::try_extract_cover(&full_path, ft)
+                }
+                _ => None,
+            };
+            let viewer_str = if embedded_cover.is_some() {
+                Some(String::new())
+            } else {
+                file_content_for_viewer(&full_path, viewer_zahir_type)
+            };
             let viewer_byte_size = viewer_str.as_ref().map(|_| *size);
             let viewer_mtime_ns = db_ops::load_mtime_for_path(db_path, path).ok().flatten();
             let viewer_can_open = !is_likely_binary(&full_path)
-                || matches!(viewer_zahir_type, Some(FileType::Image | FileType::Pdf));
+                || matches!(
+                    viewer_zahir_type,
+                    Some(FileType::Image | FileType::Pdf | FileType::Audio | FileType::Epub)
+                );
             let zahir_json: String = db_ops::load_zahir_json_for_path(db_path, path)
                 .ok()
                 .flatten()
@@ -118,6 +134,7 @@ pub fn resolve_right_pane_content(
                     open_hint_label: None,
                     viewer_offer_enhance_zahir: !enable_enhance_all,
                     viewer_offer_enhance_directory_policy: false,
+                    viewer_embedded_cover_raster: embedded_cover.clone(),
                 }
             } else {
                 match serde_json::from_str::<Value>(&zahir_json) {
@@ -137,6 +154,7 @@ pub fn resolve_right_pane_content(
                             open_hint_label: None,
                             viewer_offer_enhance_zahir: false,
                             viewer_offer_enhance_directory_policy: false,
+                            viewer_embedded_cover_raster: embedded_cover.clone(),
                         }
                     }
                     _ => RightPaneContent {
@@ -153,6 +171,7 @@ pub fn resolve_right_pane_content(
                         open_hint_label: None,
                         viewer_offer_enhance_zahir: false,
                         viewer_offer_enhance_directory_policy: false,
+                        viewer_embedded_cover_raster: embedded_cover.clone(),
                     },
                 }
             }

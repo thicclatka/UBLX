@@ -75,7 +75,7 @@ pub fn run_snapshot_pipeline(
 }
 
 /// Load `prior_nefax` and `ublx_opts` from `dir` and `db_path`, then run [`run_snapshot_pipeline`].
-/// Use from the TUI when running a snapshot on demand (e.g. Shift+S).
+/// Use from the TUI when running a snapshot on demand (e.g. Ctrl+S).
 ///
 /// `preserve_enhance_all_cache_before_apply`: when `Some`, replaces [`UblxOpts::enable_enhance_all_cache_before_apply`]
 /// on the opts returned from [`UblxOpts::for_dir`]. Pass the in-memory opts from the running TUI (e.g. main's startup
@@ -115,7 +115,7 @@ pub fn run_snapshot_pipeline_from_dir_db(
     run_snapshot_pipeline(dir, &ublx_opts, prior_nefax.as_ref(), done_tx, bumper);
 }
 
-/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Shift+S).
+/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Ctrl+S).
 pub fn spawn_snapshot_from_dir_db(
     dir: &Path,
     db_path: &Path,

@@ -25,6 +25,7 @@ pub enum UblxAction {
     SearchSubmit,
     /// Esc when search is active (clear search); when inactive, use Quit.
     SearchClear,
+    /// Cycle right pane tab (Ctrl+V).
     CycleRightPane,
     RightPaneViewer,
     /// Toggle right-pane fullscreen (current tab).
@@ -47,7 +48,7 @@ pub enum UblxAction {
     FocusCategories,
     FocusContents,
     Tab,
-    /// Run take-snapshot pipeline in background; completion shows in log bumper.
+    /// Run take-snapshot pipeline in background; completion shows in log bumper (Ctrl+S).
     TakeSnapshot,
     /// Open theme selector popup (j/k to preview, Enter to pick and save to local .ublx.toml, Esc to revert).
     ThemeSelector,
@@ -55,7 +56,7 @@ pub enum UblxAction {
     ReloadConfig,
     /// Open menu (Shift+O): Open (Terminal) or Open (GUI). Only when selection is a non-binary file.
     OpenMenu,
-    /// Lens menu (Shift+L): Add current file to a lens or create new lens.
+    /// Lens menu (Ctrl+L): Add current file to a lens or create new lens.
     LensMenu,
     /// Spacebar context menu
     SpaceMenu,
@@ -114,11 +115,8 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
         KeyCode::Char('?') => (UblxAction::Help, None),
         KeyCode::Char('/') if !ctx.search.active => (UblxAction::SearchStart, None),
         KeyCode::Char(c) if ctx.search.active => (UblxAction::SearchChar(c), None),
-        KeyCode::Char('s' | 'S') if shift => (UblxAction::TakeSnapshot, None),
         KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
         KeyCode::Char('o' | 'O') if shift => (UblxAction::OpenMenu, None),
-        KeyCode::Char('l' | 'L') if shift => (UblxAction::LensMenu, None),
-        KeyCode::Char('v' | 'V') if shift => (UblxAction::CycleRightPane, None),
         KeyCode::Char('t' | 'T') if ctrl => (UblxAction::ThemeSelector, None),
         KeyCode::Char('J') | KeyCode::Down if shift => (UblxAction::ScrollPreviewDown, None),
         KeyCode::Char('K') | KeyCode::Up if shift => (UblxAction::ScrollPreviewUp, None),
@@ -126,6 +124,9 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
         KeyCode::Char('d' | 'D') if ctrl => (UblxAction::LoadDuplicates, None),
         KeyCode::Char('e' | 'E') if ctrl => (UblxAction::PreviewBottom, None),
         KeyCode::Char('r' | 'R') if ctrl => (UblxAction::ReloadConfig, None),
+        KeyCode::Char('s' | 'S') if ctrl => (UblxAction::TakeSnapshot, None),
+        KeyCode::Char('v' | 'V') if ctrl => (UblxAction::CycleRightPane, None),
+        KeyCode::Char('l' | 'L') if ctrl => (UblxAction::LensMenu, None),
         KeyCode::Char('G') if shift => (UblxAction::ListBottom, None),
         KeyCode::Char('g') if !shift && !ctrl => {
             if ctx.last_key_for_double == Some('g') {

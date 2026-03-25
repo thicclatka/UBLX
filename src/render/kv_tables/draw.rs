@@ -5,7 +5,7 @@ use ratatui::layout::Rect;
 use super::consts::TABLE_GAP;
 use super::ratatui_table;
 use super::sections;
-use super::sections::Section;
+use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
 
@@ -70,6 +70,97 @@ fn rect_in_viewport(table_area: Rect, y_offset: u16, height: u16, viewport: u16)
     }
 }
 
+/// Frame + padded table rect + vertical scroll window (shared by per-section draw helpers).
+struct TableDrawCtx<'a, 'f> {
+    f: &'a mut ratatui::Frame<'f>,
+    table_area: Rect,
+    viewport: u16,
+    visible_start: u16,
+}
+
+impl TableDrawCtx<'_, '_> {
+    fn draw_kv_visible(
+        &mut self,
+        section_start: u16,
+        take_lines: u16,
+        has_title: bool,
+        num_rows: usize,
+        row_offset: usize,
+        kv: &KvSection,
+    ) {
+        let table_start_line = section_start + u16::from(has_title);
+        let skip =
+            (self.visible_start.saturating_sub(table_start_line)).min(num_rows as u16) as usize;
+        let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
+        if take == 0 {
+            return;
+        }
+        let kv_visible = KvSection {
+            title: None,
+            rows: kv.rows[skip..skip + take].to_vec(),
+            sub_title: false,
+        };
+        let actual_y = table_start_line.saturating_sub(self.visible_start);
+        let rect = rect_in_viewport(self.table_area, actual_y, (1 + take) as u16, self.viewport);
+        self.f.render_widget(
+            ratatui_table::section_to_table(&kv_visible, row_offset + skip),
+            rect,
+        );
+    }
+
+    fn draw_contents_visible(
+        &mut self,
+        section_start: u16,
+        take_lines: u16,
+        num_rows: usize,
+        row_offset: usize,
+        c: &ContentsSection,
+    ) {
+        let table_start = section_start + 1;
+        let skip = (self.visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
+        let take = (take_lines as usize)
+            .min(num_rows.saturating_sub(skip))
+            .min((self.viewport as usize).saturating_sub(1));
+        if take == 0 {
+            return;
+        }
+        let y_offset = table_start.saturating_sub(self.visible_start);
+        let rect = rect_in_viewport(self.table_area, y_offset, (1 + take) as u16, self.viewport);
+        self.f.render_widget(
+            ratatui_table::contents_to_table_window(
+                c,
+                row_offset + skip,
+                skip,
+                skip + take,
+                rect.width,
+            ),
+            rect,
+        );
+    }
+
+    fn draw_single_column_list_visible(
+        &mut self,
+        section_start: u16,
+        take_lines: u16,
+        num_rows: usize,
+        row_offset: usize,
+        list: &SingleColumnListSection,
+    ) {
+        let table_start = section_start + 1;
+        let skip = (self.visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
+        let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
+        if take == 0 {
+            return;
+        }
+        let y_offset = table_start.saturating_sub(self.visible_start);
+        let rect = rect_in_viewport(self.table_area, y_offset, take as u16, self.viewport);
+        self.f.render_widget(
+            ratatui_table::single_column_list_to_table(list, row_offset, skip, skip + take),
+            rect,
+        );
+    }
+}
+
 /// Render Key/Value and Contents tables from JSON in the given rect, with scroll offset. Only the visible window is drawn; Contents rows are built only for visible range (memory optimization).
 pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16) {
     use ratatui::widgets::Paragraph;
@@ -86,6 +177,12 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
     let viewport = table_area.height;
     let visible_start = scroll_y;
     let visible_end = scroll_y + viewport;
+    let mut ctx = TableDrawCtx {
+        f,
+        table_area,
+        viewport,
+        visible_start,
+    };
     let mut line_index: u16 = 0;
     let mut row_offset = 0;
     for (i, section) in sections.iter().enumerate() {
@@ -111,75 +208,38 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
 
         if let Some(title) = title_opt {
             draw_section_title(
-                f,
+                ctx.f,
                 title,
-                table_area,
-                visible_start,
+                ctx.table_area,
+                ctx.visible_start,
                 visible_end,
                 section_start,
                 section.sub_title_style(),
             );
         }
+        let has_title = title_opt.is_some();
         match section {
             Section::KeyValue(kv) => {
-                let table_start_line = section_start + u16::from(title_opt.is_some());
-                let skip =
-                    (visible_start.saturating_sub(table_start_line)).min(num_rows as u16) as usize;
-                let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
-                if take > 0 {
-                    let kv_visible = sections::KvSection {
-                        title: None,
-                        rows: kv.rows[skip..skip + take].to_vec(),
-                        sub_title: false,
-                    };
-                    let actual_y = table_start_line.saturating_sub(visible_start);
-                    let rect = rect_in_viewport(table_area, actual_y, (1 + take) as u16, viewport);
-                    f.render_widget(
-                        ratatui_table::section_to_table(&kv_visible, row_offset + skip),
-                        rect,
-                    );
-                }
+                ctx.draw_kv_visible(
+                    section_start,
+                    take_lines,
+                    has_title,
+                    num_rows,
+                    row_offset,
+                    kv,
+                );
             }
             Section::Contents(c) => {
-                let table_start = section_start + 1;
-                let skip =
-                    (visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
-                let take = (take_lines as usize)
-                    .min(num_rows.saturating_sub(skip))
-                    .min((viewport as usize).saturating_sub(1));
-                if take > 0 {
-                    let y_offset = table_start.saturating_sub(visible_start);
-                    let rect = rect_in_viewport(table_area, y_offset, (1 + take) as u16, viewport);
-                    f.render_widget(
-                        ratatui_table::contents_to_table_window(
-                            c,
-                            row_offset + skip,
-                            skip,
-                            skip + take,
-                            rect.width,
-                        ),
-                        rect,
-                    );
-                }
+                ctx.draw_contents_visible(section_start, take_lines, num_rows, row_offset, c);
             }
             Section::SingleColumnList(list) => {
-                let table_start = section_start + 1;
-                let skip =
-                    (visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
-                let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
-                if take > 0 {
-                    let y_offset = table_start.saturating_sub(visible_start);
-                    let rect = rect_in_viewport(table_area, y_offset, take as u16, viewport);
-                    f.render_widget(
-                        ratatui_table::single_column_list_to_table(
-                            list,
-                            row_offset,
-                            skip,
-                            skip + take,
-                        ),
-                        rect,
-                    );
-                }
+                ctx.draw_single_column_list_visible(
+                    section_start,
+                    take_lines,
+                    num_rows,
+                    row_offset,
+                    list,
+                );
             }
         }
         row_offset += num_rows;

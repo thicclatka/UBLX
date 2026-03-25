@@ -7,12 +7,13 @@
 //!    [`scrollable_content::viewport_text_width`] may shrink width to reserve space for a vertical
 //!    scrollbar → repeat until stable. All layout and line counting for the viewer must use this
 //!    final `text_w`.
-//! 2. **CSV cache** — [`ensure_viewer_csv_cache`] fills [`UblxState::viewer_csv_cache`] for viewer
-//!    mode + CSV paths: `(path, content_width)` → prebuilt table string + line count so we do not
-//!    parse/build more than once per frame when width is stable.
+//! 2. **Viewer text cache** — [`ensure_viewer_text_cache`] fills [`UblxState::viewer_text_cache`]
+//!    for delimiter tables (always) and **large** markdown (see
+//!    [`crate::render::viewer_cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES`]). Scrolling uses a
+//!    **viewport slice** into cached [`Text`] (see [`content_display_text`]).
 //! 3. **Total lines** — [`viewer_total_lines`] must match what is actually drawn (scrollbar height).
 //!    Branches: JSON metadata/writing → [`kv_tables::content_height`]; CSV → cache or
-//!    [`csv::table_line_count`]; otherwise plain text → [`wrapped_line_count`].
+//!    [`csv::table_line_count`]; large markdown → cache line count; otherwise plain text → [`wrapped_line_count`].
 //!    Delimited table preview: [`viewer_show_delimited_table`] — zahir category **CSV** (incl. tsv/tab/psv)
 //!    **or** path extension `.csv`/`.tsv`/`.tab`/`.psv` so rows still get tables if metadata category is off.
 //! 4. **Scroll** — [`scrollable_content::layout_scrollable_content`] + [`scrollable_content::draw_scrollbar`].
@@ -23,8 +24,9 @@
 //!
 //! **Preformatted layout:** [`viewer_uses_preformatted_layout`] is true for Markdown and for CSV
 //! that parsed to a non-empty table. Those paths already produce viewport-width lines; ratatui must
-//! *not* wrap again ([`ratatui_wrap_right_paragraph`]). Plain text and failed/empty CSV still use
-//! `Wrap`.
+//! *not* wrap again ([`ratatui_wrap_right_paragraph`]). For delimiter tables, when
+//! [`ensure_viewer_text_cache`] has warmed the cache, the wrap check uses it instead of re-parsing.
+//! Plain text and failed/empty CSV still use `Wrap`.
 //!
 //! ## Adding another category-based viewer
 //!
@@ -33,15 +35,16 @@
 //! Add a cache in state only if you need `(path, width)` reuse like CSV.
 
 use ratatui::layout::{Constraint, Rect};
-use ratatui::text::{Line, Span};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::handlers::zahir_ops::{ZahirFileType as FileType, delimiter_from_path_for_viewer};
 use crate::layout::{
     setup::{RightPaneContent, RightPaneMode, UblxState},
-    style,
+    style, themes,
 };
 use crate::render::{
+    cache::{self, ViewerTextCacheEntry},
     kv_tables, scrollable_content,
     viewers::{csv_handler, image as viewer_image, markdown},
 };
@@ -74,42 +77,118 @@ fn viewer_is_markdown(rc: &RightPaneContent) -> bool {
     rc.viewer_zahir_type == Some(FileType::Markdown)
 }
 
-/// Ensure CSV viewer cache is filled for current (path, width) so we parse/build only once per frame.
-fn ensure_viewer_csv_cache(
+fn try_build_csv_cache_entry(
+    path: &str,
+    raw: &str,
+    content_width: u16,
+    theme_key: String,
+) -> Option<ViewerTextCacheEntry> {
+    let rows = csv_handler::parse_csv(raw, Some(path)).ok()?;
+    if rows.is_empty() {
+        return None;
+    }
+    let (table_string, line_count) = csv_handler::table_string_and_line_count(&rows, content_width);
+    let text = csv_handler::table_string_to_text(&table_string);
+    debug_assert_eq!(line_count, text.lines.len());
+    Some(ViewerTextCacheEntry {
+        path: path.to_string(),
+        content_width,
+        theme_name: theme_key,
+        content_ptr: raw.as_ptr() as usize,
+        content_len: raw.len(),
+        line_count,
+        text,
+    })
+}
+
+fn try_build_markdown_cache_entry(
+    path: &str,
+    raw: &str,
+    content_width: u16,
+    theme_key: String,
+) -> ViewerTextCacheEntry {
+    let doc = markdown::parse_markdown(raw);
+    let text = doc.to_text(content_width);
+    let line_count = text.lines.len();
+    ViewerTextCacheEntry {
+        path: path.to_string(),
+        content_width,
+        theme_name: theme_key,
+        content_ptr: raw.as_ptr() as usize,
+        content_len: raw.len(),
+        line_count,
+        text,
+    }
+}
+
+/// Warm [`UblxState::viewer_text_cache`] for delimiter tables and large markdown (path + width + theme + buffer).
+fn ensure_viewer_text_cache(
     state: &mut UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
 ) {
     if state.right_pane_mode != RightPaneMode::Viewer {
+        state.viewer_text_cache = None;
         return;
     }
     let Some(path) = right_content.viewer_path.as_deref() else {
-        state.viewer_csv_cache = None;
+        state.viewer_text_cache = None;
         return;
     };
-    if !viewer_show_delimited_table(right_content) {
-        state.viewer_csv_cache = None;
-        return;
-    }
     let Some(raw) = right_content.viewer.as_deref() else {
-        state.viewer_csv_cache = None;
+        state.viewer_text_cache = None;
         return;
     };
-    if let Some(ref c) = state.viewer_csv_cache
-        && c.0 == path
-        && c.1 == content_width
-    {
+    let theme_key = themes::current().name.to_string();
+    let theme = themes::current().name;
+
+    if viewer_show_delimited_table(right_content) {
+        if let Some(ref e) = state.viewer_text_cache
+            && e.matches(path, content_width, theme, raw)
+        {
+            return;
+        }
+        state.viewer_text_cache = try_build_csv_cache_entry(path, raw, content_width, theme_key);
         return;
     }
-    match csv_handler::parse_csv(raw, Some(path)) {
-        Ok(rows) if !rows.is_empty() => {
-            let (table_string, line_count) =
-                csv_handler::table_string_and_line_count(&rows, content_width);
-            state.viewer_csv_cache =
-                Some((path.to_string(), content_width, table_string, line_count));
+
+    if viewer_is_markdown(right_content) && raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES
+    {
+        if let Some(ref e) = state.viewer_text_cache
+            && e.matches(path, content_width, theme, raw)
+        {
+            return;
         }
-        _ => state.viewer_csv_cache = None,
+        state.viewer_text_cache = Some(try_build_markdown_cache_entry(
+            path,
+            raw,
+            content_width,
+            theme_key,
+        ));
+        return;
     }
+
+    state.viewer_text_cache = None;
+}
+
+fn viewer_text_cache_viewport_active(
+    state: &UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+) -> bool {
+    let Some(vp) = right_content.viewer_path.as_deref() else {
+        return false;
+    };
+    let Some(raw) = right_content.viewer.as_deref() else {
+        return false;
+    };
+    let theme = themes::current().name;
+    state.viewer_text_cache.as_ref().is_some_and(|e| {
+        e.matches(vp, content_width, theme, raw)
+            && (viewer_show_delimited_table(right_content)
+                || (viewer_is_markdown(right_content)
+                    && raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES))
+    })
 }
 
 /// Total line count for the right-pane content (used for scroll height).
@@ -122,11 +201,16 @@ fn viewer_total_lines(
     match (state.right_pane_mode, use_kv_tables) {
         (_, Some(json)) => kv_tables::content_height(json) as usize,
         (RightPaneMode::Viewer, _) => {
-            if let Some(ref c) = state.viewer_csv_cache
-                && c.0 == right_content.viewer_path.as_deref().unwrap_or("")
-                && c.1 == content_width
-            {
-                return c.3;
+            if let (Some(vp), Some(raw)) = (
+                right_content.viewer_path.as_deref(),
+                right_content.viewer.as_deref(),
+            ) {
+                let theme = themes::current().name;
+                if let Some(ref e) = state.viewer_text_cache
+                    && e.matches(vp, content_width, theme, raw)
+                {
+                    return e.line_count;
+                }
             }
             if viewer_show_delimited_table(right_content)
                 && let Some(raw) = right_content.viewer.as_deref()
@@ -176,8 +260,12 @@ fn viewer_total_lines(
     }
 }
 
-/// Markdown and successful CSV tables are fully laid out to the viewport; ratatui must not re-wrap.
-fn viewer_uses_preformatted_layout(state: &UblxState, right_content: &RightPaneContent) -> bool {
+/// Markdown and successful delimiter tables are fully laid out to the viewport; ratatui must not re-wrap.
+fn viewer_uses_preformatted_layout(
+    state: &UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+) -> bool {
     if state.right_pane_mode != RightPaneMode::Viewer {
         return false;
     }
@@ -195,6 +283,19 @@ fn viewer_uses_preformatted_layout(state: &UblxState, right_content: &RightPaneC
     if !viewer_show_delimited_table(right_content) {
         return false;
     }
+    if let (Some(vp), Some(raw)) = (
+        right_content.viewer_path.as_deref(),
+        right_content.viewer.as_deref(),
+    ) {
+        let theme = themes::current().name;
+        if state
+            .viewer_text_cache
+            .as_ref()
+            .is_some_and(|e| e.matches(vp, content_width, theme, raw))
+        {
+            return true;
+        }
+    }
     let Some(raw) = right_content.viewer.as_deref() else {
         return false;
     };
@@ -203,8 +304,12 @@ fn viewer_uses_preformatted_layout(state: &UblxState, right_content: &RightPaneC
         .unwrap_or(false)
 }
 
-fn ratatui_wrap_right_paragraph(state: &UblxState, right_content: &RightPaneContent) -> bool {
-    !viewer_uses_preformatted_layout(state, right_content)
+fn ratatui_wrap_right_paragraph(
+    state: &UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+) -> bool {
+    !viewer_uses_preformatted_layout(state, right_content, content_width)
 }
 
 fn wrapped_line_count(text: &str, width: u16) -> u16 {
@@ -222,19 +327,23 @@ fn viewer_display_text(
     state: &UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
-) -> ratatui::text::Text<'static> {
+    text_viewport: Option<(u16, u16)>,
+) -> Text<'static> {
     let raw = right_content
         .viewer
         .as_deref()
         .unwrap_or(UI_STRINGS.pane.viewer_placeholder);
     if right_content.viewer_path.is_some() {
         if viewer_show_delimited_table(right_content) {
+            let theme = themes::current().name;
             if let Some(ref path) = right_content.viewer_path
-                && let Some(ref c) = state.viewer_csv_cache
-                && c.0 == path.as_str()
-                && c.1 == content_width
+                && let Some(ref e) = state.viewer_text_cache
+                && e.matches(path.as_str(), content_width, theme, raw)
             {
-                return csv_handler::table_string_to_text(&c.2);
+                return match text_viewport {
+                    Some((sy, vh)) => e.viewport_text(sy, vh),
+                    None => e.text.clone(),
+                };
             }
             if let Ok(rows) = csv_handler::parse_csv(raw, right_content.viewer_path.as_deref())
                 && !rows.is_empty()
@@ -243,41 +352,49 @@ fn viewer_display_text(
             }
             // Parse failed or empty: fall back to raw
         } else if viewer_is_markdown(right_content) {
+            let theme = themes::current().name;
+            if raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES
+                && let Some(ref path) = right_content.viewer_path
+                && let Some(ref e) = state.viewer_text_cache
+                && e.matches(path.as_str(), content_width, theme, raw)
+            {
+                return match text_viewport {
+                    Some((sy, vh)) => e.viewport_text(sy, vh),
+                    None => e.text.clone(),
+                };
+            }
             let doc = markdown::parse_markdown(raw);
             return doc.to_text(content_width);
         } else if viewer_image::is_raster_preview_category(right_content) {
             if state.viewer_image.protocol.is_some() {
-                return ratatui::text::Text::default();
+                return Text::default();
             }
             if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
-                return ratatui::text::Text::from(viewer_image::raster_preview_label_body(
+                return Text::from(viewer_image::raster_preview_label_body(
                     right_content,
                     UI_STRINGS.loading.general,
                 ));
             }
             if let Some(e) = state.viewer_image.err.as_deref() {
-                return ratatui::text::Text::from(viewer_image::raster_preview_label_body(
-                    right_content,
-                    e,
-                ));
+                return Text::from(viewer_image::raster_preview_label_body(right_content, e));
             }
             let msg = right_content.viewer.as_deref().unwrap_or("");
-            return ratatui::text::Text::from(viewer_image::raster_preview_label_body(
-                right_content,
-                msg,
-            ));
+            return Text::from(viewer_image::raster_preview_label_body(right_content, msg));
         }
     }
-    ratatui::text::Text::from(raw.to_string())
+    Text::from(raw.to_string())
 }
 
 fn content_display_text(
     state: &UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
-) -> ratatui::text::Text<'static> {
+    text_viewport: Option<(u16, u16)>,
+) -> Text<'static> {
     match state.right_pane_mode {
-        RightPaneMode::Viewer => viewer_display_text(state, right_content, content_width),
+        RightPaneMode::Viewer => {
+            viewer_display_text(state, right_content, content_width, text_viewport)
+        }
         RightPaneMode::Templates => ratatui::text::Text::from(right_content.templates.clone()),
         RightPaneMode::Metadata => ratatui::text::Text::from(
             right_content
@@ -321,14 +438,11 @@ fn visible_tabs(right_content: &RightPaneContent) -> Vec<(RightPaneMode, &'stati
     .collect()
 }
 
-/// Draw the right (viewer) pane. `chunks` must have at least 3 elements; the right pane uses `chunks[2]`.
-pub fn draw_right_pane(
-    f: &mut ratatui::Frame,
+/// Sync PDF page picker, then optional bottom title line (size, mtime, PDF page, open hint).
+fn right_pane_footer_line(
     state: &mut UblxState,
     right_content: &RightPaneContent,
-    chunks: &[Rect],
-) {
-    let area = chunks[2];
+) -> Option<Line<'static>> {
     viewer_image::sync_pdf_selection_state(state, right_content);
     let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
@@ -337,7 +451,7 @@ pub fn draw_right_pane(
             || right_content.viewer_mtime_ns.is_some()
             || pdf_footer.is_some());
     let size_str = right_content.viewer_byte_size.map(format_bytes);
-    let footer_line = show_footer
+    show_footer
         .then(|| {
             style::viewer_footer_line(
                 right_content.open_hint_label.as_deref(),
@@ -346,18 +460,97 @@ pub fn draw_right_pane(
                 pdf_footer.as_deref(),
             )
         })
-        .flatten();
-    let block_title = title(state);
-    let right_block = if let Some(ref line) = footer_line {
-        Block::default()
+        .flatten()
+}
+
+fn right_pane_block<'a>(title: &'a str, footer_line: Option<&'a Line<'static>>) -> Block<'a> {
+    match footer_line {
+        Some(line) => Block::default()
             .borders(Borders::ALL)
-            .title(block_title.as_str())
-            .title_bottom(line.clone())
-    } else {
-        Block::default()
-            .borders(Borders::ALL)
-            .title(block_title.as_str())
+            .title(title)
+            .title_bottom(line.clone()),
+        None => Block::default().borders(Borders::ALL).title(title),
+    }
+}
+
+/// Scroll layout, KV tables / raster / paragraph, and scrollbar. Shared by [`draw_right_pane`] and [`draw_right_pane_fullscreen`].
+fn draw_right_pane_scrollable_body(
+    f: &mut ratatui::Frame,
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    scroll_area: Rect,
+    bottom_pad: u16,
+) {
+    let padded = scrollable_content::area_above_bottom_pad(scroll_area, bottom_pad);
+    let use_kv_tables = match state.right_pane_mode {
+        RightPaneMode::Metadata => right_content.metadata.as_deref(),
+        RightPaneMode::Writing => right_content.writing.as_deref(),
+        _ => None,
     };
+    viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
+    let mut text_w = padded.width;
+    for _ in 0..6 {
+        ensure_viewer_text_cache(state, right_content, text_w);
+        let guess_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+        let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
+        if w_next == text_w {
+            break;
+        }
+        text_w = w_next;
+    }
+    ensure_viewer_text_cache(state, right_content, text_w);
+    let total_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+    let layout = scrollable_content::layout_scrollable_content(
+        scroll_area,
+        total_lines,
+        &mut state.panels.preview_scroll,
+        bottom_pad,
+    );
+    let text_rect = layout.content_rect;
+    if let Some(json) = use_kv_tables {
+        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
+    } else {
+        let image_mode = state.right_pane_mode == RightPaneMode::Viewer
+            && viewer_image::is_raster_preview_category(right_content)
+            && right_content.viewer_path.is_some()
+            && state.viewer_image.protocol.is_some();
+        if image_mode {
+            if let Some(proto) = state.viewer_image.protocol.as_mut() {
+                f.render_stateful_widget(viewer_image::stateful_widget(), text_rect, proto);
+                let _ = proto.last_encoding_result();
+            }
+        } else {
+            let text_vp = viewer_text_cache_viewport_active(state, right_content, text_w)
+                .then_some((layout.scroll_y, text_rect.height));
+            let para_scroll = if text_vp.is_some() {
+                (0, 0)
+            } else {
+                (layout.scroll_y, 0)
+            };
+            let mut paragraph =
+                Paragraph::new(content_display_text(state, right_content, text_w, text_vp))
+                    .style(style::text_style())
+                    .scroll(para_scroll);
+            if ratatui_wrap_right_paragraph(state, right_content, text_w) {
+                paragraph = paragraph.wrap(Wrap { trim: false });
+            }
+            f.render_widget(paragraph, text_rect);
+        }
+    }
+    scrollable_content::draw_scrollbar(f, &layout, total_lines);
+}
+
+/// Draw the right (viewer) pane. `chunks` must have at least 3 elements; the right pane uses `chunks[2]`.
+pub fn draw_right_pane(
+    f: &mut ratatui::Frame,
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    chunks: &[Rect],
+) {
+    let area = chunks[2];
+    let footer_line = right_pane_footer_line(state, right_content);
+    let block_title = title(state);
+    let right_block = right_pane_block(block_title.as_str(), footer_line.as_ref());
     let tabs = visible_tabs(right_content);
     if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
         state.right_pane_mode = tabs[0].0;
@@ -381,55 +574,7 @@ pub fn draw_right_pane(
 
     let content_area = content_chunks[1];
     let bottom_pad = UI_CONSTANTS.v_pad;
-    let padded = scrollable_content::area_above_bottom_pad(content_area, bottom_pad);
-    let use_kv_tables = match state.right_pane_mode {
-        RightPaneMode::Metadata => right_content.metadata.as_deref(),
-        RightPaneMode::Writing => right_content.writing.as_deref(),
-        _ => None,
-    };
-    viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
-    let mut text_w = padded.width;
-    for _ in 0..6 {
-        ensure_viewer_csv_cache(state, right_content, text_w);
-        let guess_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
-        let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
-        if w_next == text_w {
-            break;
-        }
-        text_w = w_next;
-    }
-    ensure_viewer_csv_cache(state, right_content, text_w);
-    let total_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
-    let layout = scrollable_content::layout_scrollable_content(
-        content_area,
-        total_lines,
-        &mut state.panels.preview_scroll,
-        bottom_pad,
-    );
-    let text_rect = layout.content_rect;
-    if let Some(json) = use_kv_tables {
-        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
-    } else {
-        let image_mode = state.right_pane_mode == RightPaneMode::Viewer
-            && viewer_image::is_raster_preview_category(right_content)
-            && right_content.viewer_path.is_some()
-            && state.viewer_image.protocol.is_some();
-        if image_mode {
-            if let Some(proto) = state.viewer_image.protocol.as_mut() {
-                f.render_stateful_widget(viewer_image::stateful_widget(), text_rect, proto);
-                let _ = proto.last_encoding_result();
-            }
-        } else {
-            let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
-                .style(style::text_style())
-                .scroll((layout.scroll_y, 0));
-            if ratatui_wrap_right_paragraph(state, right_content) {
-                paragraph = paragraph.wrap(Wrap { trim: false });
-            }
-            f.render_widget(paragraph, text_rect);
-        }
-    }
-    scrollable_content::draw_scrollbar(f, &layout, total_lines);
+    draw_right_pane_scrollable_body(f, state, right_content, content_area, bottom_pad);
 }
 
 /// Draw the current right-pane tab in full screen (hide categories and contents). Esc to exit.
@@ -439,85 +584,11 @@ pub fn draw_right_pane_fullscreen(
     right_content: &RightPaneContent,
     area: Rect,
 ) {
-    viewer_image::sync_pdf_selection_state(state, right_content);
-    let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
-    let show_footer = state.right_pane_mode == RightPaneMode::Viewer
-        && (right_content.open_hint_label.is_some()
-            || right_content.viewer_byte_size.is_some()
-            || right_content.viewer_mtime_ns.is_some()
-            || pdf_footer.is_some());
-    let size_str = right_content.viewer_byte_size.map(format_bytes);
-    let footer_line = show_footer
-        .then(|| {
-            style::viewer_footer_line(
-                right_content.open_hint_label.as_deref(),
-                size_str.as_deref(),
-                right_content.viewer_mtime_ns,
-                pdf_footer.as_deref(),
-            )
-        })
-        .flatten();
+    let footer_line = right_pane_footer_line(state, right_content);
     let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.brand.fullscreen_suffix);
-    let block = if let Some(ref line) = footer_line {
-        Block::default()
-            .borders(Borders::ALL)
-            .title(fullscreen_title.as_str())
-            .title_bottom(line.clone())
-    } else {
-        Block::default()
-            .borders(Borders::ALL)
-            .title(fullscreen_title.as_str())
-    };
+    let block = right_pane_block(fullscreen_title.as_str(), footer_line.as_ref());
     let inner = block.inner(area);
     let bottom_pad = UI_CONSTANTS.v_pad;
-    let padded = scrollable_content::area_above_bottom_pad(inner, bottom_pad);
-    let use_kv_tables = match state.right_pane_mode {
-        RightPaneMode::Metadata => right_content.metadata.as_deref(),
-        RightPaneMode::Writing => right_content.writing.as_deref(),
-        _ => None,
-    };
-    viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
-    let mut text_w = padded.width;
-    for _ in 0..6 {
-        ensure_viewer_csv_cache(state, right_content, text_w);
-        let guess_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
-        let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
-        if w_next == text_w {
-            break;
-        }
-        text_w = w_next;
-    }
-    ensure_viewer_csv_cache(state, right_content, text_w);
-    let total_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
-    let layout = scrollable_content::layout_scrollable_content(
-        inner,
-        total_lines,
-        &mut state.panels.preview_scroll,
-        bottom_pad,
-    );
-    let text_rect = layout.content_rect;
     f.render_widget(&block, area);
-    if let Some(json) = use_kv_tables {
-        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
-    } else {
-        let image_mode = state.right_pane_mode == RightPaneMode::Viewer
-            && viewer_image::is_raster_preview_category(right_content)
-            && right_content.viewer_path.is_some()
-            && state.viewer_image.protocol.is_some();
-        if image_mode {
-            if let Some(proto) = state.viewer_image.protocol.as_mut() {
-                f.render_stateful_widget(viewer_image::stateful_widget(), text_rect, proto);
-                let _ = proto.last_encoding_result();
-            }
-        } else {
-            let mut paragraph = Paragraph::new(content_display_text(state, right_content, text_w))
-                .style(style::text_style())
-                .scroll((layout.scroll_y, 0));
-            if ratatui_wrap_right_paragraph(state, right_content) {
-                paragraph = paragraph.wrap(Wrap { trim: false });
-            }
-            f.render_widget(paragraph, text_rect);
-        }
-    }
-    scrollable_content::draw_scrollbar(f, &layout, total_lines);
+    draw_right_pane_scrollable_body(f, state, right_content, inner, bottom_pad);
 }

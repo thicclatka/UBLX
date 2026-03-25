@@ -112,16 +112,20 @@ fn run_tui_mode(
         snapshot_done_rx: Some(rx),
         snapshot_done_tx: Some(tx_for_tui),
         bumper,
-        dev,
+        display: event_loop::RunUblxDisplayOpts {
+            dev,
+            transparent: ublx_opts.transparent,
+        },
         theme: ublx_opts.theme.clone(),
-        transparent: ublx_opts.transparent,
         layout: ublx_opts.layout.clone(),
         duplicate_groups: Vec::new(),
         duplicate_groups_rx: None,
         lens_names,
         config_reload_rx,
-        defer_first_snapshot: initial_prompt,
-        pending_force_full_enhance_toast,
+        startup: event_loop::RunUblxStartupFlow {
+            defer_first_snapshot: initial_prompt,
+            pending_force_full_enhance_toast,
+        },
     };
     run_ublx(&mut params, ublx_opts)?;
     if let Some(b) = bumper
@@ -176,7 +180,7 @@ pub fn run_ublx(
     let (mut categories, mut all_rows) =
         event_loop::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
-    if params.defer_first_snapshot {
+    if params.startup.defer_first_snapshot {
         first_run::init_prompt_state(&mut state);
     }
     debug!(
@@ -191,7 +195,7 @@ pub fn run_ublx(
         state.snapshot_bg.done_received = true;
     }
     // First-run prompt defers the background snapshot; treat as idle for scheduling (not "snapshot in flight").
-    if params.defer_first_snapshot {
+    if params.startup.defer_first_snapshot {
         state.snapshot_bg.done_received = true;
     }
 
