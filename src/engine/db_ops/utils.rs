@@ -13,7 +13,9 @@ use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
 use crate::config::{PARALLEL, UblxOpts, UblxPaths};
 use crate::handlers::{
     nefax_ops::{NefaxDiff, NefaxPathMeta, NefaxResult},
-    zahir_ops::{ZahirOutput, zahir_metadata_name_from_path_hint, zahir_output_to_json},
+    zahir_ops::{
+        ZahirOutput, zahir_metadata_name_from_indexed_file, zahir_output_to_json_for_path,
+    },
 };
 use crate::utils::path::snapshot_rel_path_buf;
 
@@ -80,7 +82,7 @@ fn category_for_snapshot_row(
     {
         return c.clone();
     }
-    let hint = zahir_metadata_name_from_path_hint(path_str);
+    let hint = zahir_metadata_name_from_indexed_file(full_path, path_str);
     UblxDbCategory::get_category_for_path(full_path, ublx_paths, hint.as_deref())
 }
 
@@ -104,7 +106,7 @@ pub fn prepare_results_for_snapshot_insertion(
     let zahir_output = zahir_output_by_path.get(&path_str);
     let zahir_json = zahir_output.map_or_else(
         || prior_zahir_json.get(&path_str).cloned().unwrap_or_default(),
-        |o| zahir_output_to_json(Some(o)),
+        |o| zahir_output_to_json_for_path(Some(o), &full_path, &path_str),
     );
     (path_str, category, zahir_json)
 }

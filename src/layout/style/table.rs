@@ -25,7 +25,7 @@ pub fn table_row_style(index: usize) -> Style {
     let bg = if index.is_multiple_of(2) {
         t.popup_bg
     } else {
-        themes::lighten_rgb(t.popup_bg, UI_CONSTANTS.table_stripe_lighten)
+        themes::adjust_surface_rgb(t.popup_bg, UI_CONSTANTS.table_stripe_lighten, t.appearance)
     };
     Style::default().fg(t.text).bg(bg)
 }

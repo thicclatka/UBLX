@@ -22,6 +22,7 @@ pub fn panel_block<'a, T: Into<ratatui::text::Line<'a>>>(title: T, focused: bool
         } else {
             style::panel_unfocused()
         })
+        .title_style(style::panel_title_style(focused))
         .title(title)
 }
 
@@ -41,10 +42,11 @@ pub fn styled_list<'a>(
     items: Vec<ListItem<'a>>,
     block: Block<'a>,
     highlight_style: ratatui::style::Style,
+    pane_focused: bool,
 ) -> List<'a> {
     List::new(items)
         .block(block)
-        .style(style::text_style())
+        .style(style::panel_list_style(pane_focused))
         .highlight_style(highlight_style)
         .highlight_symbol(UI_STRINGS.list.list_symbol)
         .highlight_spacing(HighlightSpacing::Always)
@@ -56,8 +58,13 @@ pub fn draw_list_panel(
     items: Vec<ListItem>,
     block: Block,
     highlight_style: ratatui::style::Style,
+    pane_focused: bool,
     list_state: &mut ratatui::widgets::ListState,
     area: Rect,
 ) {
-    f.render_stateful_widget(styled_list(items, block, highlight_style), area, list_state);
+    f.render_stateful_widget(
+        styled_list(items, block, highlight_style, pane_focused),
+        area,
+        list_state,
+    );
 }

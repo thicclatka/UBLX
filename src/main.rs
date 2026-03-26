@@ -62,9 +62,9 @@ fn main() {
         debug!("using cached settings from .ublx (skipping disk check)");
     }
 
-    let valid_themes: Vec<&str> = themes::theme_options()
+    let valid_themes: Vec<&str> = themes::theme_ordered_list()
         .iter()
-        .map(|o| o.display_name)
+        .map(|t| t.name)
         .collect();
     let for_dir_config = ublx::config::ForDirConfig {
         valid_theme_names: &valid_themes,

@@ -4,8 +4,8 @@
 //! with styled headings/lists/tables.
 //!
 //! Paragraphs, headings, and list items capture inline **bold**, *italic*, ~~strikethrough~~,
-//! `<u>underline</u>`, and `` `inline code` `` (20% lightened background). Fenced code blocks
-//! use a 20% lightened background; Markdown fence delimiters are not shown in the viewer.
+//! `<u>underline</u>`, and `` `inline code` `` (20% surface shift off background). Fenced code blocks
+//! use the same; Markdown fence delimiters are not shown in the viewer.
 //!
 //! **Inline:** `[links](url)` append a trailing glyph from [`UiGlyphs`](crate::ui::UiGlyphs)
 //! (`markdown_link`, or `markdown_attachment` for `.pdf`/archive/office-like paths in the URL);

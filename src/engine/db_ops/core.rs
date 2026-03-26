@@ -14,7 +14,9 @@ use super::utils::{self as db_ops_utils, SnapshotPriorContext};
 use crate::config::{UblxPaths, UblxSettings};
 use crate::handlers::{
     nefax_ops::{NefaxDiff, NefaxResult},
-    zahir_ops::{ZahirOutput, ZahirResult, get_zahir_output_by_path},
+    zahir_ops::{
+        ZahirOutput, ZahirResult, get_zahir_output_by_path, zahir_output_to_json_for_path,
+    },
 };
 use crate::utils::{canonicalize_dir_to_ublx, get_created_ns, normalize_snapshot_rel_path_str};
 
@@ -22,6 +24,10 @@ use crate::utils::{canonicalize_dir_to_ublx, get_created_ns, normalize_snapshot_
 pub const SNAPSHOT_TUI_READ_BUSY_MS: u64 = 2;
 
 /// Open the DB for interactive reads with a short busy timeout (poll / right pane while snapshot runs).
+///
+/// # Errors
+///
+/// Returns any `SQLite` open error for `path` and any failure applying the busy timeout pragma.
 pub fn open_for_snapshot_tui_read(path: &Path) -> Result<Connection, rusqlite::Error> {
     let c = Connection::open(path)?;
     c.busy_timeout(Duration::from_millis(SNAPSHOT_TUI_READ_BUSY_MS))?;
@@ -52,7 +58,7 @@ fn strip_tmp_wal_shm_best_effort(paths: &UblxPaths) {
     }
 }
 
-/// Run `body` in one SQLite transaction (`BEGIN` … `COMMIT`). Rolls back if `body` or `commit` fails.
+/// Run `body` in one `SQLite` transaction (`BEGIN` … `COMMIT`). Rolls back if `body` or `commit` fails.
 fn in_transaction<T>(
     conn: &mut Connection,
     body: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T, anyhow::Error>,
@@ -64,7 +70,7 @@ fn in_transaction<T>(
 }
 
 /// Settings tx, then `ATTACH` live `.ublx` copy of `delta_log`/lens (not inside a `main` write tx —
-/// SQLCipher can return `database old is locked`), then `delta_log` tx.
+/// `SQLCipher` can return `database old is locked`), then `delta_log` tx.
 fn write_settings_copy_previous_write_delta_log(
     conn: &mut Connection,
     live_db_path: &Path,
@@ -210,7 +216,8 @@ pub fn write_snapshot_to_db_streaming(
                 Ok(rel) => rel.to_string_lossy().into_owned(),
                 Err(_) => continue,
             };
-            let zahir_json = serde_json::to_string(&output).unwrap_or_default();
+            let full_path = dir_to_ublx_abs.join(Path::new(&path_str));
+            let zahir_json = zahir_output_to_json_for_path(Some(&output), &full_path, &path_str);
             let _ = update_stmt.execute(rusqlite::params![zahir_json, path_str]);
             n += 1;
             db_ops_utils::debug_snapshot_write_progress("streamed zahir updates", n, None);
@@ -575,12 +582,13 @@ pub fn load_snapshot_path_size_hash(
 /// Returns [`anyhow::Error`] on `SQLite` errors or JSON serialization failure.
 pub fn update_snapshot_zahir_for_path(
     db_path: &Path,
-    _dir_to_ublx: &Path,
+    dir_to_ublx: &Path,
     path_rel: &str,
     output: &ZahirOutput,
 ) -> Result<(), anyhow::Error> {
     let conn = Connection::open(db_path)?;
-    let zahir_json = serde_json::to_string(output)?;
+    let full_path = dir_to_ublx.join(path_rel);
+    let zahir_json = zahir_output_to_json_for_path(Some(output), &full_path, path_rel);
     conn.execute(
         UblxDbStatements::UPDATE_SNAPSHOT_ZAHIR_JSON_ONLY,
         rusqlite::params![zahir_json, path_rel],

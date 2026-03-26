@@ -3,30 +3,6 @@
 use std::path::Path;
 use std::process::Command;
 
-/// Label for the viewer footer open hint: ↗ when both Terminal and GUI work, or "↗ (Terminal)" / "↗ (GUI)" when only one works. None when neither is available.
-#[must_use]
-pub fn open_hint_label(editor_path: Option<&str>) -> Option<&'static str> {
-    let terminal = editor_path.is_some() || std::env::var("EDITOR").is_ok();
-    let gui = gui_available();
-    match (terminal, gui) {
-        (true, true) => Some("↗"),
-        (true, false) => Some("↗ (Terminal)"),
-        (false, true) => Some("↗ (GUI)"),
-        (false, false) => None,
-    }
-}
-
-fn gui_available() -> bool {
-    #[cfg(any(target_os = "macos", all(unix, not(target_os = "macos")), windows))]
-    {
-        true
-    }
-    #[cfg(not(any(target_os = "macos", all(unix, not(target_os = "macos")), windows)))]
-    {
-        false
-    }
-}
-
 /// Resolve editor command: config `editor_path` or $EDITOR. Returns None if neither set.
 pub fn editor_for_open(editor_path: Option<&str>) -> Option<String> {
     editor_path

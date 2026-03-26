@@ -80,7 +80,8 @@ impl RichBuilder {
 
     fn heading_style(level: u8) -> Style {
         let t = themes::current();
-        let base = Style::default().fg(t.tab_active_fg);
+        // `tab_active_fg` is often white on light themes (for the colored tab bar) — unreadable on the page.
+        let base = Style::default().fg(t.focused_border);
         if level == 1 {
             base.add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED)
@@ -177,7 +178,7 @@ impl RichBuilder {
 
     fn inline_code_style() -> Style {
         let t = themes::current();
-        let bg = themes::lighten_rgb(t.background, INLINE_CODE_BG_PCT);
+        let bg = themes::adjust_surface_rgb(t.background, INLINE_CODE_BG_PCT, t.appearance);
         Style::default().fg(t.text).bg(bg)
     }
 

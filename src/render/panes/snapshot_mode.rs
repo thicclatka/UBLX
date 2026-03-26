@@ -5,28 +5,12 @@ use ratatui::layout::Rect;
 use ratatui::text::Line;
 use ratatui::widgets::ListItem;
 
+use super::middle::{CONTENTS_LIST_VIRTUALIZE_MIN, contents_list_viewport};
+
 use crate::config::UblxPaths;
 use crate::layout::setup::{self, ViewContents};
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
-
-/// Build full `ListItem` vecs only below this; larger snapshot lists use a viewport window.
-const SNAPSHOT_CONTENTS_LIST_VIRTUALIZE_MIN: usize = 512;
-/// Extra rows above/below the visible block (single-line items assumed).
-const SNAPSHOT_CONTENTS_LIST_OVERSCAN_LINES: usize = 8;
-
-/// `(start, end)` view indices: `end` exclusive. Keeps `global_sel` inside `[start, end)`.
-fn snapshot_contents_window(total: usize, global_sel: usize, inner_h: usize) -> (usize, usize) {
-    let inner_h = inner_h.max(1);
-    let cap = (inner_h + SNAPSHOT_CONTENTS_LIST_OVERSCAN_LINES * 2).min(total);
-    let mut w_start =
-        global_sel.saturating_sub(inner_h / 2 + SNAPSHOT_CONTENTS_LIST_OVERSCAN_LINES);
-    if w_start + cap > total {
-        w_start = total.saturating_sub(cap);
-    }
-    let w_end = (w_start + cap).min(total);
-    (w_start, w_end)
-}
 
 /// Draw the categories (left) pane. `chunks` must have at least 1 element; uses `chunks[0]`.
 pub fn draw_categories_pane(
@@ -50,6 +34,7 @@ pub fn draw_categories_pane(
         items,
         block,
         state.panels.highlight_style,
+        focused,
         &mut state.panels.category_state,
         area,
     );
@@ -102,6 +87,7 @@ pub fn draw_contents_panel(
         } else {
             style::panel_unfocused()
         })
+        .title_style(style::panel_title_style(focused))
         .title(Line::from(left_title).left_aligned())
         .title_bottom(super::line_for(
             state.panels.content_state.selected(),
@@ -118,7 +104,7 @@ pub fn draw_contents_panel(
             })],
             None,
         )
-    } else if total >= SNAPSHOT_CONTENTS_LIST_VIRTUALIZE_MIN
+    } else if total >= CONTENTS_LIST_VIRTUALIZE_MIN
         && matches!(&view.contents, ViewContents::SnapshotIndices(_))
         && let Some(all_rows_slice) = all_rows
     {
@@ -129,7 +115,7 @@ pub fn draw_contents_panel(
             .selected()
             .unwrap_or(0)
             .min(total - 1);
-        let (w_start, w_end) = snapshot_contents_window(total, global_sel, inner_h);
+        let (w_start, w_end) = contents_list_viewport(total, global_sel, inner_h);
         let items = (w_start..w_end)
             .filter_map(|i| {
                 view.row_at(i, Some(all_rows_slice))
@@ -174,6 +160,7 @@ pub fn draw_contents_panel(
         items,
         block,
         state.panels.highlight_style,
+        focused,
         &mut state.panels.content_state,
         area,
     );

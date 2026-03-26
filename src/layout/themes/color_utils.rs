@@ -1,8 +1,10 @@
-//! Color helpers (HSL lightening, etc.).
+//! Color helpers (HSL lightening / darkening, theme-aware surface shifts).
 
 use ratatui::style::Color;
 
 use crate::utils::format::Epsilon;
+
+use super::Appearance;
 
 const RGB_MAX: f32 = 255.0;
 const HSL_SEGMENT_ANGLE: f32 = 60.0;
@@ -20,6 +22,29 @@ pub fn lighten_rgb(color: Color, pct: f32) -> Color {
     let new_sat = (sat + (1.0 - sat) * pct_clamped * 0.5).min(1.0);
     let (r2, g2, b2) = hsl_to_rgb_u8(hue, new_sat, new_lit);
     Color::Rgb(r2, g2, b2)
+}
+
+/// Darken an RGB color in HSL space (mirror of [`lighten_rgb`]): move lightness toward 0. Non-RGB colors are returned unchanged.
+#[must_use]
+pub fn darken_rgb(color: Color, pct: f32) -> Color {
+    let Color::Rgb(red, green, blue) = color else {
+        return color;
+    };
+    let pct_clamped = pct.clamp(0.0, 1.0);
+    let (hue, sat, lit) = rgb_u8_to_hsl(red, green, blue);
+    let new_lit = lit * (1.0 - pct_clamped);
+    let new_sat = (sat + (1.0 - sat) * pct_clamped * 0.5).min(1.0);
+    let (r2, g2, b2) = hsl_to_rgb_u8(hue, new_sat, new_lit);
+    Color::Rgb(r2, g2, b2)
+}
+
+/// Shift a surface color away from the page background: lighten for dark themes, darken for light themes.
+#[must_use]
+pub fn adjust_surface_rgb(color: Color, pct: f32, appearance: Appearance) -> Color {
+    match appearance {
+        Appearance::Dark => lighten_rgb(color, pct),
+        Appearance::Light => darken_rgb(color, pct),
+    }
 }
 
 /// RGB u8 [0,255] → HSL: H in [0, 360), S and L in [0, 1].

@@ -45,7 +45,7 @@ pub struct ReloadResult {
 }
 
 /// Validates only the hot-reloadable parts of the overlay. Call before applying.
-/// `valid_theme_names`: allowed values for `theme` (e.g. from [`crate::layout::themes::theme_options`] display names).
+/// `valid_theme_names`: allowed values for `theme` (e.g. from [`crate::layout::themes::theme_ordered_list`] names).
 ///
 /// # Errors
 ///

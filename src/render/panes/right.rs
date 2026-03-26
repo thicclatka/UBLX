@@ -9,7 +9,7 @@
 //!    final `text_w`.
 //! 2. **Viewer text cache** — [`ensure_viewer_text_cache`] fills [`UblxState::viewer_text_cache`]
 //!    for delimiter tables (always) and **large** markdown (see
-//!    [`crate::render::viewer_cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES`]). Scrolling uses a
+//!    [`crate::render::cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES`]). Scrolling uses a
 //!    **viewport slice** into cached [`Text`] (see [`content_display_text`]).
 //! 3. **Total lines** — [`viewer_total_lines`] must match what is actually drawn (scrollbar height).
 //!    Branches: JSON metadata/writing → [`kv_tables::content_height`]; CSV → cache or
@@ -44,7 +44,7 @@ use crate::layout::{
     style, themes,
 };
 use crate::render::{
-    cache::{self, ViewerTextCacheEntry},
+    cache::{self, ViewerContentIdentity, ViewerTextCacheEntry},
     kv_tables, scrollable_content,
     viewers::{csv_handler, image as viewer_image, markdown},
 };
@@ -82,6 +82,7 @@ fn try_build_csv_cache_entry(
     raw: &str,
     content_width: u16,
     theme_key: String,
+    content_identity: ViewerContentIdentity,
 ) -> Option<ViewerTextCacheEntry> {
     let rows = csv_handler::parse_csv(raw, Some(path)).ok()?;
     if rows.is_empty() {
@@ -94,8 +95,7 @@ fn try_build_csv_cache_entry(
         path: path.to_string(),
         content_width,
         theme_name: theme_key,
-        content_ptr: raw.as_ptr() as usize,
-        content_len: raw.len(),
+        content_identity,
         line_count,
         text,
     })
@@ -114,14 +114,16 @@ fn try_build_markdown_cache_entry(
         path: path.to_string(),
         content_width,
         theme_name: theme_key,
-        content_ptr: raw.as_ptr() as usize,
-        content_len: raw.len(),
+        content_identity: ViewerContentIdentity::BufferPtr {
+            ptr: raw.as_ptr() as usize,
+            len: raw.len(),
+        },
         line_count,
         text,
     }
 }
 
-/// Warm [`UblxState::viewer_text_cache`] for delimiter tables and large markdown (path + width + theme + buffer).
+/// Warm delimiter-table LRU and [`UblxState::viewer_text_cache`] for large markdown (path + width + theme + buffer).
 fn ensure_viewer_text_cache(
     state: &mut UblxState,
     right_content: &RightPaneContent,
@@ -143,12 +145,24 @@ fn ensure_viewer_text_cache(
     let theme = themes::current().name;
 
     if viewer_show_delimited_table(right_content) {
-        if let Some(ref e) = state.viewer_text_cache
-            && e.matches(path, content_width, theme, raw)
-        {
+        state.viewer_text_cache = None;
+        let key = cache::viewer_table_cache_key(
+            path,
+            content_width,
+            theme,
+            raw,
+            right_content.viewer_mtime_ns,
+            right_content.viewer_byte_size,
+        );
+        if state.csv_table_text_lru.get(&key).is_some() {
             return;
         }
-        state.viewer_text_cache = try_build_csv_cache_entry(path, raw, content_width, theme_key);
+        let Some(entry) =
+            try_build_csv_cache_entry(path, raw, content_width, theme_key, key.identity.clone())
+        else {
+            return;
+        };
+        state.csv_table_text_lru.insert(key, entry);
         return;
     }
 
@@ -171,8 +185,27 @@ fn ensure_viewer_text_cache(
     state.viewer_text_cache = None;
 }
 
+fn csv_cached_entry<'a>(
+    state: &'a mut UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+    theme: &str,
+) -> Option<&'a ViewerTextCacheEntry> {
+    let path = right_content.viewer_path.as_deref()?;
+    let raw = right_content.viewer.as_deref()?;
+    let key = cache::viewer_table_cache_key(
+        path,
+        content_width,
+        theme,
+        raw,
+        right_content.viewer_mtime_ns,
+        right_content.viewer_byte_size,
+    );
+    state.csv_table_text_lru.get(&key)
+}
+
 fn viewer_text_cache_viewport_active(
-    state: &UblxState,
+    state: &mut UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
 ) -> bool {
@@ -183,11 +216,13 @@ fn viewer_text_cache_viewport_active(
         return false;
     };
     let theme = themes::current().name;
+    if viewer_show_delimited_table(right_content) {
+        return csv_cached_entry(state, right_content, content_width, theme).is_some();
+    }
     state.viewer_text_cache.as_ref().is_some_and(|e| {
         e.matches(vp, content_width, theme, raw)
-            && (viewer_show_delimited_table(right_content)
-                || (viewer_is_markdown(right_content)
-                    && raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES))
+            && viewer_is_markdown(right_content)
+            && raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES
     })
 }
 
@@ -196,21 +231,23 @@ fn viewer_total_lines(
     right_content: &RightPaneContent,
     content_width: u16,
     use_kv_tables: Option<&str>,
-    state: &UblxState,
+    state: &mut UblxState,
 ) -> usize {
     match (state.right_pane_mode, use_kv_tables) {
         (_, Some(json)) => kv_tables::content_height(json) as usize,
         (RightPaneMode::Viewer, _) => {
-            if let (Some(vp), Some(raw)) = (
-                right_content.viewer_path.as_deref(),
-                right_content.viewer.as_deref(),
-            ) {
-                let theme = themes::current().name;
-                if let Some(ref e) = state.viewer_text_cache
-                    && e.matches(vp, content_width, theme, raw)
-                {
+            let theme = themes::current().name;
+            if viewer_show_delimited_table(right_content) {
+                if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
                     return e.line_count;
                 }
+            } else if let (Some(vp), Some(raw)) = (
+                right_content.viewer_path.as_deref(),
+                right_content.viewer.as_deref(),
+            ) && let Some(ref e) = state.viewer_text_cache
+                && e.matches(vp, content_width, theme, raw)
+            {
+                return e.line_count;
             }
             if viewer_show_delimited_table(right_content)
                 && let Some(raw) = right_content.viewer.as_deref()
@@ -262,7 +299,7 @@ fn viewer_total_lines(
 
 /// Markdown and successful delimiter tables are fully laid out to the viewport; ratatui must not re-wrap.
 fn viewer_uses_preformatted_layout(
-    state: &UblxState,
+    state: &mut UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
 ) -> bool {
@@ -283,18 +320,9 @@ fn viewer_uses_preformatted_layout(
     if !viewer_show_delimited_table(right_content) {
         return false;
     }
-    if let (Some(vp), Some(raw)) = (
-        right_content.viewer_path.as_deref(),
-        right_content.viewer.as_deref(),
-    ) {
-        let theme = themes::current().name;
-        if state
-            .viewer_text_cache
-            .as_ref()
-            .is_some_and(|e| e.matches(vp, content_width, theme, raw))
-        {
-            return true;
-        }
+    let theme = themes::current().name;
+    if csv_cached_entry(state, right_content, content_width, theme).is_some() {
+        return true;
     }
     let Some(raw) = right_content.viewer.as_deref() else {
         return false;
@@ -305,7 +333,7 @@ fn viewer_uses_preformatted_layout(
 }
 
 fn ratatui_wrap_right_paragraph(
-    state: &UblxState,
+    state: &mut UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
 ) -> bool {
@@ -324,7 +352,7 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
 }
 
 fn viewer_display_text(
-    state: &UblxState,
+    state: &mut UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
     text_viewport: Option<(u16, u16)>,
@@ -336,10 +364,7 @@ fn viewer_display_text(
     if right_content.viewer_path.is_some() {
         if viewer_show_delimited_table(right_content) {
             let theme = themes::current().name;
-            if let Some(ref path) = right_content.viewer_path
-                && let Some(ref e) = state.viewer_text_cache
-                && e.matches(path.as_str(), content_width, theme, raw)
-            {
+            if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
                 return match text_viewport {
                     Some((sy, vh)) => e.viewport_text(sy, vh),
                     None => e.text.clone(),
@@ -386,7 +411,7 @@ fn viewer_display_text(
 }
 
 fn content_display_text(
-    state: &UblxState,
+    state: &mut UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
     text_viewport: Option<(u16, u16)>,
@@ -438,7 +463,7 @@ fn visible_tabs(right_content: &RightPaneContent) -> Vec<(RightPaneMode, &'stati
     .collect()
 }
 
-/// Sync PDF page picker, then optional bottom title line (size, mtime, PDF page, open hint).
+/// Sync PDF page picker, then optional bottom title line (size, mtime, PDF page).
 fn right_pane_footer_line(
     state: &mut UblxState,
     right_content: &RightPaneContent,
@@ -446,15 +471,13 @@ fn right_pane_footer_line(
     viewer_image::sync_pdf_selection_state(state, right_content);
     let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
-        && (right_content.open_hint_label.is_some()
-            || right_content.viewer_byte_size.is_some()
+        && (right_content.viewer_byte_size.is_some()
             || right_content.viewer_mtime_ns.is_some()
             || pdf_footer.is_some());
     let size_str = right_content.viewer_byte_size.map(format_bytes);
     show_footer
         .then(|| {
             style::viewer_footer_line(
-                right_content.open_hint_label.as_deref(),
                 size_str.as_deref(),
                 right_content.viewer_mtime_ns,
                 pdf_footer.as_deref(),
@@ -463,13 +486,20 @@ fn right_pane_footer_line(
         .flatten()
 }
 
-fn right_pane_block<'a>(title: &'a str, footer_line: Option<&'a Line<'static>>) -> Block<'a> {
+fn right_pane_block<'a>(
+    top_title: Option<&'a str>,
+    footer_line: Option<&'a Line<'static>>,
+) -> Block<'a> {
+    let b = Block::default()
+        .borders(Borders::ALL)
+        .style(style::text_style());
+    let b = match top_title {
+        Some(t) => b.title(t),
+        None => b,
+    };
     match footer_line {
-        Some(line) => Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .title_bottom(line.clone()),
-        None => Block::default().borders(Borders::ALL).title(title),
+        Some(line) => b.title_bottom(line.clone()),
+        None => b,
     }
 }
 
@@ -549,8 +579,7 @@ pub fn draw_right_pane(
 ) {
     let area = chunks[2];
     let footer_line = right_pane_footer_line(state, right_content);
-    let block_title = title(state);
-    let right_block = right_pane_block(block_title.as_str(), footer_line.as_ref());
+    let right_block = right_pane_block(None, footer_line.as_ref());
     let tabs = visible_tabs(right_content);
     if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
         state.right_pane_mode = tabs[0].0;
@@ -586,7 +615,7 @@ pub fn draw_right_pane_fullscreen(
 ) {
     let footer_line = right_pane_footer_line(state, right_content);
     let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.brand.fullscreen_suffix);
-    let block = right_pane_block(fullscreen_title.as_str(), footer_line.as_ref());
+    let block = right_pane_block(Some(fullscreen_title.as_str()), footer_line.as_ref());
     let inner = block.inner(area);
     let bottom_pad = UI_CONSTANTS.v_pad;
     f.render_widget(&block, area);

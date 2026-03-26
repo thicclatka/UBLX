@@ -16,9 +16,9 @@ pub fn open(state: &mut UblxState, theme_ctx: ThemeContext<'_>) {
         .and_then(|(_, t)| t)
         .or(state.theme.override_name.as_deref());
     state.theme.before_selector = current.map(String::from);
-    state.theme.selector_index = themes::theme_options()
+    state.theme.selector_index = themes::theme_ordered_list()
         .iter()
-        .position(|o| current == Some(o.display_name))
+        .position(|t| current == Some(t.name))
         .unwrap_or(0);
     state.theme.selector_visible = true;
 }
@@ -30,7 +30,7 @@ pub fn handle_key(
     theme_ctx: ThemeContext<'_>,
     action: UblxAction,
 ) {
-    let opts = themes::theme_options();
+    let opts = themes::theme_ordered_list();
     let n = opts.len();
     match action {
         UblxAction::Quit | UblxAction::SearchClear => {
@@ -45,7 +45,7 @@ pub fn handle_key(
                 clamp_selection(state.theme.selector_index.saturating_sub(1), n);
         }
         UblxAction::SearchSubmit => {
-            let display_name = opts[state.theme.selector_index].display_name;
+            let display_name = opts[state.theme.selector_index].name;
             if let Some((dir, _)) = theme_ctx {
                 write_local_theme(&UblxPaths::new(dir), display_name);
                 state.config_written_by_us_at = Some(std::time::Instant::now());

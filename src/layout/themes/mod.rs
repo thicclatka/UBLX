@@ -3,31 +3,39 @@
 mod color_utils;
 mod palettes;
 
-pub use color_utils::lighten_rgb;
+pub use color_utils::{adjust_surface_rgb, darken_rgb, lighten_rgb};
 
 use ratatui::style::Color;
 use std::cell::RefCell;
 
-pub use palettes::{DEFAULT_COLORS, OBLIVION_INK, all_ublx_themes, theme_options};
+pub use palettes::{DEFAULT_COLORS, OBLIVION_INK, theme_ordered_list, theme_selector_entries};
 
-/// One theme in the selector: display name (for UI and for `theme = "..."` in toml) and reference.
+/// One row in the theme selector list: a non-selectable section label or a selectable theme.
 #[derive(Clone, Copy)]
-pub struct ThemeOption {
-    pub display_name: &'static str,
-    pub theme: &'static Theme,
+pub enum SelectorEntry {
+    Section(&'static str),
+    Item(&'static Theme),
+}
+
+/// Whether the theme is predominantly dark or light. Drives [`adjust_surface_rgb`]: dark themes *lighten*
+/// auxiliary surfaces (code blocks, stripes); light themes *darken* them so the same `pct` reads as a
+/// similar “step” off the page background.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Appearance {
+    Dark,
+    Light,
 }
 
 /// Default theme (Oblivion Ink). Used when opts theme is unset or "default".
-pub const DEFAULT_THEME: ThemeOption = ThemeOption {
-    display_name: "Oblivion Ink",
-    theme: &OBLIVION_INK,
-};
+pub const DEFAULT_THEME: &Theme = &OBLIVION_INK;
 
 /// Named set of colors for the TUI. Extend with more fields as styles are themed.
 #[derive(Clone, Debug)]
 pub struct Theme {
     // #[allow(dead_code)]
     pub name: &'static str,
+    /// See [`Appearance`] and [`adjust_surface_rgb`].
+    pub appearance: Appearance,
     /// Background for the whole app (full frame).
     pub background: Color,
     /// Default foreground for body text (list items, paragraphs, search input).
@@ -46,7 +54,7 @@ pub struct Theme {
     pub hint: Color,
     /// Popup background (help box, theme selector, etc.)
     pub popup_bg: Color,
-    /// Node/footer powerline color
+    /// Node/footer powerline fill on **dark** themes. On **light** themes, footers use [`node_pill_background`] instead so pills don’t match the page.
     pub node_bg: Color,
     /// Toast/notification overlay background
     pub notification_bg: Color,
@@ -58,6 +66,22 @@ pub struct Theme {
     pub delta_removed: Color,
     /// Brand title (e.g. UBLX)
     pub title_brand: Color,
+}
+
+/// HSL step off [`Theme::background`] for light-theme footer/status powerline pills.
+const LIGHT_THEME_NODE_PILL_PCT: f32 = 0.11;
+
+/// Fill color for powerline footer nodes and related chrome. Dark themes: [`Theme::node_bg`]. Light themes: [`adjust_surface_rgb`] from background so bars read against the page.
+#[must_use]
+pub fn node_pill_background(theme: &Theme) -> Color {
+    match theme.appearance {
+        Appearance::Light => adjust_surface_rgb(
+            theme.background,
+            LIGHT_THEME_NODE_PILL_PCT,
+            theme.appearance,
+        ),
+        Appearance::Dark => theme.node_bg,
+    }
 }
 
 thread_local! {
@@ -78,15 +102,15 @@ pub fn current() -> &'static Theme {
     get(name.as_deref())
 }
 
-/// Resolve config theme to the theme name to use. When config is `None`, empty, or `"default"`, returns [`DEFAULT_THEME_NAME`]. Otherwise returns the config value. Use before passing to [`set_current`] or [get].
+/// Resolve config theme to the theme name to use. When config is `None`, empty, or `"default"`, returns [`DEFAULT_THEME`]'s name. Otherwise returns the config value. Use before passing to [`set_current`] or [`get`].
 #[must_use]
 pub fn theme_name_from_config(config_theme: Option<&str>) -> &str {
     match config_theme {
-        None => DEFAULT_THEME.display_name,
+        None => DEFAULT_THEME.name,
         Some(s) => {
             let t = s.trim();
             if t.is_empty() || t == "default" {
-                DEFAULT_THEME.display_name
+                DEFAULT_THEME.name
             } else {
                 t
             }
@@ -94,15 +118,16 @@ pub fn theme_name_from_config(config_theme: Option<&str>) -> &str {
     }
 }
 
-/// Resolve theme by name. Uses [`theme_name_from_config`] so `None` / empty / `"default"` use [`default_theme`]; then looks up by id or display name.
+/// Resolve theme by name. Uses [`theme_name_from_config`] so `None` / empty / `"default"` use [`DEFAULT_THEME`]; then matches [`Theme::name`] (same strings as in [`theme_ordered_list`] / TOML).
 #[must_use]
 pub fn get(name: Option<&str>) -> &'static Theme {
     let n = theme_name_from_config(name);
-    if n == DEFAULT_THEME.display_name {
-        return DEFAULT_THEME.theme;
+    if n == DEFAULT_THEME.name {
+        return DEFAULT_THEME;
     }
-    all_ublx_themes()
+    theme_ordered_list()
         .iter()
-        .find(|(id, t)| *id == n || t.name == n)
-        .map_or(DEFAULT_THEME.theme, |(_, t)| *t)
+        .copied()
+        .find(|t| t.name == n)
+        .unwrap_or(DEFAULT_THEME)
 }

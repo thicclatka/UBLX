@@ -341,6 +341,47 @@ impl UiStrings {
     pub fn config_reload_triggered_by_save(&self) -> String {
         format!("{} (triggered by save)", self.toasts.config_reloaded)
     }
+
+    /// Padded label width so **Dark** / **Light** section lines share the same total width.
+    pub const THEME_SELECTOR_SECTION_LABEL_WIDTH: usize = 5;
+
+    /// Theme picker section row: indent, left rule, padded label, spaces, right rule. **Dark** uses a single space before the right rule and one extra trailing `─` (see [`Self::theme_selector_section_row_dark`]).
+    #[must_use]
+    pub fn theme_selector_section_row(&self, label: &str) -> String {
+        if label == "Dark" {
+            self.theme_selector_section_row_dark()
+        } else {
+            format!(
+                "   {} {:width$} {}",
+                UI_GLYPHS.theme_section_rule,
+                label,
+                UI_GLYPHS.theme_section_rule,
+                width = Self::THEME_SELECTOR_SECTION_LABEL_WIDTH
+            )
+        }
+    }
+
+    /// Dark section: `───` + padded `Dark` + `───` + `─` (no extra space before the right rule; avoids pad + separator doubling).
+    #[must_use]
+    pub fn theme_selector_section_row_dark(&self) -> String {
+        format!(
+            "   {} {:width$}{}{}",
+            UI_GLYPHS.theme_section_rule,
+            "Dark",
+            UI_GLYPHS.theme_section_rule,
+            '\u{2500}',
+            width = Self::THEME_SELECTOR_SECTION_LABEL_WIDTH
+        )
+    }
+
+    /// Display width of a section row (same for Dark and Light layouts; keep in sync with [`Self::theme_selector_section_row`]).
+    #[must_use]
+    pub fn theme_selector_section_row_width(&self) -> usize {
+        3 + 2 * UI_GLYPHS.theme_section_rule.chars().count()
+            + 1
+            + Self::THEME_SELECTOR_SECTION_LABEL_WIDTH
+            + 1
+    }
 }
 
 pub const UI_STRINGS: UiStrings = UiStrings::new();
@@ -351,7 +392,12 @@ pub struct UiConstants {
     pub v_pad: u16,
     pub popup_padding_w: u16,
     pub popup_padding_h: u16,
+    /// Theme-picker swatch for **dark** themes on a **dark** popup: HSL lighten off page background via [`crate::layout::themes::adjust_surface_rgb`].
     pub swatch_lighten: f32,
+    /// Same as [`Self::swatch_lighten`] but when the picker is shown while a **light** theme is active — stronger lighten so chips are not mud-on-cream.
+    pub swatch_lighten_dark_on_light_popup: f32,
+    /// Theme-picker swatch for **light** themes: [`crate::layout::themes::lighten_rgb`] on body text (try 0.2–0.4).
+    pub swatch_light_theme_text: f32,
     pub table_stripe_lighten: f32,
     pub input_poll_ms: u64,
     pub status_line_height: u16,
@@ -375,6 +421,8 @@ impl UiConstants {
             popup_padding_w: 4,
             popup_padding_h: 2,
             swatch_lighten: 0.2,
+            swatch_lighten_dark_on_light_popup: 0.38,
+            swatch_light_theme_text: 0.6,
             table_stripe_lighten: 0.06,
             input_poll_ms: 100,
             status_line_height: 1,
@@ -424,6 +472,8 @@ pub struct UiGlyphs {
     pub round_right: char,
     /// Full block (e.g. theme selector swatch). U+2588.
     pub swatch_block: char,
+    /// Short box-drawing run for theme-picker section headers (`───`); placed on both sides of **Dark** / **Light**.
+    pub theme_section_rule: &'static str,
     /// Markdown viewer: suffix (after link text) for inline links `[text](url)`.
     pub markdown_link: char,
     /// Markdown viewer: suffix for link destinations that look like file attachments (.pdf, .zip, …).
@@ -451,6 +501,7 @@ impl UiGlyphs {
             round_left: '\u{e0b6}',
             round_right: '\u{e0b4}',
             swatch_block: '\u{2588}',
+            theme_section_rule: "\u{2500}\u{2500}\u{2500}",
             markdown_link: '\u{2197}',        // ↗
             markdown_attachment: '\u{1f4ce}', // 📎
             markdown_image: '\u{1f5bc}',      // 🖼 (framed picture)

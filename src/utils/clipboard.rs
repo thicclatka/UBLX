@@ -52,7 +52,7 @@ impl ClipboardCopyCommand {
                     ],
                 });
             }
-            return None;
+            None
         }
         #[cfg(not(any(unix, windows)))]
         {

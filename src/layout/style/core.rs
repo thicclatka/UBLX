@@ -118,7 +118,8 @@ pub trait ThemeStyles {
     where
         Self: Sized,
     {
-        Style::default().bg(Self::palette().tab_inactive_bg)
+        let t = Self::palette();
+        Style::default().fg(t.text).bg(t.tab_inactive_bg)
     }
 
     #[must_use]
@@ -185,6 +186,26 @@ impl ThemeStyles for CurrentTheme {
 #[must_use]
 pub fn list_highlight() -> Style {
     Style::default().add_modifier(Modifier::REVERSED)
+}
+
+/// List body text when this pane has keyboard focus: bold + theme text color.
+#[must_use]
+pub fn panel_list_style(pane_focused: bool) -> Style {
+    let mut s = CurrentTheme::text_style();
+    if pane_focused {
+        s = s.add_modifier(Modifier::BOLD);
+    }
+    s
+}
+
+/// Block title line: match border emphasis when focused.
+#[must_use]
+pub fn panel_title_style(focused: bool) -> Style {
+    if focused {
+        CurrentTheme::panel_focused()
+    } else {
+        CurrentTheme::text_style()
+    }
 }
 
 /// Theme-derived style wrappers: each calls [`CurrentTheme`] with the same name. Call these from widgets; they use the theme set at frame start.

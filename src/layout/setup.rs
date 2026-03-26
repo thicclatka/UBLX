@@ -16,10 +16,7 @@ use super::style;
 
 use crate::engine::db_ops::DeltaType;
 use crate::handlers::zahir_ops::ZahirFileType as FileType;
-use crate::render::{
-    cache::ViewerTextCacheEntry,
-    viewers::pdf_preview::PDFPrefetch,
-};
+use crate::render::{cache, viewers::pdf_preview::PDFPrefetch};
 use crate::utils::ClipboardCopyCommand;
 
 /// Re-export snapshot row type for layout/view/render (`path`, category, size).
@@ -284,8 +281,11 @@ pub struct UblxState {
     pub lens_confirm: LensConfirmState,
     pub chrome: ViewerChrome,
     pub cached_tree: Option<(String, String)>,
-    /// Viewer: delimiter tables and large markdown — cached styled [`Text`] + viewport slice on scroll.
-    pub viewer_text_cache: Option<ViewerTextCacheEntry>,
+    /// Viewer: large markdown only — cached styled [`Text`] + viewport slice on scroll.
+    pub viewer_text_cache: Option<cache::ViewerTextCacheEntry>,
+    /// Viewer: up to [`crate::render::cache::CSV_VIEWER_TEXT_LRU_CAP`] delimiter-table `Text` bodies by path/width/theme/revision.
+    pub csv_table_text_lru:
+        cache::LruCache<cache::ViewerTableCacheKey, cache::ViewerTextCacheEntry>,
     /// Image category viewer ([`RightPaneContent::viewer_abs_path`] + [`crate::render::viewers::image`]).
     pub viewer_image: ViewerImageState,
     pub last_key_for_double: Option<char>,
@@ -323,6 +323,7 @@ impl UblxState {
             chrome: ViewerChrome::default(),
             cached_tree: None,
             viewer_text_cache: None,
+            csv_table_text_lru: cache::LruCache::default(),
             viewer_image: ViewerImageState::default(),
             last_key_for_double: None,
             snapshot_bg: BackgroundSnapshot::default(),
@@ -542,8 +543,6 @@ pub struct RightPaneContent {
     pub viewer_mtime_ns: Option<i64>,
     /// When true, the viewed file is non-binary and can be opened (Shift+O: Open Terminal / Open GUI).
     pub viewer_can_open: bool,
-    /// Label for the open hint node in the footer (e.g. "↗", "↗ (Terminal)", "↗ (GUI)"). Set by caller when `viewer_can_open`.
-    pub open_hint_label: Option<String>,
     /// Space menu: offer per-file `ZahirScan` when global enhance is off and this row has no enrichment yet.
     pub viewer_offer_enhance_zahir: bool,
     /// Space menu: offer `[[enhance_policy]]` for this path when the row is a Directory in the snapshot.

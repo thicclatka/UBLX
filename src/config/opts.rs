@@ -332,7 +332,7 @@ impl UblxOpts {
     /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
     /// On success, writes the merged overlay to the config cache (same path as startup `for_dir`).
     /// Validates before applying; on validation failure the overlay is not applied and errors are returned.
-    /// `valid_theme_names`: allowed theme values (e.g. from [`crate::layout::themes::theme_options`] display names).
+    /// `valid_theme_names`: allowed theme values (e.g. from [`crate::layout::themes::theme_ordered_list`] names).
     pub fn reload_hot_config(
         &mut self,
         ublx_paths: &UblxPaths,

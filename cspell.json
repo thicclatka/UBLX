@@ -4,16 +4,19 @@
   "dictionaryDefinitions": [],
   "dictionaries": [],
   "words": [
+    "Asterion",
     "AUTOINCREMENT",
     "blen",
     "cmark",
     "crossterm",
     "Deque",
     "halfblocks",
+    "ilog",
     "imageops",
     "maxlens",
     "mupdf",
     "mutool",
+    "OVERSCAN",
     "pdfinfo",
     "pdftoppm",
     "poppler",
@@ -21,7 +24,8 @@
     "singlefile",
     "spacebar",
     "strs",
-    "ublx"
+    "ublx",
+    "vecs"
   ],
   "ignoreWords": [],
   "import": []

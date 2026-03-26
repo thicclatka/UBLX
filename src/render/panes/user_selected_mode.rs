@@ -34,11 +34,12 @@ fn draw_user_selected_mode_panes(
         left_items,
         left_block,
         state.panels.highlight_style,
+        focused,
         &mut state.panels.category_state,
         left,
     );
 
-    super::draw_paths_list_with_counter(f, state, view, middle);
+    super::draw_paths_list_with_counter(f, state, view, None, middle);
 
     super::draw_right_pane(f, state, right_content, chunks);
 }

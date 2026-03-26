@@ -92,9 +92,9 @@ pub fn run_snapshot_pipeline_from_dir_db(
     let prior_nefax = db_ops::load_nefax_from_db(dir, db_path).ok().flatten();
     let cached = db_ops::load_settings_from_db(db_path).ok().flatten();
     let paths = UblxPaths::new(dir);
-    let valid_themes: Vec<&str> = themes::theme_options()
+    let valid_themes: Vec<&str> = themes::theme_ordered_list()
         .iter()
-        .map(|o| o.display_name)
+        .map(|t| t.name)
         .collect();
     let for_dir_config = crate::config::ForDirConfig {
         valid_theme_names: &valid_themes,

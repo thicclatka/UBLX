@@ -65,9 +65,9 @@ pub fn apply_config_reload(
     message: Option<impl AsRef<str>>,
 ) {
     let paths = UblxPaths::new(params.dir_to_ublx);
-    let valid_themes: Vec<&str> = themes::theme_options()
+    let valid_themes: Vec<&str> = themes::theme_ordered_list()
         .iter()
-        .map(|o| o.display_name)
+        .map(|t| t.name)
         .collect();
     let old_enable_enhance_all = ublx_opts.enable_enhance_all;
     let result = ublx_opts.reload_hot_config(&paths, &valid_themes);

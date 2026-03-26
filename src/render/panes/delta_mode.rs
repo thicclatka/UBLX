@@ -80,12 +80,12 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
     let title = super::set_title(UI_STRINGS.delta.type_label, focused);
     let left_block = super::panel_block(title, focused);
     f.render_stateful_widget(
-        super::styled_list(items, left_block, state.panels.highlight_style),
+        super::styled_list(items, left_block, state.panels.highlight_style, focused),
         left,
         &mut state.panels.category_state,
     );
 
-    super::draw_paths_list_with_counter(f, state, params.view, middle);
+    super::draw_paths_list_with_counter(f, state, params.view, None, middle);
 
     let right_block = Block::default()
         .borders(Borders::ALL)

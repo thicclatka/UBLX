@@ -101,17 +101,13 @@ fn run_tick(
         notifications::move_log_events();
     }
 
-    let (view, mut right_content, delta_data, rows_for_draw) = build_view_and_right_content(
+    let (view, right_content, delta_data, rows_for_draw) = build_view_and_right_content(
         state,
         categories.as_slice(),
         all_rows.as_slice(),
         params,
         ublx_opts.enable_enhance_all,
     );
-    if right_content.viewer_can_open {
-        right_content.open_hint_label =
-            applets::opener::open_hint_label(ublx_opts.editor_path.as_deref()).map(String::from);
-    }
 
     let latest_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(params.db_path)
         .ok()
@@ -408,8 +404,8 @@ fn build_view_and_right_content<'a>(
 fn theme_name_for_tick(state: &setup::UblxState, params: &RunUblxParams<'_>) -> Option<String> {
     if state.theme.selector_visible {
         Some(
-            themes::theme_options()[state.theme.selector_index]
-                .display_name
+            themes::theme_ordered_list()[state.theme.selector_index]
+                .name
                 .to_string(),
         )
     } else {

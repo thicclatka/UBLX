@@ -4,6 +4,7 @@ use ratatui::layout::HorizontalAlignment;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
+use crate::layout::themes;
 use crate::ui::UI_GLYPHS;
 
 use super::{CurrentTheme, ThemeStyles, tab_active, tab_inactive};
@@ -32,9 +33,10 @@ pub fn tab_node_segment(label: &str, active: bool) -> Vec<Span<'static>> {
 
 fn node_color() -> (ratatui::style::Color, Style, Style) {
     let t = CurrentTheme::palette();
-    let circle_style = Style::default().fg(t.node_bg).bg(t.background);
-    let node_style = Style::default().bg(t.node_bg);
-    (t.node_bg, circle_style, node_style)
+    let pill_bg = themes::node_pill_background(t);
+    let circle_style = Style::default().fg(pill_bg).bg(t.background);
+    let node_style = Style::default().fg(t.text).bg(pill_bg);
+    (pill_bg, circle_style, node_style)
 }
 
 fn node_spans(content: &str, circle_style: Style, node_style: Style) -> Vec<Span<'static>> {
@@ -59,10 +61,9 @@ pub fn status_node_spans(content: &str) -> Vec<Span<'static>> {
     node_spans(content, circle_style, node_style)
 }
 
-/// Footer line: optional open hint, optional PDF page, optional size, and optional mtime — **right-aligned** together.
+/// Footer line: optional PDF page, optional size, and optional mtime — **right-aligned** together.
 #[must_use]
 pub fn viewer_footer_line(
-    open_hint_label: Option<&str>,
     size_str: Option<&str>,
     mtime_ns: Option<i64>,
     pdf_page_line: Option<&str>,
@@ -70,9 +71,6 @@ pub fn viewer_footer_line(
     use crate::utils::format_timestamp_ns;
     let (_, circle_style, node_style) = node_color();
     let mut spans: Vec<Span<'static>> = Vec::new();
-    if let Some(label) = open_hint_label {
-        spans.extend(node_spans(label, circle_style, node_style));
-    }
     if let Some(pdf) = pdf_page_line {
         spans.extend(node_spans(pdf, circle_style, node_style));
     }
@@ -95,7 +93,7 @@ pub fn viewer_footer_line(
                 node_style,
             ));
         }
-        (None, None) if open_hint_label.is_none() && pdf_page_line.is_none() => return None,
+        (None, None) if pdf_page_line.is_none() => return None,
         (None, None) => {}
     }
     Some(Line::from(spans).right_aligned())

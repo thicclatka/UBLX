@@ -78,7 +78,7 @@ fn try_pdfinfo_pages(pdf: &Path) -> Result<u32, String> {
 ///
 /// # Errors
 ///
-/// Returns a message string when neither Poppler (`pdftoppm`) nor MuPDF (`mutool`) is available,
+/// Returns a message string when neither Poppler (`pdftoppm`) nor `MuPDF` (`mutool`) is available,
 /// when both tools fail to render (messages are combined), or when the temporary PNG cannot be decoded.
 pub fn render_pdf_page(pdf: &Path, page: u32, max_dim: u32) -> Result<DynamicImage, String> {
     let page = page.max(1);

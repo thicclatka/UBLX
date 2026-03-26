@@ -11,6 +11,7 @@ pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub const NEFAX_DB: &str = ".nefaxer";
 
 /// Stable hex string for a path (for cache filenames). Same path => same string.
+#[must_use]
 pub fn path_to_hex(path: &Path) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     path.to_string_lossy().hash(&mut hasher);

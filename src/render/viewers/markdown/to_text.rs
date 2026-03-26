@@ -14,7 +14,7 @@ use super::types::{Block, MarkdownDoc, StyledLines};
 const FENCED_CODE_BG_PCT: f32 = 0.20;
 
 fn fenced_code_line_style(theme: &Theme) -> Style {
-    let bg = themes::lighten_rgb(theme.background, FENCED_CODE_BG_PCT);
+    let bg = themes::adjust_surface_rgb(theme.background, FENCED_CODE_BG_PCT, theme.appearance);
     Style::default().fg(theme.text).bg(bg)
 }
 
