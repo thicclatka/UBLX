@@ -49,6 +49,7 @@ fn tree_viewer(
     rel_path: &str,
     abs_path: PathBuf,
     offer_directory_policy: bool,
+    mtime_ns: Option<i64>,
 ) -> RightPaneContent {
     RightPaneContent {
         templates: String::new(),
@@ -59,7 +60,7 @@ fn tree_viewer(
         viewer_abs_path: Some(abs_path),
         viewer_zahir_type: None,
         viewer_byte_size: None,
-        viewer_mtime_ns: None,
+        viewer_mtime_ns: mtime_ns,
         viewer_can_open: false,
         viewer_offer_enhance_zahir: false,
         viewer_offer_enhance_directory_policy: offer_directory_policy,
@@ -86,13 +87,14 @@ pub fn resolve_right_pane_content(
     if let Some((path, category, size)) = selected {
         let path: &str = path.as_str();
         let full_path = resolve_under_root(dir_to_ublx, path);
+        let viewer_mtime_ns = db_ops::load_mtime_for_path(db_path, path).ok().flatten();
         if *category == CATEGORY_DIRECTORY {
             let tree_str = tree_for_path(state, path, &full_path);
-            tree_viewer(tree_str, path, full_path, true)
+            tree_viewer(tree_str, path, full_path, true, viewer_mtime_ns)
         } else {
             if full_path.is_dir() {
                 let tree_str = tree_for_path(state, path, &full_path);
-                return tree_viewer(tree_str, path, full_path, false);
+                return tree_viewer(tree_str, path, full_path, false, viewer_mtime_ns);
             }
             state.cached_tree = None;
             let viewer_zahir_type = file_type_from_metadata_name(category);
@@ -108,7 +110,6 @@ pub fn resolve_right_pane_content(
                 file_content_for_viewer(&full_path, viewer_zahir_type)
             };
             let viewer_byte_size = viewer_str.as_ref().map(|_| *size);
-            let viewer_mtime_ns = db_ops::load_mtime_for_path(db_path, path).ok().flatten();
             let viewer_can_open = !is_likely_binary(&full_path)
                 || matches!(
                     viewer_zahir_type,

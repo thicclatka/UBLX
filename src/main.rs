@@ -24,10 +24,30 @@ struct Args {
     /// Dev mode: tui-logger drain + `move_events` + trace-level default filter
     #[arg(long = "dev")]
     dev: bool,
+    /// Print available themes grouped by appearance
+    #[arg(long = "themes")]
+    themes: bool,
+}
+
+fn print_available_themes() {
+    for entry in themes::theme_selector_entries() {
+        match entry {
+            themes::SelectorEntry::Section(label) => {
+                println!("{label}:");
+            }
+            themes::SelectorEntry::Item(theme) => {
+                println!("  - {}", theme.name);
+            }
+        }
+    }
 }
 
 fn main() {
     let args = Args::parse();
+    if args.themes {
+        print_available_themes();
+        return;
+    }
     let start_time = args.test.then(Instant::now);
 
     let test_mode = args.test;

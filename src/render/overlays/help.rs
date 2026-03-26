@@ -28,21 +28,25 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("Ctrl+d", "Run duplicate detection, show Duplicates tab"),
     ("/", "Search (strict substring search)"),
     ("Ctrl+s", "Take snapshot"),
+    ("s", "Cycle sort mode"),
+    (
+        "Shift+E",
+        "Enhance selected file with ZahirScan (when available)"
+    ),
     ("h | l", "Focus on Left or Middle panes"),
     ("j | k", "Move down / up in Left or Middle panes"),
     (
         "gg | G",
         "Go to top / bottom of list (Left or Middle panes)"
     ),
-    ("Ctrl+b", "Scroll to beginning of preview"),
-    ("Ctrl+e", "Scroll to end of preview"),
+    ("Ctrl+b | +e", "Scroll to beginning / end of preview"),
     ("Shift+↑↓", "Scroll up / down in preview"),
-    ("Shift+J | Shift+K", "Scroll down / up in preview"),
+    ("Shift+J | +K", "Scroll down / up in preview"),
     ("Tab", "Switch between left and middle panes"),
-    ("v", "Focus on Viewer tab in right pane"),
-    ("t", "Focus on Templates tab in right pane (if tab exists)"),
-    ("m", "Focus on Metadata tab in right pane (if tab exists)"),
-    ("w", "Focus on Writing tab in right pane (if tab exists)"),
+    (
+        "v/t/m/w",
+        "Focus on Viewer/Templates/Metadata/Writing tab in right pane"
+    ),
     ("Ctrl+v", "Cycle right pane tab"),
     (
         "Ctrl+t",
@@ -54,7 +58,7 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ),
     ("Space", "Open context menu"),
     ("q | Esc", "Quit"),
-    ("?", "Show this help"),
+    ("?", "Show help box"),
 ];
 
 pub fn render_help_box(f: &mut Frame) {

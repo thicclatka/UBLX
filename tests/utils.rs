@@ -153,16 +153,19 @@ fn print_lighten_values() {
         ("Golden Delirium", 42, 42, 0),
         ("Oblivion Ink", 10, 25, 47),
         ("Purple Haze", 13, 0, 26),
+        ("Resin Record", 42, 18, 0),
         ("Shadow Index", 0, 0, 0),
         ("Tangerine Memory", 42, 26, 0),
         ("Asterion Code", 232, 240, 242),
         ("Barley Bound", 251, 241, 199),
-        ("Cold Draft", 236, 239, 244),
+        ("Cold Trace", 236, 239, 244),
         ("Cryptic Chai", 247, 238, 222),
+        ("Faded Echo", 246, 237, 225),
+        ("Infinite Rose", 232, 235, 240),
+        ("Obdurate Noon", 253, 246, 227),
         ("Ochre Thread", 250, 242, 228),
         ("Pale Mirror", 242, 245, 253),
-        ("Parched Paper", 253, 248, 240),
-        ("Rosy Infinity", 232, 235, 240),
+        ("Parched Page", 253, 248, 240),
         ("Silent Sheet", 255, 255, 255),
     ];
     for (name, r, g, b) in backgrounds {
@@ -170,14 +173,16 @@ fn print_lighten_values() {
         let appearance = if matches!(
             *name,
             "Silent Sheet"
-                | "Parched Paper"
+                | "Parched Page"
                 | "Pale Mirror"
                 | "Ochre Thread"
+                | "Obdurate Noon"
+                | "Infinite Rose"
+                | "Faded Echo"
                 | "Cryptic Chai"
                 | "Asterion Code"
-                | "Rosy Infinity"
                 | "Barley Bound"
-                | "Cold Draft"
+                | "Cold Trace"
         ) {
             Appearance::Light
         } else {

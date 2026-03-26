@@ -160,6 +160,9 @@ impl UblxDbStatements {
     pub const SELECT_SNAPSHOT_MTIME_BY_PATH: &'static str =
         "SELECT mtime_ns FROM snapshot WHERE path = ?1";
 
+    /// (path, mtime_ns) for all snapshot rows (used by Mod sort in middle pane).
+    pub const SELECT_SNAPSHOT_PATH_MTIME_ALL: &'static str = "SELECT path, mtime_ns FROM snapshot";
+
     /// (path, size, hash) for non-directory rows; used for duplicate detection (by hash or content).
     pub const SELECT_SNAPSHOT_PATH_SIZE_HASH: &'static str =
         "SELECT path, size, hash FROM snapshot WHERE category IS NULL OR category != 'Directory'";

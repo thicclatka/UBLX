@@ -62,9 +62,8 @@ pub fn validate_hot_reload_overlay(
             errors.push(HotReloadValidationError {
                 field: "theme",
                 message: format!(
-                    "invalid: \"{}\"; valid options: {}",
-                    name,
-                    valid_theme_names.join(", ")
+                    "invalid: \"{}\"; run `ublx --themes` to list valid options",
+                    name
                 ),
             });
         }

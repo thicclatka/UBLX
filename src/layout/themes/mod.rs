@@ -66,6 +66,8 @@ pub struct Theme {
     pub delta_removed: Color,
     /// Brand title (e.g. UBLX)
     pub title_brand: Color,
+    /// Color for theme selector swatch
+    pub swatch: Color,
 }
 
 /// HSL step off [`Theme::background`] for light-theme footer/status powerline pills.

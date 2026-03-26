@@ -1,33 +1,34 @@
 use crossterm::event::{self, Event, KeyEvent};
+use ratatui::layout::Rect;
 use std::io;
 
-use crate::config::UblxOpts;
+use crate::config::{LayoutOverlay, UblxOpts};
 use crate::handlers::{applets, state_transitions};
 use crate::layout::{
     event_loop::RunUblxParams,
     setup::{RightPaneContent, UblxState, ViewData},
 };
 use crate::ui::{
-    consts::UI_CONSTANTS,
-    keymap::{
-        KeyActionContext, KeyOptionalTabs, KeySearchState, UblxAction, key_action_setup,
-        search_consumes,
-    },
-    lens, menu,
+    MainTabFlags,
+    consts::{UI_CONSTANTS, UI_STRINGS},
+    keymap, lens, menu, mouse,
 };
 
-/// Which main tabs are available (Duplicates, Lenses). Used for key binding and mode cycle.
 #[derive(Clone, Copy)]
-pub struct MainTabFlags {
-    pub has_duplicates: bool,
-    pub has_lenses: bool,
+pub struct InputContext<'a> {
+    pub view: &'a ViewData,
+    pub right_content: &'a RightPaneContent,
+    pub theme_ctx: applets::theme_selector::ThemeContext<'a>,
+    pub frame_area: Rect,
+    pub layout: &'a LayoutOverlay,
+    pub tabs: MainTabFlags,
 }
 
 /// Key event and resolved action passed into modal handlers (keeps [`dispatch_modal_handlers`] under clippy’s arg limit).
 #[derive(Clone, Copy)]
 struct ModalInput {
     e: KeyEvent,
-    action: UblxAction,
+    action: keymap::UblxAction,
 }
 
 /// Run modal handlers in order; returns true if any handler consumed the event (caller should then return Ok(false)).
@@ -80,6 +81,9 @@ fn dispatch_modal_handlers(
     if menu::handle_open_menu(state, params, ublx_opts, action) {
         return true;
     }
+    if menu::try_enhance_with_zahir(state, right_content, params, ublx_opts, action) {
+        return true;
+    }
     if menu::try_open_open_menu(state, right_content, action) {
         return true;
     }
@@ -101,29 +105,49 @@ fn dispatch_modal_handlers(
 /// Returns [`io::Error`] when `crossterm` fails to poll or read the next event (`event::poll` / `event::read`).
 pub fn handle_ublx_input(
     state: &mut UblxState,
-    view: &ViewData,
-    right_content: &RightPaneContent,
-    theme_ctx: applets::theme_selector::ThemeContext<'_>,
-    tabs: MainTabFlags,
+    ctx: InputContext<'_>,
     params: &mut RunUblxParams<'_>,
     ublx_opts: &mut UblxOpts,
 ) -> io::Result<bool> {
+    let InputContext {
+        view,
+        right_content,
+        theme_ctx,
+        frame_area,
+        layout,
+        tabs,
+    } = ctx;
     if !event::poll(std::time::Duration::from_millis(UI_CONSTANTS.input_poll_ms))? {
         return Ok(false);
     }
-    let Event::Key(e) = event::read()? else {
+    let ev = event::read()?;
+    if let Event::Mouse(me) = ev {
+        let _handled = mouse::handle_mouse_event(
+            state,
+            me,
+            mouse::MouseContext {
+                view,
+                right_content,
+                frame_area,
+                layout,
+                tabs,
+            },
+        );
+        return Ok(false);
+    }
+    let Event::Key(e) = ev else {
         return Ok(false);
     };
     let has_search_filter = !state.search.query.is_empty();
-    let result = key_action_setup(
+    let result = keymap::key_action_setup(
         e,
-        &KeyActionContext {
-            search: KeySearchState {
+        &keymap::KeyActionContext {
+            search: keymap::KeySearchState {
                 active: state.search.active,
                 has_filter: has_search_filter,
             },
             last_key_for_double: state.last_key_for_double,
-            tabs: KeyOptionalTabs {
+            tabs: keymap::KeyOptionalTabs {
                 duplicates: tabs.has_duplicates,
                 lenses: tabs.has_lenses,
             },
@@ -144,34 +168,34 @@ pub fn handle_ublx_input(
         return Ok(false);
     }
 
-    if matches!(action, UblxAction::ThemeSelector) {
+    if matches!(action, keymap::UblxAction::ThemeSelector) {
         applets::theme_selector::open(state, theme_ctx);
         return Ok(false);
     }
-    if matches!(action, UblxAction::ReloadConfig) {
+    if matches!(action, keymap::UblxAction::ReloadConfig) {
         applets::settings::apply_config_reload(
             params,
             ublx_opts,
             state,
-            Some(crate::ui::UI_STRINGS.toasts.config_reloaded),
+            Some(UI_STRINGS.toasts.config_reloaded),
         );
         return Ok(false);
     }
-    if matches!(action, UblxAction::SearchClear) {
+    if matches!(action, keymap::UblxAction::SearchClear) {
         state.search.query.clear();
         state.search.active = false;
         return Ok(false);
     }
     if state.search.active {
         match action {
-            UblxAction::SearchSubmit => state.search.active = false,
-            UblxAction::SearchBackspace => {
+            keymap::UblxAction::SearchSubmit => state.search.active = false,
+            keymap::UblxAction::SearchBackspace => {
                 state.search.query.pop();
             }
-            UblxAction::SearchChar(c) => state.search.query.push(c),
+            keymap::UblxAction::SearchChar(c) => state.search.query.push(c),
             _ => {}
         }
-        if search_consumes(action) {
+        if keymap::search_consumes(action) {
             return Ok(false);
         }
     }

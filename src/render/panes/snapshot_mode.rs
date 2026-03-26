@@ -92,6 +92,8 @@ pub fn draw_contents_panel(
         .title_bottom(super::line_for(
             state.panels.content_state.selected(),
             view.content_len,
+            state.main_mode,
+            state.panels.content_sort,
         ));
     let total = view.content_len;
 

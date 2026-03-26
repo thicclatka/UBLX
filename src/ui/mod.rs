@@ -3,6 +3,7 @@ pub mod input;
 pub mod keymap;
 pub mod lens;
 pub mod menu;
+pub mod mouse;
 pub mod snapshot;
 
 use crate::config::OPERATION_NAME;
@@ -10,6 +11,13 @@ use crate::layout::{event_loop::RunUblxParams, setup::UblxState};
 use crate::utils::notifications;
 
 pub use consts::*;
+
+/// Which main tabs are available (Duplicates, Lenses). Used for key binding and mode cycle.
+#[derive(Clone, Copy)]
+pub struct MainTabFlags {
+    pub has_duplicates: bool,
+    pub has_lenses: bool,
+}
 
 /// Push a message to the bumper and refresh the stacked toast. `operation_name_suffix` is passed to `OPERATION_NAME.op` (e.g. `"lens"` → `ublx: lens`). No-op if `params.bumper` is None.
 pub fn show_operation_toast(

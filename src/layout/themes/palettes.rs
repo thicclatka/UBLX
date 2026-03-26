@@ -12,7 +12,7 @@ pub const DEFAULT_COLORS: DefaultColors = DefaultColors {
     green: Color::Rgb(72, 187, 120),
     yellow: Color::Rgb(253, 203, 110),
     red: Color::Rgb(239, 68, 68),
-    cyan: Color::Rgb(100, 255, 218),
+    cyan: Color::Rgb(42, 161, 152),
     magenta: Color::Rgb(164, 95, 250),
     gray: Color::Rgb(128, 128, 128),
 };
@@ -45,6 +45,7 @@ pub static SHADOW_INDEX: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(128, 128, 153),
+    swatch: Color::Rgb(0, 0, 0),
 };
 
 // ---- Archival Simulacra (dark: matrix terminal — black field, neon phosphor green) ----
@@ -66,6 +67,7 @@ pub static ARCHIVAL_SIMULACRA: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(110, 255, 130),
+    swatch: Color::Rgb(68, 255, 106),
 };
 
 // ---- Oblivion Ink (blue) ----
@@ -73,7 +75,7 @@ pub static OBLIVION_INK: Theme = Theme {
     name: "Oblivion Ink",
     appearance: Appearance::Dark,
     background: Color::Rgb(10, 25, 47),
-    text: Color::Rgb(193, 228, 219),
+    text: Color::Rgb(200, 235, 230),
     focused_border: Color::Rgb(100, 255, 218),
     tab_active_fg: Color::Rgb(100, 255, 218),
     tab_active_bg: Color::Rgb(22, 58, 92),
@@ -87,6 +89,7 @@ pub static OBLIVION_INK: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(164, 95, 250),
+    swatch: Color::Rgb(10, 25, 47),
 };
 
 // ---- Garden Unseen (green) ----
@@ -94,7 +97,7 @@ pub static GARDEN_UNSEEN: Theme = Theme {
     name: "Garden Unseen",
     appearance: Appearance::Dark,
     background: Color::Rgb(0, 42, 21),
-    text: Color::Rgb(230, 206, 182),
+    text: Color::Rgb(255, 217, 194),
     focused_border: Color::Rgb(130, 246, 198),
     tab_active_fg: Color::Rgb(230, 206, 182),
     tab_active_bg: Color::Rgb(24, 92, 75),
@@ -108,6 +111,7 @@ pub static GARDEN_UNSEEN: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(73, 67, 44),
+    swatch: Color::Rgb(0, 42, 21),
 };
 
 // ---- Burning Glyph (red) ----
@@ -115,7 +119,7 @@ pub static BURNING_GLYPH: Theme = Theme {
     name: "Burning Glyph",
     appearance: Appearance::Dark,
     background: Color::Rgb(42, 0, 0),
-    text: Color::Rgb(210, 200, 238),
+    text: Color::Rgb(249, 233, 170),
     focused_border: Color::Rgb(246, 130, 130),
     tab_active_fg: Color::Rgb(210, 200, 238),
     tab_active_bg: Color::Rgb(82, 44, 18),
@@ -129,6 +133,7 @@ pub static BURNING_GLYPH: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(237, 181, 98),
+    swatch: Color::Rgb(42, 0, 0),
 };
 
 // ---- Golden Delirium (yellow) ----
@@ -136,7 +141,7 @@ pub static GOLDEN_DELIRIUM: Theme = Theme {
     name: "Golden Delirium",
     appearance: Appearance::Dark,
     background: Color::Rgb(42, 42, 0),
-    text: Color::Rgb(252, 246, 188),
+    text: Color::Rgb(236, 247, 230),
     focused_border: Color::Rgb(246, 246, 130),
     tab_active_fg: Color::Rgb(252, 246, 188),
     tab_active_bg: Color::Rgb(36, 64, 40),
@@ -150,6 +155,7 @@ pub static GOLDEN_DELIRIUM: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(167, 107, 78),
+    swatch: Color::Rgb(42, 42, 0),
 };
 
 // ---- Tangerine Memory (orange) ----
@@ -157,7 +163,7 @@ pub static TANGERINE_MEMORY: Theme = Theme {
     name: "Tangerine Memory",
     appearance: Appearance::Dark,
     background: Color::Rgb(42, 26, 0),
-    text: Color::Rgb(255, 226, 205),
+    text: Color::Rgb(255, 231, 173),
     focused_border: Color::Rgb(246, 198, 130),
     tab_active_fg: Color::Rgb(255, 226, 205),
     tab_active_bg: Color::Rgb(72, 38, 52),
@@ -171,6 +177,7 @@ pub static TANGERINE_MEMORY: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(226, 169, 157),
+    swatch: Color::Rgb(42, 26, 0),
 };
 
 // ---- Purple Haze (purple) ----
@@ -192,6 +199,7 @@ pub static PURPLE_HAZE: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(116, 80, 240),
+    swatch: Color::Rgb(13, 0, 26),
 };
 
 // ---- Frozen Phrase (dark: Nordic polar night, frost blue chrome) ----
@@ -213,6 +221,7 @@ pub static FROZEN_PHRASE: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(180, 200, 224),
+    swatch: Color::Rgb(46, 52, 64),
 };
 
 // ---- Babel Blend (dark: deep navy page; orange focus/search vs red tab chrome — hues separated by role) ----
@@ -234,6 +243,29 @@ pub static BABEL_BLEND: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(255, 118, 58),
+    swatch: Color::Rgb(12, 22, 46),
+};
+
+// ---- Resin Record (dark: amber-terminal phosphor on near-black field) ----
+pub static RESIN_RECORD: Theme = Theme {
+    name: "Resin Record",
+    appearance: Appearance::Dark,
+    background: Color::Rgb(18, 12, 0),
+    text: Color::Rgb(248, 176, 142),
+    focused_border: Color::Rgb(230, 170, 60),
+    tab_active_fg: Color::Rgb(20, 12, 0),
+    tab_active_bg: Color::Rgb(245, 176, 74),
+    tab_inactive_bg: Color::Rgb(34, 22, 5),
+    search_text: Color::Rgb(255, 190, 92),
+    hint: Color::Rgb(168, 120, 58),
+    popup_bg: Color::Rgb(24, 16, 2),
+    node_bg: Color::Rgb(36, 24, 4),
+    notification_bg: Color::Rgb(24, 16, 2),
+    delta_added: DEFAULT_COLORS.green,
+    delta_mod: DEFAULT_COLORS.yellow,
+    delta_removed: DEFAULT_COLORS.red,
+    title_brand: Color::Rgb(214, 140, 52),
+    swatch: Color::Rgb(18, 12, 0),
 };
 
 // ---- Silent Sheet (white) ----
@@ -255,11 +287,56 @@ pub static SILENT_SHEET: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(102, 92, 82),
+    swatch: Color::Rgb(0, 0, 0),
 };
 
-// ---- Parched Paper (light: dry manuscript paper, ink-green text) ----
-pub static PARCHED_PAPER: Theme = Theme {
-    name: "Parched Paper",
+// ---- Obdurate Noon (light: Solarized-light inspired parchment with cyan/blue accents) ----
+pub static OBDURATE_NOON: Theme = Theme {
+    name: "Obdurate Noon",
+    appearance: Appearance::Light,
+    background: Color::Rgb(253, 246, 227),      // base3
+    text: Color::Rgb(101, 123, 131),            // base00
+    focused_border: Color::Rgb(42, 161, 152),   // cyan
+    tab_active_fg: Color::Rgb(253, 246, 227),   // base3
+    tab_active_bg: Color::Rgb(38, 139, 210),    // blue
+    tab_inactive_bg: Color::Rgb(238, 232, 213), // base2
+    search_text: Color::Rgb(38, 139, 210),      // blue
+    hint: Color::Rgb(108, 113, 196),            // violet
+    popup_bg: Color::Rgb(247, 240, 219),
+    node_bg: Color::Rgb(244, 236, 212),
+    notification_bg: Color::Rgb(246, 238, 216),
+    delta_added: DEFAULT_COLORS.green,
+    delta_mod: DEFAULT_COLORS.yellow,
+    delta_removed: DEFAULT_COLORS.red,
+    title_brand: Color::Rgb(181, 137, 0), // yellow
+    swatch: Color::Rgb(101, 123, 131),
+};
+
+// ---- Faded Echo (light: dusty sepia paper and book-ink) ----
+pub static FADED_ECHO: Theme = Theme {
+    name: "Faded Echo",
+    appearance: Appearance::Light,
+    background: Color::Rgb(244, 236, 222),
+    text: Color::Rgb(72, 62, 50),
+    focused_border: Color::Rgb(126, 108, 86),
+    tab_active_fg: Color::Rgb(255, 249, 238),
+    tab_active_bg: Color::Rgb(98, 82, 64),
+    tab_inactive_bg: Color::Rgb(240, 229, 208),
+    search_text: Color::Rgb(118, 98, 80),
+    hint: Color::Rgb(112, 106, 96),
+    popup_bg: Color::Rgb(238, 226, 203),
+    node_bg: Color::Rgb(235, 223, 199),
+    notification_bg: Color::Rgb(237, 225, 201),
+    delta_added: DEFAULT_COLORS.green,
+    delta_mod: DEFAULT_COLORS.yellow,
+    delta_removed: DEFAULT_COLORS.red,
+    title_brand: Color::Rgb(156, 104, 58),
+    swatch: Color::Rgb(78, 61, 44),
+};
+
+// ---- Parched Page (light: dry manuscript paper, ink-green text) ----
+pub static PARCHED_PAGE: Theme = Theme {
+    name: "Parched Page",
     appearance: Appearance::Light,
     background: Color::Rgb(253, 248, 240),
     text: Color::Rgb(24, 78, 52),
@@ -276,6 +353,7 @@ pub static PARCHED_PAPER: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(48, 105, 72),
+    swatch: Color::Rgb(24, 78, 52),
 };
 
 // ---- Pale Mirror (light: frosted blue-lilac page, plum ink — no green/teal chrome) ----
@@ -297,6 +375,7 @@ pub static PALE_MIRROR: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(96, 68, 128),
+    swatch: Color::Rgb(42, 30, 56),
 };
 
 // ---- Ochre Thread (light: pale sand page, rust ink) ----
@@ -318,6 +397,7 @@ pub static OCHRE_THREAD: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(162, 74, 30),
+    swatch: Color::Rgb(110, 50, 22),
 };
 
 // ---- Cryptic Chai (light: tea-stained parchment, chocolate ink) ----
@@ -339,6 +419,7 @@ pub static CRYPTIC_CHAI: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(138, 72, 42),
+    swatch: Color::Rgb(58, 38, 28),
 };
 
 // ---- Asterion Code (light: cool blue-gray stone, blue-forward ink — not Parched’s warm cream + forest green) ----
@@ -360,11 +441,12 @@ pub static ASTERION_CODE: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(18, 96, 128),
+    swatch: Color::Rgb(10, 72, 96),
 };
 
-// ---- Rosy Infinity (light: very pale steel gray page, rose-gold ink and chrome) ----
+// ---- Infinite Rose (light: very pale steel gray page, rose-gold ink and chrome) ----
 pub static ROSY_INFINITY: Theme = Theme {
-    name: "Rosy Infinity",
+    name: "Infinite Rose",
     appearance: Appearance::Light,
     background: Color::Rgb(232, 235, 240),
     text: Color::Rgb(112, 68, 76),
@@ -381,6 +463,7 @@ pub static ROSY_INFINITY: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(178, 108, 98),
+    swatch: Color::Rgb(112, 68, 76),
 };
 
 // ---- Barley Bound (light: Gruvbox-light riff — buttercream pad, dark warm ink, teal focus, orange brand) ----
@@ -402,11 +485,12 @@ pub static BARLEY_BOUND: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(214, 93, 14),
+    swatch: Color::Rgb(60, 56, 54),
 };
 
-// ---- Cold Draft (light: Nord-light riff — snow page, polar-night ink, frost blue chrome) ----
-pub static COLD_DRAFT: Theme = Theme {
-    name: "Cold Draft",
+// ---- Cold Trace (light: Nord-light riff — snow page, polar-night ink, frost blue chrome) ----
+pub static COLD_TRACE: Theme = Theme {
+    name: "Cold Trace",
     appearance: Appearance::Light,
     background: Color::Rgb(236, 239, 244),
     text: Color::Rgb(46, 52, 64),
@@ -423,29 +507,33 @@ pub static COLD_DRAFT: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(136, 192, 208),
+    swatch: Color::Rgb(46, 52, 64),
 };
 
 /// Every palette; order does not matter (derived lists sort by name within dark / light).
 static ALL_THEMES: &[&Theme] = &[
     &ARCHIVAL_SIMULACRA,
+    &ASTERION_CODE,
     &BABEL_BLEND,
+    &BARLEY_BOUND,
     &BURNING_GLYPH,
+    &COLD_TRACE,
+    &CRYPTIC_CHAI,
+    &FADED_ECHO,
     &FROZEN_PHRASE,
     &GARDEN_UNSEEN,
     &GOLDEN_DELIRIUM,
+    &OBDURATE_NOON,
     &OBLIVION_INK,
-    &PURPLE_HAZE,
-    &SHADOW_INDEX,
-    &TANGERINE_MEMORY,
-    &ASTERION_CODE,
-    &BARLEY_BOUND,
-    &COLD_DRAFT,
-    &CRYPTIC_CHAI,
     &OCHRE_THREAD,
     &PALE_MIRROR,
-    &PARCHED_PAPER,
+    &PARCHED_PAGE,
+    &PURPLE_HAZE,
+    &RESIN_RECORD,
     &ROSY_INFINITY,
+    &SHADOW_INDEX,
     &SILENT_SHEET,
+    &TANGERINE_MEMORY,
 ];
 
 struct ThemeLists {

@@ -90,7 +90,7 @@ fn theme_option_row(
 ) -> ListItem<'static> {
     let swatch = match theme.appearance {
         themes::Appearance::Light => {
-            themes::lighten_rgb(theme.text, UI_CONSTANTS.swatch_light_theme_text)
+            themes::lighten_rgb(theme.swatch, UI_CONSTANTS.swatch_light_theme_text)
         }
         themes::Appearance::Dark => {
             let pct = if current_theme.appearance == themes::Appearance::Light {
@@ -98,7 +98,7 @@ fn theme_option_row(
             } else {
                 UI_CONSTANTS.swatch_lighten
             };
-            themes::adjust_surface_rgb(theme.background, pct, theme.appearance)
+            themes::adjust_surface_rgb(theme.swatch, pct, theme.appearance)
         }
     };
     let swatch_style = Style::default().fg(swatch).bg(swatch);

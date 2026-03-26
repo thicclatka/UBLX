@@ -9,6 +9,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crossterm::{
     cursor::Show as ShowCursor,
+    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use log::debug;
@@ -140,7 +141,7 @@ fn run_tui_mode(
 fn restore_terminal() {
     let _ = disable_raw_mode();
     let mut out = io::stdout();
-    let _ = crossterm::execute!(out, LeaveAlternateScreen, ShowCursor);
+    let _ = crossterm::execute!(out, DisableMouseCapture, LeaveAlternateScreen, ShowCursor);
 }
 
 /// Leave alternate screen and raw mode so an external editor runs on the main screen; call before spawning the editor.
@@ -151,7 +152,7 @@ fn restore_terminal() {
 pub fn leave_terminal_for_editor() -> io::Result<()> {
     disable_raw_mode()?;
     let mut out = io::stdout();
-    crossterm::execute!(out, LeaveAlternateScreen, ShowCursor)?;
+    crossterm::execute!(out, DisableMouseCapture, LeaveAlternateScreen, ShowCursor)?;
     Ok(())
 }
 
@@ -163,7 +164,7 @@ pub fn leave_terminal_for_editor() -> io::Result<()> {
 pub fn reapply_terminal_after_editor() -> io::Result<()> {
     enable_raw_mode()?;
     let mut out = io::stdout();
-    crossterm::execute!(out, EnterAlternateScreen)?;
+    crossterm::execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
     Ok(())
 }
 
@@ -201,7 +202,7 @@ pub fn run_ublx(
 
     enable_raw_mode()?;
     let mut out = io::stdout();
-    crossterm::execute!(out, EnterAlternateScreen)?;
+    crossterm::execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(out);
     let mut terminal = Terminal::new(backend)?;
 

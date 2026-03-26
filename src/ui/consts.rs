@@ -480,6 +480,10 @@ pub struct UiGlyphs {
     pub markdown_attachment: char,
     /// Markdown viewer: prefix for `![alt](url)` image syntax (photo / figure).
     pub markdown_image: char,
+    /// Sort direction glyph for ascending/up.
+    pub arrow_up: char,
+    /// Sort direction glyph for descending/down.
+    pub arrow_down: char,
 }
 
 impl Default for UiGlyphs {
@@ -505,6 +509,8 @@ impl UiGlyphs {
             markdown_link: '\u{2197}',        // ↗
             markdown_attachment: '\u{1f4ce}', // 📎
             markdown_image: '\u{1f5bc}',      // 🖼 (framed picture)
+            arrow_up: '\u{2191}',             // ↑
+            arrow_down: '\u{2193}',           // ↓
         }
     }
 }

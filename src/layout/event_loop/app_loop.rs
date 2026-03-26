@@ -4,6 +4,7 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use ratatui::Terminal;
+use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::config::UblxOpts;
@@ -13,7 +14,8 @@ use crate::handlers::{applets, core::reapply_terminal_after_editor, snapshot, vi
 use crate::layout::{setup, themes};
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
 use crate::ui::{
-    input::{MainTabFlags, handle_ublx_input},
+    MainTabFlags,
+    input::{InputContext, handle_ublx_input},
     snapshot::{show_force_full_enhance_started_toast, show_snapshot_completed_toast},
 };
 use crate::utils::notifications;
@@ -127,14 +129,22 @@ fn run_tick(
         };
         draw_one_frame(terminal, state, &view, &right_content, &draw_inputs)?;
     }
+    let layout_for_input = params.layout.clone();
     let quit = handle_ublx_input(
         state,
-        &view,
-        &right_content,
-        Some((params.dir_to_ublx, theme_name)),
-        MainTabFlags {
-            has_duplicates,
-            has_lenses,
+        InputContext {
+            view: &view,
+            right_content: &right_content,
+            theme_ctx: Some((params.dir_to_ublx, theme_name)),
+            frame_area: {
+                let sz = terminal.size()?;
+                Rect::new(0, 0, sz.width, sz.height)
+            },
+            layout: &layout_for_input,
+            tabs: MainTabFlags {
+                has_duplicates,
+                has_lenses,
+            },
         },
         params,
         ublx_opts,
@@ -299,6 +309,22 @@ fn poll_snapshot_if_due(
     state.snapshot_bg.poll_deadline = Some(now + SNAPSHOT_POLL_INTERVAL);
 }
 
+fn apply_sort_anchor_selection(
+    state: &mut setup::UblxState,
+    view: &setup::ViewData,
+    all_rows: Option<&[setup::TuiRow]>,
+) {
+    let Some(anchor) = state.panels.sort_anchor_path.take() else {
+        return;
+    };
+    let idx = view
+        .iter_contents(all_rows)
+        .position(|(path, _, _)| path == &anchor);
+    if let Some(i) = idx {
+        state.panels.content_state.select(Some(i));
+    }
+}
+
 /// Shared path for Duplicates and Lenses: clamp selection on `view`, then resolve right-pane content. Caller builds `view` first so no closure captures `state` (avoids E0502).
 fn build_view_and_right_for_user_selected_mode(
     state: &mut setup::UblxState,
@@ -308,6 +334,7 @@ fn build_view_and_right_for_user_selected_mode(
     enable_enhance_all: bool,
 ) -> (setup::ViewData, setup::RightPaneContent) {
     clamp_two_pane_selection(state, &view);
+    apply_sort_anchor_selection(state, &view, None);
     let right_content = viewing::resolve_right_pane_content(
         state,
         params.dir_to_ublx,
@@ -362,11 +389,19 @@ fn build_view_and_right_content<'a>(
         let d = build_delta_view_data(params.db_path);
         let view = view_data_for_delta_mode(state, &d);
         clamp_delta_selection(state, &view);
+        apply_sort_anchor_selection(state, &view, None);
         let right_content = setup::RightPaneContent::empty();
         (view, right_content, Some(d), None)
     } else {
         let db_path_for_read =
             db_ops::snapshot_read_path_for_tui(params.db_path, !state.snapshot_bg.done_received);
+        let snapshot_mtimes = if state.main_mode == setup::MainMode::Snapshot
+            && state.panels.content_sort.snapshot_key == setup::SnapshotSortKey::Mod
+        {
+            db_ops::load_snapshot_path_mtimes(&db_path_for_read).ok()
+        } else {
+            None
+        };
         let (view, right_content, rows_for_draw) = if state.main_mode == setup::MainMode::Duplicates
         {
             build_view_and_right_user_selected_mode!(
@@ -385,7 +420,8 @@ fn build_view_and_right_content<'a>(
                 enable_enhance_all
             )
         } else {
-            let view = build_view_data(state, categories, all_rows);
+            let view = build_view_data(state, categories, all_rows, snapshot_mtimes.as_ref());
+            apply_sort_anchor_selection(state, &view, Some(all_rows));
             let right_content = viewing::resolve_right_pane_content(
                 state,
                 params.dir_to_ublx,

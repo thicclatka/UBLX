@@ -345,3 +345,22 @@ pub fn try_open_space_menu(
     }
     try_open_lens_panel_space_menu(state, view)
 }
+
+/// If action is `EnhanceWithZahir` and selection offers it, run one-shot enhance immediately.
+pub fn try_enhance_with_zahir(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    params: &mut RunUblxParams<'_>,
+    ublx_opts: &UblxOpts,
+    action: UblxAction,
+) -> bool {
+    if !matches!(action, UblxAction::EnhanceWithZahir) || !right_content.viewer_offer_enhance_zahir
+    {
+        return false;
+    }
+    let Some(path) = right_content.viewer_path.as_deref() else {
+        return false;
+    };
+    space_menu_enhance_zahir_if_disabled(state, params, path, ublx_opts);
+    true
+}

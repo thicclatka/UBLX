@@ -224,14 +224,117 @@ pub struct UblxOpts {
 }
 
 impl UblxOpts {
+    fn normalize_theme_key(s: &str) -> String {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    }
+
+    /// Damerau-Levenshtein (optimal string alignment): insert/delete/replace + adjacent transposition.
+    fn theme_distance(a: &str, b: &str) -> usize {
+        if a.is_empty() {
+            return b.chars().count();
+        }
+        if b.is_empty() {
+            return a.chars().count();
+        }
+        let a_chars: Vec<char> = a.chars().collect();
+        let b_chars: Vec<char> = b.chars().collect();
+        let mut prev_prev: Vec<usize> = (0..=b_chars.len()).collect();
+        let mut prev: Vec<usize> = (0..=b_chars.len()).collect();
+        let mut curr = vec![0usize; b_chars.len() + 1];
+        for (i, ac) in a_chars.iter().enumerate() {
+            curr[0] = i + 1;
+            for (j, bc) in b_chars.iter().enumerate() {
+                let cost = if ac == bc { 0 } else { 1 };
+                let mut cell = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
+                // Adjacent transposition: e.g. "bbale" vs "babel"
+                if i > 0 && j > 0 && *ac == b_chars[j - 1] && a_chars[i - 1] == *bc {
+                    cell = cell.min(prev_prev[j - 1] + 1);
+                }
+                curr[j + 1] = cell;
+            }
+            prev_prev.clone_from(&prev);
+            std::mem::swap(&mut prev, &mut curr);
+        }
+        prev[b_chars.len()]
+    }
+
+    fn auto_correct_theme_name<'a>(
+        input: &'a str,
+        valid_theme_names: &'a [&'a str],
+    ) -> Option<&'a str> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if valid_theme_names.contains(&trimmed) {
+            return Some(trimmed);
+        }
+        let norm_input = Self::normalize_theme_key(trimmed);
+        if norm_input.is_empty() {
+            return None;
+        }
+        // Exact normalized match (e.g. "BabelBlend" -> "Babel Blend")
+        for &name in valid_theme_names {
+            if Self::normalize_theme_key(name) == norm_input {
+                return Some(name);
+            }
+        }
+        // Fuzzy fallback (e.g. "Bl Blend" -> "Babel Blend"), confidence-gated.
+        let mut best: Option<(&str, f32)> = None;
+        let mut second_best = 0.0f32;
+        for &name in valid_theme_names {
+            let cand = Self::normalize_theme_key(name);
+            if cand.is_empty() {
+                continue;
+            }
+            let dist = Self::theme_distance(&norm_input, &cand) as f32;
+            let max_len = norm_input.chars().count().max(cand.chars().count()) as f32;
+            let score = 1.0 - (dist / max_len);
+            match best {
+                None => best = Some((name, score)),
+                Some((_, s)) if score > s => {
+                    second_best = s;
+                    best = Some((name, score));
+                }
+                _ if score > second_best => second_best = score,
+                _ => {}
+            }
+        }
+        let (name, score) = best?;
+        if score >= 0.80 && (score - second_best) >= 0.08 {
+            Some(name)
+        } else {
+            None
+        }
+    }
+
     /// Build ublx options for indexing `dir`. [`Self::max_workers_available`] comes from [`tuning_for_path`](nefaxer::tuning_for_path).
     /// Zahir config is loaded with [`RuntimeConfig::new`]. [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
     /// Load overlay from a single toml file. Returns None if path is None, file missing, or parse error.
-    fn load_ublx_toml(path: Option<std::path::PathBuf>) -> Option<UblxOverlay> {
+    fn load_ublx_toml(
+        path: Option<std::path::PathBuf>,
+        valid_theme_names: Option<&[&str]>,
+    ) -> Option<UblxOverlay> {
         let path = path?;
         let s = fs::read_to_string(&path).ok()?;
         match toml::from_str::<UblxOverlay>(&s) {
-            Ok(overlay) => Some(overlay),
+            Ok(mut overlay) => {
+                let corrected_theme =
+                    valid_theme_names
+                        .zip(overlay.theme.as_deref())
+                        .and_then(|(valid, theme)| {
+                            Self::auto_correct_theme_name(theme, valid)
+                                .filter(|corrected| *corrected != theme)
+                        });
+                if let Some(corrected) = corrected_theme {
+                    overlay.theme = Some(corrected.to_string());
+                    Self::write_corrected_overlay(&path, &overlay);
+                }
+                Some(overlay)
+            }
             Err(e) => {
                 warn!("{}: parse error, ignoring: {}", path.display(), e);
                 None
@@ -239,24 +342,46 @@ impl UblxOpts {
         }
     }
 
+    fn write_corrected_overlay(path: &Path, overlay: &UblxOverlay) {
+        match toml::to_string_pretty(overlay) {
+            Ok(updated) => {
+                if let Err(e) = fs::write(path, updated) {
+                    warn!(
+                        "could not write corrected theme to {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+            Err(e) => warn!(
+                "could not serialize corrected overlay {}: {}",
+                path.display(),
+                e
+            ),
+        }
+    }
+
     /// Load the last applied overlay from cache (`cache_dir()/configs/[path_hex].toml`). Fallback when hot reload gets invalid config.
     #[must_use]
     pub fn load_overlay_from_cache(ublx_paths: &UblxPaths) -> Option<UblxOverlay> {
-        Self::load_ublx_toml(ublx_paths.last_applied_config_path())
+        Self::load_ublx_toml(ublx_paths.last_applied_config_path(), None)
     }
 
     /// Load merged overlay (global then local). Same merge as [`Self::for_dir`]; used for hot reload.
     #[must_use]
-    pub fn load_merged_overlay(ublx_paths: &UblxPaths) -> UblxOverlay {
-        let global = Self::load_ublx_toml(ublx_paths.global_config());
-        let local = Self::load_ublx_toml(ublx_paths.toml_path());
+    pub fn load_merged_overlay(
+        ublx_paths: &UblxPaths,
+        valid_theme_names: Option<&[&str]>,
+    ) -> UblxOverlay {
+        let global = Self::load_ublx_toml(ublx_paths.global_config(), valid_theme_names);
+        let local = Self::load_ublx_toml(ublx_paths.toml_path(), valid_theme_names);
         UblxOverlay::merge(global, local)
     }
 
     /// Load overlay from a single toml file path. Returns default if path is None, file missing, or parse error.
     #[must_use]
     pub fn load_overlay_from_path(path: Option<PathBuf>) -> UblxOverlay {
-        Self::load_ublx_toml(path).unwrap_or_default()
+        Self::load_ublx_toml(path, None).unwrap_or_default()
     }
 
     /// Save overlay to cache dir as `last_config.toml`. Creates cache dir if needed. Logs and ignores write errors.
@@ -338,7 +463,7 @@ impl UblxOpts {
         ublx_paths: &UblxPaths,
         valid_theme_names: &[&str],
     ) -> ReloadResult {
-        let from_disk = Self::load_merged_overlay(ublx_paths);
+        let from_disk = Self::load_merged_overlay(ublx_paths, Some(valid_theme_names));
         let to_apply = if from_disk == UblxOverlay::default() {
             Self::load_overlay_from_cache(ublx_paths).unwrap_or_default()
         } else {
@@ -415,8 +540,9 @@ impl UblxOpts {
             enable_enhance_all_cache_before_apply,
             enhance_policy: Vec::new(),
         };
-        let global = Self::load_ublx_toml(ublx_paths.global_config());
-        let local = Self::load_ublx_toml(ublx_paths.toml_path());
+        let global =
+            Self::load_ublx_toml(ublx_paths.global_config(), Some(config.valid_theme_names));
+        let local = Self::load_ublx_toml(ublx_paths.toml_path(), Some(config.valid_theme_names));
         let merged = UblxOverlay::merge(global, local);
         match validate_hot_reload_overlay(&merged, config.valid_theme_names) {
             Ok(()) => {

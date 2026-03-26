@@ -1,5 +1,6 @@
 //! Index DB and related files under the `dir_to_ublx_abs`, all keyed by package name (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
@@ -542,6 +543,27 @@ pub fn load_mtime_for_path(db_path: &Path, path: &str) -> Result<Option<i64>, an
     stmt.query_row(rusqlite::params![path], |row| row.get::<_, i64>(0))
         .optional()
         .map_err(Into::into)
+}
+
+/// Load all snapshot mtimes as a map (`path` -> `mtime_ns` if present).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
+pub fn load_snapshot_path_mtimes(
+    db_path: &Path,
+) -> Result<HashMap<String, Option<i64>>, anyhow::Error> {
+    let conn = open_for_snapshot_tui_read(db_path)?;
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_PATH_MTIME_ALL)?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+    })?;
+    let mut out = HashMap::new();
+    for r in rows {
+        let (path, mtime) = r?;
+        out.insert(path, mtime);
+    }
+    Ok(out)
 }
 
 /// Row for duplicate detection: path, size, optional hash (32 bytes). Directories excluded by query.

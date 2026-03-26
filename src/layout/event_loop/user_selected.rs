@@ -101,7 +101,12 @@ pub fn view_data_for_user_selected_mode(
     };
 
     let contents = view_data::filter_contents_by_search(path_rows, search_query);
-    view_data::build_user_selected_mode_view_data(filtered_names, contents)
+    view_data::build_user_selected_mode_view_data(
+        state.main_mode,
+        filtered_names,
+        contents,
+        state.panels.content_sort,
+    )
 }
 
 /// `ViewData` for Duplicates mode (delegates to [`view_data_for_user_selected_mode`]).

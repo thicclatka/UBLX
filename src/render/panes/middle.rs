@@ -8,7 +8,7 @@ use ratatui::widgets::ListItem;
 
 use crate::layout::{setup, style};
 use crate::render::panes;
-use crate::ui::UI_STRINGS;
+use crate::ui::{UI_GLYPHS, UI_STRINGS};
 
 /// Build full `ListItem` vecs only below this; larger lists use a viewport window.
 pub const CONTENTS_LIST_VIRTUALIZE_MIN: usize = 512;
@@ -59,12 +59,51 @@ pub fn counter_line(current: usize, total: usize) -> Line<'static> {
     )
 }
 
+/// Middle-pane sort node content text.
+#[must_use]
+pub fn sort_node_text(main_mode: setup::MainMode, sort: setup::ContentSort) -> Option<String> {
+    let arrow = |dir: setup::SortDirection| match dir {
+        setup::SortDirection::Asc => UI_GLYPHS.arrow_down.to_string(),
+        setup::SortDirection::Desc => UI_GLYPHS.arrow_up.to_string(),
+    };
+    match main_mode {
+        setup::MainMode::Snapshot | setup::MainMode::Duplicates => {
+            let key = match sort.snapshot_key {
+                setup::SnapshotSortKey::Name => "Name",
+                setup::SnapshotSortKey::Size => "Size",
+                setup::SnapshotSortKey::Mod => "Mod",
+            };
+            Some(format!("{key} {}", arrow(sort.snapshot_dir)))
+        }
+        setup::MainMode::Delta => Some(format!("Time {}", arrow(sort.delta_dir))),
+        setup::MainMode::Lenses => None,
+    }
+}
+
+/// Width (in terminal cells) of one powerline node for the provided content.
+#[must_use]
+pub fn node_display_width(content: &str) -> usize {
+    // round-left + " {content} " + round-right
+    content.len() + 4
+}
+
 /// Bottom line for the middle panel from list state: pass selected index (from `content_state.selected()`) and content length.
 #[must_use]
-pub fn line_for(selected_index: Option<usize>, content_len: usize) -> Line<'static> {
+pub fn line_for(
+    selected_index: Option<usize>,
+    content_len: usize,
+    main_mode: setup::MainMode,
+    sort: setup::ContentSort,
+) -> Line<'static> {
     let current = selected_index.map_or(0, |i| i + 1);
     let total = content_len;
-    counter_line(current, total)
+    let counter = format_selection_counter(current, total);
+    if let Some(sort_text) = sort_node_text(main_mode, sort) {
+        style::viewer_footer_line(Some(&counter), None, Some(&sort_text))
+            .unwrap_or_else(|| counter_line(current, total))
+    } else {
+        counter_line(current, total)
+    }
 }
 
 /// Draw the middle panel: list of paths (from view) with current/total counter at bottom.
@@ -81,9 +120,13 @@ pub fn draw_paths_list_with_counter(
 ) {
     let content_focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
     let mid_title = panes::set_title(UI_STRINGS.paths.paths, content_focused);
-    let mid_block = panes::panel_block(mid_title, content_focused).title_bottom(
-        panes::middle::line_for(state.panels.content_state.selected(), view.content_len),
-    );
+    let mid_block =
+        panes::panel_block(mid_title, content_focused).title_bottom(panes::middle::line_for(
+            state.panels.content_state.selected(),
+            view.content_len,
+            state.main_mode,
+            state.panels.content_sort,
+        ));
     let total = view.content_len;
 
     let (mid_items, window_start) = if total == 0 {

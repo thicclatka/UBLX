@@ -47,6 +47,13 @@ fn build_delta_display_lines(rows: Vec<(i64, String)>) -> Vec<String> {
     lines
 }
 
+fn sort_delta_rows_by_time(rows: &mut [(i64, String)], sort: setup::ContentSort) {
+    rows.sort_unstable_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    if sort.delta_dir == setup::SortDirection::Desc {
+        rows.reverse();
+    }
+}
+
 /// Clamp list selection for Delta mode (category and content from view).
 pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
     let cat_idx = clamp_selection(
@@ -82,7 +89,8 @@ pub fn view_data_for_delta_mode(
         DELTA_CATEGORY_COUNT,
     );
     let raw_rows = delta.rows_by_index(cat_idx);
-    let filtered_rows = filter::filter_delta_rows(raw_rows, search_query);
+    let mut filtered_rows = filter::filter_delta_rows(raw_rows, search_query);
+    sort_delta_rows_by_time(&mut filtered_rows, state.panels.content_sort);
     let display_lines = build_delta_display_lines(filtered_rows);
     let content_len = display_lines.len();
     let rows: Vec<setup::TuiRow> = display_lines

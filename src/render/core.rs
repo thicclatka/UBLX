@@ -204,7 +204,7 @@ fn draw_user_selected_mode_content<F>(
 {
     let chunks = &body.chunks[..];
     if state.chrome.viewer_fullscreen {
-        panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
+        panes::draw_right_pane_fullscreen(f, state, right_content, view, body.main_area);
     } else if has_data {
         draw_panes(f, state, view, right_content, chunks);
     } else {
@@ -224,7 +224,7 @@ fn draw_main_content(
     match state.main_mode {
         layout::setup::MainMode::Snapshot => {
             if state.chrome.viewer_fullscreen {
-                panes::draw_right_pane_fullscreen(f, state, right_content, body.main_area);
+                panes::draw_right_pane_fullscreen(f, state, right_content, view, body.main_area);
             } else {
                 panes::snapshot_mode::draw_categories_pane(f, state, view, chunks);
                 panes::snapshot_mode::draw_contents_panel(

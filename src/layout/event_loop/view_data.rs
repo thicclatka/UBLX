@@ -1,7 +1,75 @@
 //! Snapshot-mode view data: filtered categories and contents from search + selection.
 
+use std::collections::HashMap;
+
 use crate::layout::{filter, setup};
 use crate::utils::format::{clamp_selection, clamp_selection_opt};
+
+fn sort_indices_by_mode(
+    indices: &mut [usize],
+    all_rows: &[setup::TuiRow],
+    mode: setup::ContentSort,
+    mtimes_by_path: Option<&HashMap<String, Option<i64>>>,
+) {
+    match mode.snapshot_key {
+        setup::SnapshotSortKey::Name => {
+            indices.sort_unstable_by(|a, b| {
+                all_rows[*a]
+                    .0
+                    .cmp(&all_rows[*b].0)
+                    .then_with(|| all_rows[*a].2.cmp(&all_rows[*b].2))
+            });
+        }
+        setup::SnapshotSortKey::Size => {
+            indices.sort_unstable_by(|a, b| {
+                all_rows[*a]
+                    .2
+                    .cmp(&all_rows[*b].2)
+                    .then_with(|| all_rows[*a].0.cmp(&all_rows[*b].0))
+            });
+        }
+        setup::SnapshotSortKey::Mod => {
+            indices.sort_unstable_by(|a, b| {
+                let a_row = &all_rows[*a];
+                let b_row = &all_rows[*b];
+                let a_mtime = mtimes_by_path
+                    .and_then(|m| m.get(&a_row.0))
+                    .copied()
+                    .flatten()
+                    .unwrap_or(i64::MIN);
+                let b_mtime = mtimes_by_path
+                    .and_then(|m| m.get(&b_row.0))
+                    .copied()
+                    .flatten()
+                    .unwrap_or(i64::MIN);
+                a_mtime.cmp(&b_mtime).then_with(|| a_row.0.cmp(&b_row.0))
+            });
+        }
+    }
+    if mode.snapshot_dir == setup::SortDirection::Desc {
+        indices.reverse();
+    }
+}
+
+fn sort_rows_by_mode(
+    rows: &mut [setup::TuiRow],
+    mode: setup::ContentSort,
+    main_mode: setup::MainMode,
+) {
+    if main_mode == setup::MainMode::Lenses {
+        return;
+    }
+    match mode.snapshot_key {
+        setup::SnapshotSortKey::Name => rows.sort_unstable_by(|a, b| a.0.cmp(&b.0)),
+        setup::SnapshotSortKey::Size => {
+            rows.sort_unstable_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
+        }
+        setup::SnapshotSortKey::Mod => {}
+    }
+    if mode.snapshot_dir == setup::SortDirection::Desc {
+        rows.reverse();
+    }
+}
 
 /// Resolve the selected category string from the category list index (0 = "All").
 fn selected_category(filtered_categories: &[String], category_idx: usize) -> Option<&str> {
@@ -52,9 +120,12 @@ pub fn filter_contents_by_search(
 
 /// Build [`ViewData`] from filtered category names and content rows (`DeltaRows`). Shared by Duplicates and Lenses.
 pub fn build_user_selected_mode_view_data(
+    main_mode: setup::MainMode,
     filtered_categories: Vec<String>,
-    contents: Vec<setup::TuiRow>,
+    mut contents: Vec<setup::TuiRow>,
+    sort: setup::ContentSort,
 ) -> setup::ViewData {
+    sort_rows_by_mode(&mut contents, sort, main_mode);
     let category_list_len = filtered_categories.len().max(1);
     let content_len = contents.len();
     setup::ViewData {
@@ -87,6 +158,7 @@ pub fn build_view_data(
     state: &mut setup::UblxState,
     categories: &[String],
     all_rows: &[setup::TuiRow],
+    mtimes_by_path: Option<&HashMap<String, Option<i64>>>,
 ) -> setup::ViewData {
     let search_query = state.search.query.trim();
     let filtered_categories = filter::categories_for_search(categories, all_rows, search_query);
@@ -94,6 +166,13 @@ pub fn build_view_data(
     let selected_category = selected_category(&filtered_categories, category_idx);
     let contents_indices =
         filter::content_indices_for_view(all_rows, selected_category, search_query);
+    let mut contents_indices = contents_indices;
+    sort_indices_by_mode(
+        &mut contents_indices,
+        all_rows,
+        state.panels.content_sort,
+        mtimes_by_path,
+    );
 
     let category_list_len = 1 + filtered_categories.len();
     let content_len = contents_indices.len();

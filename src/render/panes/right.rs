@@ -40,12 +40,12 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::handlers::zahir_ops::{ZahirFileType as FileType, delimiter_from_path_for_viewer};
 use crate::layout::{
-    setup::{RightPaneContent, RightPaneMode, UblxState},
+    setup::{RightPaneContent, RightPaneMode, UblxState, ViewData},
     style, themes,
 };
 use crate::render::{
     cache::{self, ViewerContentIdentity, ViewerTextCacheEntry},
-    kv_tables, scrollable_content,
+    kv_tables, panes, scrollable_content,
     viewers::{csv_handler, image as viewer_image, markdown},
 };
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
@@ -486,6 +486,25 @@ fn right_pane_footer_line(
         .flatten()
 }
 
+/// Fullscreen footer includes middle-pane counter/sort nodes plus viewer footer nodes.
+fn right_pane_footer_line_fullscreen(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    view: &ViewData,
+) -> Option<Line<'static>> {
+    let mut spans = panes::middle::line_for(
+        state.panels.content_state.selected(),
+        view.content_len,
+        state.main_mode,
+        state.panels.content_sort,
+    )
+    .spans;
+    if let Some(viewer_line) = right_pane_footer_line(state, right_content) {
+        spans.extend(viewer_line.spans);
+    }
+    Some(Line::from(spans).right_aligned())
+}
+
 fn right_pane_block<'a>(
     top_title: Option<&'a str>,
     footer_line: Option<&'a Line<'static>>,
@@ -611,9 +630,10 @@ pub fn draw_right_pane_fullscreen(
     f: &mut ratatui::Frame,
     state: &mut UblxState,
     right_content: &RightPaneContent,
+    view: &crate::layout::setup::ViewData,
     area: Rect,
 ) {
-    let footer_line = right_pane_footer_line(state, right_content);
+    let footer_line = right_pane_footer_line_fullscreen(state, right_content, view);
     let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.brand.fullscreen_suffix);
     let block = right_pane_block(Some(fullscreen_title.as_str()), footer_line.as_ref());
     let inner = block.inner(area);

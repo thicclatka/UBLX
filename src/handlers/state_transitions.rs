@@ -9,6 +9,7 @@ use crate::utils::clamp_selection;
 
 pub const PREVIEW_SCROLL_STEP_LINES: u16 = 5;
 
+/// Quit the application
 fn apply_quit(state: &mut UblxState) -> bool {
     if state.chrome.viewer_fullscreen {
         state.chrome.viewer_fullscreen = false;
@@ -18,6 +19,7 @@ fn apply_quit(state: &mut UblxState) -> bool {
     }
 }
 
+/// Apply miscellaneous actions to state
 fn apply_misc(state: &mut UblxState, action: UblxAction) {
     match action {
         UblxAction::Help => state.chrome.help_visible = true,
@@ -26,6 +28,7 @@ fn apply_misc(state: &mut UblxState, action: UblxAction) {
     }
 }
 
+/// Apply mode switch actions to state
 fn apply_mode_switch(
     state: &mut UblxState,
     action: UblxAction,
@@ -45,6 +48,7 @@ fn apply_mode_switch(
     }
 }
 
+/// Apply preview scroll actions to state
 fn apply_preview_scroll(state: &mut UblxState, action: UblxAction) {
     let step = PREVIEW_SCROLL_STEP_LINES;
     match action {
@@ -60,12 +64,14 @@ fn apply_preview_scroll(state: &mut UblxState, action: UblxAction) {
     }
 }
 
+/// Check if PDF page navigation applies
 fn pdf_page_nav_applies(state: &UblxState, right: &RightPaneContent) -> bool {
     state.right_pane_mode == RightPaneMode::Viewer
         && right.viewer_zahir_type == Some(FileType::Pdf)
         && right.viewer_abs_path.is_some()
 }
 
+/// Apply PDF page scroll actions to state
 fn apply_pdf_page_scroll(state: &mut UblxState, action: UblxAction) {
     let max = state.viewer_image.pdf.page_count;
     match action {
@@ -95,6 +101,16 @@ pub struct UblxActionContext<'a> {
 }
 
 impl<'a> UblxActionContext<'a> {
+    fn selected_content_anchor(&self, state: &UblxState) -> Option<String> {
+        self.right_content.viewer_path.clone().or_else(|| {
+            state
+                .panels
+                .content_state
+                .selected()
+                .and_then(|i| self.view.row_at(i, None).map(|(path, _, _)| path.clone()))
+        })
+    }
+
     #[must_use]
     pub fn new(view: &'a ViewData, right_content: &'a RightPaneContent) -> Self {
         Self {
@@ -142,6 +158,11 @@ impl<'a> UblxActionContext<'a> {
                 } else {
                     apply_preview_scroll(state, action);
                 }
+            }
+            UblxAction::CycleContentSort => {
+                state.panels.sort_anchor_path = self.selected_content_anchor(state);
+                state.panels.content_sort =
+                    state.panels.content_sort.cycle_for_mode(state.main_mode);
             }
             UblxAction::ListTop
             | UblxAction::ListBottom

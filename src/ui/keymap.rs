@@ -50,6 +50,8 @@ pub enum UblxAction {
     Tab,
     /// Run take-snapshot pipeline in background; completion shows in log bumper (Ctrl+S).
     TakeSnapshot,
+    /// Cycle middle-pane content sort mode (Name → Size → Mod).
+    CycleContentSort,
     /// Open theme selector popup (j/k to preview, Enter to pick and save to local .ublx.toml, Esc to revert).
     ThemeSelector,
     /// Reload hot-reloadable config (theme, transparent, layout, hash, `show_hidden`) from disk. Ctrl+R.
@@ -60,6 +62,8 @@ pub enum UblxAction {
     LensMenu,
     /// Spacebar context menu
     SpaceMenu,
+    /// Quick action: Enhance selected path with ZahirScan when available.
+    EnhanceWithZahir,
     Noop,
 }
 
@@ -127,6 +131,7 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
         KeyCode::Char('s' | 'S') if ctrl => (UblxAction::TakeSnapshot, None),
         KeyCode::Char('v' | 'V') if ctrl => (UblxAction::CycleRightPane, None),
         KeyCode::Char('l' | 'L') if ctrl => (UblxAction::LensMenu, None),
+        KeyCode::Char('E') if shift => (UblxAction::EnhanceWithZahir, None),
         KeyCode::Char('G') if shift => (UblxAction::ListBottom, None),
         KeyCode::Char('g') if !shift && !ctrl => {
             if ctx.last_key_for_double == Some('g') {
@@ -147,6 +152,7 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
                 't' => UblxAction::RightPaneTemplates,
                 'm' => UblxAction::RightPaneMetadata,
                 'w' => UblxAction::RightPaneWriting,
+                's' => UblxAction::CycleContentSort,
                 'j' => UblxAction::MoveDown,
                 'k' => UblxAction::MoveUp,
                 'h' => UblxAction::FocusCategories,
