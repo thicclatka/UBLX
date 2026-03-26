@@ -1,7 +1,7 @@
 //! Engine index types and render-side LRU cache.
 
+use ublx::engine::cache::LruCache;
 use ublx::engine::db_ops::{DELTA_CATEGORY_COUNT, DeltaType};
-use ublx::render::cache::LruCache;
 
 #[test]
 fn delta_type_as_index() {

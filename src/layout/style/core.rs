@@ -5,7 +5,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation};
 use std::rc::Rc;
 
-use crate::layout::themes;
+use crate::themes;
 use crate::ui::UI_CONSTANTS;
 
 /// Viewer scrollbar: vertical right, no begin/end symbols (track + thumb only).
@@ -70,7 +70,7 @@ pub fn rect_with_h_pad(area: Rect) -> Rect {
 /// Trait that provides a theme and default implementations for all theme-derived styles.
 /// One implementor ([`CurrentTheme`]) uses the frame's current theme; others could use a fixed theme or snapshot.
 pub trait ThemeStyles {
-    fn palette() -> &'static themes::Theme
+    fn palette() -> &'static themes::Palette
     where
         Self: Sized;
 
@@ -177,7 +177,7 @@ pub trait ThemeStyles {
 pub struct CurrentTheme;
 
 impl ThemeStyles for CurrentTheme {
-    fn palette() -> &'static themes::Theme {
+    fn palette() -> &'static themes::Palette {
         themes::current()
     }
 }
@@ -208,7 +208,7 @@ pub fn panel_title_style(focused: bool) -> Style {
     }
 }
 
-/// Theme-derived style wrappers: each calls [`CurrentTheme`] with the same name. Call these from widgets; they use the theme set at frame start.
+/// Palette-derived style wrappers: each calls [`CurrentTheme`] with the same name. Call these from widgets; they use the palette set at frame start.
 macro_rules! theme_style_fn {
     ($name:ident) => {
         pub fn $name() -> Style {

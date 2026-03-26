@@ -6,7 +6,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use crate::layout::themes;
+use crate::themes;
 use crate::ui::UI_STRINGS;
 use crate::utils::format::StringObjTraits;
 use crate::utils::notifications::{ToastSlot, level_short, level_style};

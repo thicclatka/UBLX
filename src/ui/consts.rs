@@ -392,11 +392,11 @@ pub struct UiConstants {
     pub v_pad: u16,
     pub popup_padding_w: u16,
     pub popup_padding_h: u16,
-    /// Theme-picker swatch for **dark** themes on a **dark** popup: HSL lighten off page background via [`crate::layout::themes::adjust_surface_rgb`].
+    /// Theme-picker swatch for **dark** themes on a **dark** popup: HSL lighten off page background via [`crate::themes::adjust_surface_rgb`].
     pub swatch_lighten: f32,
     /// Same as [`Self::swatch_lighten`] but when the picker is shown while a **light** theme is active — stronger lighten so chips are not mud-on-cream.
     pub swatch_lighten_dark_on_light_popup: f32,
-    /// Theme-picker swatch for **light** themes: [`crate::layout::themes::lighten_rgb`] on body text (try 0.2–0.4).
+    /// Theme-picker swatch for **light** themes: [`crate::themes::lighten_rgb`] on body text (try 0.2–0.4).
     pub swatch_light_theme_text: f32,
     pub table_stripe_lighten: f32,
     pub input_poll_ms: u64,

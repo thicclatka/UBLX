@@ -2,8 +2,10 @@
 
 use std::path::Path;
 
+use crate::app::RunUblxParams;
 use crate::config::{UblxPaths, write_local_theme};
-use crate::layout::{event_loop::RunUblxParams, setup::UblxState, themes};
+use crate::layout::setup::UblxState;
+use crate::themes;
 use crate::ui::{keymap::UblxAction, show_operation_toast};
 use crate::utils::format::clamp_selection;
 

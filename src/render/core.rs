@@ -3,17 +3,17 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 
 use super::overlays;
 use super::panes;
-use super::search;
 
 use crate::config::{LayoutOverlay, TOAST_CONFIG};
 use crate::layout;
+use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
-use crate::utils::notifications;
+use crate::utils::{format_timestamp_ns, notifications};
 
 /// Arguments for [`draw_ublx_frame`] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
@@ -22,7 +22,7 @@ pub struct DrawFrameArgs<'a> {
     pub all_rows: Option<&'a [layout::setup::TuiRow]>,
     /// Snapshot mode: indexed dir (for mapping UBLX Settings path to "Local"/"Global" display).
     pub dir_to_ublx: Option<&'a std::path::Path>,
-    /// Theme name (from opts); style functions use [`crate::layout::themes::current`].
+    /// Theme name (from opts); style functions use [`crate::themes::current`].
     pub theme_name: Option<&'a str>,
     /// When true, skip painting app background so terminal default/transparency shows.
     pub transparent: bool,
@@ -46,9 +46,7 @@ pub fn draw_ublx_frame(
     right_content: &layout::setup::RightPaneContent,
     args: &DrawFrameArgs<'_>,
 ) {
-    layout::themes::set_current(Some(layout::themes::theme_name_from_config(
-        args.theme_name,
-    )));
+    themes::set_current(Some(themes::theme_name_from_config(args.theme_name)));
     let area = f.area();
 
     draw_background(f, area, args);
@@ -121,7 +119,7 @@ fn draw_popups(
             layout::setup::SpaceMenuKind::FileActions { .. } => (middle, content_sel),
             layout::setup::SpaceMenuKind::LensPanelActions { .. } => (left, category_sel),
         };
-        overlays::popup::render_space_menu(
+        overlays::popup::render_context_menu(
             f,
             state.space_menu.selected_index,
             kind,
@@ -147,7 +145,7 @@ fn draw_background(f: &mut Frame, area: Rect, args: &DrawFrameArgs<'_>) {
     if args.transparent {
         return;
     }
-    let bg = layout::themes::current().background;
+    let bg = themes::current().background;
     f.render_widget(Block::default().style(Style::default().bg(bg)), area);
 }
 
@@ -284,7 +282,7 @@ fn draw_main_content(
     } else if let Some((_, ref input)) = state.lens_confirm.rename_input {
         overlays::popup::render_lens_rename_prompt(f, body.status_area, input);
     } else {
-        search::draw_status_line(
+        draw_status_line(
             f,
             body.status_area,
             args.latest_snapshot_ns,
@@ -370,4 +368,37 @@ fn draw_main_tabs(
         ))),
         brand_rect,
     );
+}
+
+/// Status line: powerline node (Latest Snapshot) + Search: + Esc to clear, all on one line
+pub fn draw_status_line(
+    f: &mut Frame,
+    area: Rect,
+    latest_snapshot_ns: Option<i64>,
+    search_active: bool,
+    search_query: &str,
+) {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    if let Some(ns) = latest_snapshot_ns {
+        let node_content = format!(
+            "{}: {}",
+            UI_STRINGS.search.latest_snapshot,
+            format_timestamp_ns(ns)
+        );
+        spans.extend(layout::style::status_node_spans(&node_content));
+    }
+    if search_active || !search_query.is_empty() {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            format!("{}{}", UI_STRINGS.search.search_label, search_query),
+            layout::style::search_text(),
+        ));
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            UI_STRINGS.search.esc_to_clear,
+            layout::style::hint_text(),
+        ));
+    }
+    let line = Line::from(spans);
+    f.render_widget(Paragraph::new(line), area);
 }

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::PKG_NAME;
-use crate::handlers::zahir_ops::ZahirFileType as FileType;
+use crate::integrations::ZahirFileType as FileType;
 use crate::utils::exit_error;
 
 /// Binary prefixes (1024-based), shared with [`format_bytes`].
@@ -55,13 +55,18 @@ pub fn binary_file_label(path: &Path) -> String {
 
 /// Read text for a viewer pane: not found, empty for image/PDF (raster preview elsewhere), binary short label, or capped UTF-8 with truncation notice.
 ///
-/// Cap is [`HALF_MIB_BYTES_USIZE`]. When `zahir_type` is [`FileType::Image`] or [`FileType::Pdf`], returns empty string for a normal file so the render layer loads the preview.
+/// Cap is [`HALF_MIB_BYTES_USIZE`]. When `zahir_type` is [`FileType::Image`], [`FileType::Pdf`], or [`FileType::Video`], returns empty string for a normal file so the render layer loads the preview.
 #[must_use]
 pub fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Option<String> {
     let Ok(meta) = fs::metadata(path) else {
         return Some("(file not found)".to_string());
     };
-    if meta.is_file() && matches!(zahir_type, Some(FileType::Image | FileType::Pdf)) {
+    if meta.is_file()
+        && matches!(
+            zahir_type,
+            Some(FileType::Image | FileType::Pdf | FileType::Video)
+        )
+    {
         return Some(String::new());
     }
     if meta.is_file() && is_likely_binary(path) {

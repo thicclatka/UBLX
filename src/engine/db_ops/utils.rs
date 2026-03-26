@@ -11,11 +11,9 @@ use rusqlite::{Connection, Statement};
 use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
 
 use crate::config::{PARALLEL, UblxOpts, UblxPaths};
-use crate::handlers::{
-    nefax_ops::{NefaxDiff, NefaxPathMeta, NefaxResult},
-    zahir_ops::{
-        ZahirOutput, zahir_metadata_name_from_indexed_file, zahir_output_to_json_for_path,
-    },
+use crate::integrations::{
+    NefaxDiff, NefaxPathMeta, NefaxResult, ZahirOutput, zahir_metadata_name_from_indexed_file,
+    zahir_output_to_json_for_path,
 };
 use crate::utils::path::snapshot_rel_path_buf;
 
@@ -401,7 +399,8 @@ impl NefaxFromGivenDB {
 }
 
 /// True if `snapshot` has at least one row (schema present and populated).
-pub(crate) fn snapshot_table_has_rows(db_path: &Path) -> bool {
+#[must_use]
+pub fn snapshot_table_has_rows(db_path: &Path) -> bool {
     let Ok(conn) = Connection::open(db_path) else {
         return false;
     };

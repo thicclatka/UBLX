@@ -1,4 +1,4 @@
-use nefaxer::{Nefax, NefaxOpts, Result, nefax_dir, tuning_for_path};
+use nefaxer::{Nefax, Result, nefax_dir, tuning_for_path};
 use std::path::Path;
 
 use log::{debug, error};
@@ -6,6 +6,7 @@ use log::{debug, error};
 use crate::config::{UblxOpts, UblxSettings, parse_drive_type};
 use crate::engine::db_ops;
 
+pub type NefaxOpts = nefaxer::NefaxOpts;
 pub type NefaxEntry = nefaxer::Entry;
 pub type NefaxResult = nefaxer::Nefax;
 pub type NefaxDiff = nefaxer::Diff;

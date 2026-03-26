@@ -1,7 +1,7 @@
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use crate::layout::themes;
+use crate::themes;
 use crate::ui::UI_GLYPHS;
 
 type StyledLines = Vec<Line<'static>>;

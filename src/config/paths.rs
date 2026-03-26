@@ -225,3 +225,17 @@ impl UblxPaths {
 pub fn get_log_path(dir_to_ublx: &Path) -> PathBuf {
     UblxPaths::new(dir_to_ublx).log_path()
 }
+
+#[must_use]
+/// Normalize a path string for policy matching (e.g. `photos/vacation` → `photos/vacation`)
+pub fn normalize_rel_path_for_policy(s: &str) -> String {
+    let s = s.replace('\\', "/");
+    let s = s.trim_start_matches("./");
+    s.trim_end_matches('/').to_string()
+}
+
+/// True if `rel` (relative path) is under or equal to `prefix` (e.g. `photos/vacation` is under `photos`).
+#[must_use]
+pub fn path_is_under_or_equal(rel: &str, prefix: &str) -> bool {
+    rel == prefix || (rel.starts_with(prefix) && rel.as_bytes().get(prefix.len()) == Some(&b'/'))
+}

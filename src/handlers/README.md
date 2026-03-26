@@ -2,16 +2,17 @@
 
 Handler logic for the TUI: input → state transitions, loading data, and calling into engine/render.
 
+Indexer and Zahir integration (opts, batch/stream runs, delimiter helpers) live in **`crate::integrations`** (`nefax_ops`, `zahir_ops`) — see `src/integrations/`.
+
 ## Layout
 
-| Module                | Purpose                                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **core**              | Top-level `run_ublx`: setup (DB, config, logging), run main loop, teardown. Owns the event loop entry.                          |
-| **state_transitions** | Map key events to state changes (navigation, search, mode switch, open menu, lens menu, etc.).                                  |
-| **viewing**           | Resolve right-pane content: file preview, tree for dirs, zahir JSON → templates/metadata/writing. `resolve_right_pane_content`. |
-| **snapshot**          | Snapshot run (nefax + zahir, write to DB, toast). Used when user triggers “Take snapshot”.                                      |
-| **applets**           | Small, named features with their own state/key handling.                                                                        |
-| **wrappers**          | Thin wrappers around nefaxer and zahirscan (opts, run, result extraction).                                                      |
+| Module                | Purpose                                                                                                                                        |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **core**              | `run_app` / `run_ublx`: test vs TUI, terminal setup/teardown, config watcher. TUI path calls [`main_loop`](../app/mod.rs) after setup. |
+| **state_transitions** | Map key events to state changes (navigation, search, mode switch, open menu, lens menu, etc.).                                                 |
+| **viewing**           | Resolve right-pane content: file preview, tree for dirs, zahir JSON → templates/metadata/writing. `resolve_right_pane_content`.                |
+| **snapshot**          | Snapshot run (nefax + zahir, write to DB, toast). Used when user triggers “Take snapshot”.                                                     |
+| **applets**           | Small, named features with their own state/key handling.                                                                                       |
 
 ## Applets (`applets/`)
 
@@ -25,10 +26,3 @@ Handler logic for the TUI: input → state transitions, loading data, and callin
 | **dupe_finder**    | Spawn duplicate detection in background; on result, toast or switch to Duplicates tab. |
 | **opener**         | Open (Terminal) / Open (GUI) from context menu.                                        |
 | **lens**           | Add to lens, create/rename/delete lens; lens menu and confirm flows.                   |
-
-## Wrappers (`wrappers/`)
-
-| Wrapper       | Purpose                                                                             |
-| ------------- | ----------------------------------------------------------------------------------- |
-| **nefax_ops** | Build nefax opts, run nefax (batch or stream), map results.                         |
-| **zahir_ops** | Build zahir config from ublx opts, run zahir (batch or stream), empty-path short circuit, get output by path. |

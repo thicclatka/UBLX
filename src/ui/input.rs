@@ -2,12 +2,10 @@ use crossterm::event::{self, Event, KeyEvent};
 use ratatui::layout::Rect;
 use std::io;
 
+use crate::app::RunUblxParams;
 use crate::config::{LayoutOverlay, UblxOpts};
 use crate::handlers::{applets, state_transitions};
-use crate::layout::{
-    event_loop::RunUblxParams,
-    setup::{RightPaneContent, UblxState, ViewData},
-};
+use crate::layout::setup::{RightPaneContent, UblxState, ViewData};
 use crate::ui::{
     MainTabFlags,
     consts::{UI_CONSTANTS, UI_STRINGS},

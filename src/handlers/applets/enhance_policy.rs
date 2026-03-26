@@ -1,8 +1,8 @@
 //! Space menu → subtree `[[enhance_policy]]` (index-time batch Zahir only).
 
+use crate::app::RunUblxParams;
 use crate::config::{EnhancePolicy, UblxOpts, UblxPaths, write_local_enhance_policy};
 use crate::handlers::applets::settings::apply_config_reload;
-use crate::layout::event_loop::RunUblxParams;
 use crate::layout::setup::UblxState;
 use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
 use crate::utils::format::clamp_selection;

@@ -5,3 +5,4 @@ pub mod image;
 pub mod markdown;
 pub mod pdf_preview;
 pub mod pretty_tables;
+pub mod video_preview;

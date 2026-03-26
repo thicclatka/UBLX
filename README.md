@@ -76,7 +76,7 @@ Config is optional. If present, **global** config is applied first, then **local
 
 | Key                  | Type                 | Allowable values / notes                                                                                                                         |
 | -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `theme`              | string               | See [Themes](src/layout/themes/README.md#allowable-values).                                                                                      |
+| `theme`              | string               | See [Themes](src/themes/README.md#allowable-values).                                                                                             |
 | `layout`             | table                | Pane widths: `left_pct`, `middle_pct`, `right_pct` (each 0–100; must sum to 100). Default: `left_pct = 20`, `middle_pct = 30`, `right_pct = 50`. |
 | `transparent`        | bool                 | If `true`, no app background (terminal default/transparency shows).                                                                              |
 | `show_hidden_files`  | bool                 | If `true`, include hidden files (e.g. `.*`) in the index.                                                                                        |

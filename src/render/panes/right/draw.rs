@@ -1,0 +1,144 @@
+//! Layout and paint for the right pane: scrollable body, tab row, and public
+//! [`draw_right_pane`] / [`draw_right_pane_fullscreen`].
+//!
+//! Delegates text/raster decisions to [`super::content`] and frame/tabs/footers to [`super::chrome`].
+
+use ratatui::layout::{Constraint, Rect};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Paragraph, Wrap};
+
+use crate::layout::{
+    setup::{RightPaneContent, RightPaneMode, UblxState},
+    style,
+};
+use crate::render::viewers::image as viewer_image;
+use crate::render::{kv_tables, scrollable_content};
+use crate::ui::{UI_CONSTANTS, UI_STRINGS};
+
+use super::chrome::{
+    right_pane_block, right_pane_footer_line, right_pane_footer_line_fullscreen, title,
+    visible_tabs,
+};
+use super::content::{
+    content_display_text, ensure_viewer_text_cache, ratatui_wrap_right_paragraph,
+    viewer_text_cache_viewport_active, viewer_total_lines,
+};
+
+fn draw_right_pane_scrollable_body(
+    f: &mut ratatui::Frame,
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    scroll_area: Rect,
+    bottom_pad: u16,
+) {
+    let padded = scrollable_content::area_above_bottom_pad(scroll_area, bottom_pad);
+    let use_kv_tables = match state.right_pane_mode {
+        RightPaneMode::Metadata => right_content.metadata.as_deref(),
+        RightPaneMode::Writing => right_content.writing.as_deref(),
+        _ => None,
+    };
+    viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
+    let mut text_w = padded.width;
+    for _ in 0..6 {
+        ensure_viewer_text_cache(state, right_content, text_w);
+        let guess_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+        let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
+        if w_next == text_w {
+            break;
+        }
+        text_w = w_next;
+    }
+    ensure_viewer_text_cache(state, right_content, text_w);
+    let total_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+    let layout = scrollable_content::layout_scrollable_content(
+        scroll_area,
+        total_lines,
+        &mut state.panels.preview_scroll,
+        bottom_pad,
+    );
+    let text_rect = layout.content_rect;
+    if let Some(json) = use_kv_tables {
+        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
+    } else {
+        let image_mode = state.right_pane_mode == RightPaneMode::Viewer
+            && viewer_image::is_raster_preview_category(right_content)
+            && right_content.viewer_path.is_some()
+            && state.viewer_image.protocol.is_some();
+        if image_mode {
+            if let Some(proto) = state.viewer_image.protocol.as_mut() {
+                f.render_stateful_widget(viewer_image::stateful_widget(), text_rect, proto);
+                let _ = proto.last_encoding_result();
+            }
+        } else {
+            let text_vp = viewer_text_cache_viewport_active(state, right_content, text_w)
+                .then_some((layout.scroll_y, text_rect.height));
+            let para_scroll = if text_vp.is_some() {
+                (0, 0)
+            } else {
+                (layout.scroll_y, 0)
+            };
+            let mut paragraph =
+                Paragraph::new(content_display_text(state, right_content, text_w, text_vp))
+                    .style(style::text_style())
+                    .scroll(para_scroll);
+            if ratatui_wrap_right_paragraph(state, right_content, text_w) {
+                paragraph = paragraph.wrap(Wrap { trim: false });
+            }
+            f.render_widget(paragraph, text_rect);
+        }
+    }
+    scrollable_content::draw_scrollbar(f, &layout, total_lines);
+}
+
+/// Draw the right (viewer) pane. `chunks` must have at least 3 elements; the right pane uses `chunks[2]`.
+pub fn draw_right_pane(
+    f: &mut ratatui::Frame,
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    chunks: &[Rect],
+) {
+    let area = chunks[2];
+    let footer_line = right_pane_footer_line(state, right_content);
+    let right_block = right_pane_block(None, footer_line.as_ref());
+    let tabs = visible_tabs(right_content);
+    if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
+        state.right_pane_mode = tabs[0].0;
+    }
+    let tab_spans: Vec<Span> = tabs
+        .iter()
+        .flat_map(|(mode, label)| style::tab_node_segment(label, *mode == state.right_pane_mode))
+        .collect();
+    let right_inner = right_block.inner(area);
+    let constraints = &[
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ][..];
+    let right_split = style::split_vertical(right_inner, constraints);
+    let tab_row_chunks = style::tab_row_padded(right_split[0]);
+    let content_chunks = style::tab_row_padded(right_split[2]);
+
+    f.render_widget(&right_block, area);
+    f.render_widget(Paragraph::new(Line::from(tab_spans)), tab_row_chunks[1]);
+
+    let content_area = content_chunks[1];
+    let bottom_pad = UI_CONSTANTS.v_pad;
+    draw_right_pane_scrollable_body(f, state, right_content, content_area, bottom_pad);
+}
+
+/// Draw the current right-pane tab in full screen (hide categories and contents). Esc to exit.
+pub fn draw_right_pane_fullscreen(
+    f: &mut ratatui::Frame,
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    view: &crate::layout::setup::ViewData,
+    area: Rect,
+) {
+    let footer_line = right_pane_footer_line_fullscreen(state, right_content, view);
+    let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.brand.fullscreen_suffix);
+    let block = right_pane_block(Some(fullscreen_title.as_str()), Some(&footer_line));
+    let inner = block.inner(area);
+    let bottom_pad = UI_CONSTANTS.v_pad;
+    f.render_widget(&block, area);
+    draw_right_pane_scrollable_body(f, state, right_content, inner, bottom_pad);
+}

@@ -14,9 +14,9 @@ use ratatui::widgets::ListState;
 
 use super::style;
 
-use crate::engine::db_ops::DeltaType;
-use crate::handlers::zahir_ops::ZahirFileType as FileType;
-use crate::render::{cache, viewers::pdf_preview::PDFPrefetch};
+use crate::engine::{cache, db_ops::DeltaType};
+use crate::integrations::ZahirFileType as FileType;
+use crate::render::viewers::pdf_preview::PDFPrefetch;
 use crate::utils::ClipboardCopyCommand;
 
 /// Re-export snapshot row type for layout/view/render (`path`, category, size).

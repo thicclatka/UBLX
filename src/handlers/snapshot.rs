@@ -6,8 +6,8 @@ use std::time::Instant;
 use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths};
 use crate::engine::{db_ops, orchestrator};
 use crate::fatal;
-use crate::handlers::nefax_ops;
-use crate::layout::themes;
+use crate::integrations::NefaxResult;
+use crate::themes;
 use crate::utils::notifications::BumperBuffer;
 
 /// Run snapshot pipeline in test mode (no TUI).
@@ -19,7 +19,7 @@ use crate::utils::notifications::BumperBuffer;
 pub fn run_test_mode(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    prior_nefax: Option<&NefaxResult>,
     start_time: Option<Instant>,
 ) -> Result<(), anyhow::Error> {
     fatal!(
@@ -46,7 +46,7 @@ pub fn run_test_mode(
 pub fn run_snapshot_pipeline(
     dir: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    prior_nefax: Option<&NefaxResult>,
     done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
     bumper: Option<&BumperBuffer>,
 ) {

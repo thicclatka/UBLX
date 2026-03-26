@@ -1,8 +1,8 @@
 //! First launch: no `.ublx` DB yet and no local `ublx.toml` — ask for `enable_enhance_all`, write `ublx.toml`, then run index.
 
+use crate::app::RunUblxParams;
 use crate::config::{UblxOpts, UblxPaths, write_visible_enhance_only_toml};
 use crate::handlers::{applets::settings, snapshot};
-use crate::layout::event_loop::RunUblxParams;
 use crate::layout::setup::{InitialEnhancePromptState, UblxState};
 use crate::ui::keymap::UblxAction;
 

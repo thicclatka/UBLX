@@ -7,7 +7,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 use unicode_width::UnicodeWidthStr;
 
-use crate::layout::{style, themes};
+use crate::layout::style;
+use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_GLYPHS, UI_STRINGS};
 use crate::utils::format::StringObjTraits;
 
@@ -58,7 +59,7 @@ fn popup_rect(area: Rect, entries: &[themes::SelectorEntry]) -> Rect {
     )
 }
 
-fn theme_selector_block(t: &themes::Theme) -> Block<'static> {
+fn theme_selector_block(t: &themes::Palette) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .title(Line::from(UI_STRINGS.pad(UI_STRINGS.dialogs.theme)).centered())
@@ -68,7 +69,7 @@ fn theme_selector_block(t: &themes::Theme) -> Block<'static> {
 
 fn section_row(
     label: &'static str,
-    current_theme: &themes::Theme,
+    current_theme: &themes::Palette,
     inner_width: usize,
 ) -> ListItem<'static> {
     let bg = current_theme.popup_bg;
@@ -84,9 +85,9 @@ fn section_row(
 
 fn theme_option_row(
     theme_row_index: usize,
-    theme: &themes::Theme,
+    theme: &themes::Palette,
     selected_theme_index: usize,
-    current_theme: &themes::Theme,
+    current_theme: &themes::Palette,
 ) -> ListItem<'static> {
     let swatch = match theme.appearance {
         themes::Appearance::Light => {
@@ -115,9 +116,9 @@ fn theme_option_row(
 
 fn row_styles(
     theme_row_index: usize,
-    theme: &themes::Theme,
+    theme: &themes::Palette,
     selected_theme_index: usize,
-    current_theme: &themes::Theme,
+    current_theme: &themes::Palette,
 ) -> (Style, Style) {
     if theme_row_index == selected_theme_index {
         let bg = themes::node_pill_background(theme);

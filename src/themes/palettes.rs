@@ -1,13 +1,17 @@
-//! AlephMetrics-derived theme palettes.
-//! Config / UI theme name is [`Theme::name`] (e.g. `"Oblivion Ink"`).
+//! Built-in [`Palette`] values for the TUI.
+//!
+//! [`Palette::name`] is the exact string for config `theme = "..."` and the theme picker. New themes
+//! must be appended to the `ALL_THEMES` array at the end of this file so they appear in
+//! [`theme_ordered_list`] and [`theme_selector_entries`].
 
 use std::sync::LazyLock;
 
 use ratatui::style::Color;
 
-use super::{Appearance, SelectorEntry, Theme};
+use super::{Appearance, Palette, SelectorEntry};
 
-/// Default delta colors (added / modified / removed). Use e.g. `DEFAULT_COLORS.green`.
+/// Default delta row colors (added / modified / removed). Every built-in palette uses these for
+/// [`Palette::delta_added`], [`Palette::delta_mod`], [`Palette::delta_removed`].
 pub const DEFAULT_COLORS: DefaultColors = DefaultColors {
     green: Color::Rgb(72, 187, 120),
     yellow: Color::Rgb(253, 203, 110),
@@ -17,6 +21,7 @@ pub const DEFAULT_COLORS: DefaultColors = DefaultColors {
     gray: Color::Rgb(128, 128, 128),
 };
 
+/// Named channels for [`DEFAULT_COLORS`] (not every field is used by every style path).
 pub struct DefaultColors {
     pub green: Color,
     pub yellow: Color,
@@ -26,8 +31,9 @@ pub struct DefaultColors {
     pub gray: Color,
 }
 
-// ---- Shadow Index (black) ----
-pub static SHADOW_INDEX: Theme = Theme {
+// ---- Shadow Index ----
+// Dark: near-black page, cool off-white text, gray focus (not a light/white background).
+pub static SHADOW_INDEX: Palette = Palette {
     name: "Shadow Index",
     appearance: Appearance::Dark,
     background: Color::Rgb(0, 0, 0),
@@ -48,8 +54,9 @@ pub static SHADOW_INDEX: Theme = Theme {
     swatch: Color::Rgb(0, 0, 0),
 };
 
-// ---- Archival Simulacra (dark: matrix terminal — black field, neon phosphor green) ----
-pub static ARCHIVAL_SIMULACRA: Theme = Theme {
+// ---- Archival Simulacra ----
+// Dark: true black, neon green body and tab chrome.
+pub static ARCHIVAL_SIMULACRA: Palette = Palette {
     name: "Archival Simulacra",
     appearance: Appearance::Dark,
     background: Color::Rgb(0, 0, 0),
@@ -70,8 +77,9 @@ pub static ARCHIVAL_SIMULACRA: Theme = Theme {
     swatch: Color::Rgb(68, 255, 106),
 };
 
-// ---- Oblivion Ink (blue) ----
-pub static OBLIVION_INK: Theme = Theme {
+// ---- Oblivion Ink ----
+// Default dark theme ([`crate::themes::DEFAULT_THEME`]).
+pub static OBLIVION_INK: Palette = Palette {
     name: "Oblivion Ink",
     appearance: Appearance::Dark,
     background: Color::Rgb(10, 25, 47),
@@ -92,12 +100,13 @@ pub static OBLIVION_INK: Theme = Theme {
     swatch: Color::Rgb(10, 25, 47),
 };
 
-// ---- Garden Unseen (green) ----
-pub static GARDEN_UNSEEN: Theme = Theme {
+// ---- Garden Unseen ----
+// Dark: deep forest green page, warm peach text, mint accents.
+pub static GARDEN_UNSEEN: Palette = Palette {
     name: "Garden Unseen",
     appearance: Appearance::Dark,
     background: Color::Rgb(0, 42, 21),
-    text: Color::Rgb(255, 217, 194),
+    text: Color::Rgb(194, 150, 132),
     focused_border: Color::Rgb(130, 246, 198),
     tab_active_fg: Color::Rgb(230, 206, 182),
     tab_active_bg: Color::Rgb(24, 92, 75),
@@ -114,8 +123,9 @@ pub static GARDEN_UNSEEN: Theme = Theme {
     swatch: Color::Rgb(0, 42, 21),
 };
 
-// ---- Burning Glyph (red) ----
-pub static BURNING_GLYPH: Theme = Theme {
+// ---- Burning Glyph ----
+// Dark: maroon-black page, warm text, red/coral focus (accent family: red).
+pub static BURNING_GLYPH: Palette = Palette {
     name: "Burning Glyph",
     appearance: Appearance::Dark,
     background: Color::Rgb(42, 0, 0),
@@ -136,12 +146,13 @@ pub static BURNING_GLYPH: Theme = Theme {
     swatch: Color::Rgb(42, 0, 0),
 };
 
-// ---- Golden Delirium (yellow) ----
-pub static GOLDEN_DELIRIUM: Theme = Theme {
+// ---- Golden Delirium ----
+// Dark: olive-black page, soft pink/cream text, yellow-lime focus (accent family: yellow).
+pub static GOLDEN_DELIRIUM: Palette = Palette {
     name: "Golden Delirium",
     appearance: Appearance::Dark,
     background: Color::Rgb(42, 42, 0),
-    text: Color::Rgb(236, 247, 230),
+    text: Color::Rgb(253, 196, 199),
     focused_border: Color::Rgb(246, 246, 130),
     tab_active_fg: Color::Rgb(252, 246, 188),
     tab_active_bg: Color::Rgb(36, 64, 40),
@@ -158,12 +169,13 @@ pub static GOLDEN_DELIRIUM: Theme = Theme {
     swatch: Color::Rgb(42, 42, 0),
 };
 
-// ---- Tangerine Memory (orange) ----
-pub static TANGERINE_MEMORY: Theme = Theme {
+// ---- Tangerine Memory ----
+// Dark: burnt umber page, honey-cream text, peach-gold focus (accent family: orange).
+pub static TANGERINE_MEMORY: Palette = Palette {
     name: "Tangerine Memory",
     appearance: Appearance::Dark,
     background: Color::Rgb(42, 26, 0),
-    text: Color::Rgb(255, 231, 173),
+    text: Color::Rgb(246, 163, 142),
     focused_border: Color::Rgb(246, 198, 130),
     tab_active_fg: Color::Rgb(255, 226, 205),
     tab_active_bg: Color::Rgb(72, 38, 52),
@@ -180,12 +192,13 @@ pub static TANGERINE_MEMORY: Theme = Theme {
     swatch: Color::Rgb(42, 26, 0),
 };
 
-// ---- Purple Haze (purple) ----
-pub static PURPLE_HAZE: Theme = Theme {
+// ---- Purple Haze ----
+// Dark: near-black violet page, magenta/pink focus (accent family: purple).
+pub static PURPLE_HAZE: Palette = Palette {
     name: "Purple Haze",
     appearance: Appearance::Dark,
     background: Color::Rgb(13, 0, 26),
-    text: Color::Rgb(234, 220, 255),
+    text: Color::Rgb(205, 114, 125),
     focused_border: Color::Rgb(241, 130, 246),
     tab_active_fg: Color::Rgb(234, 220, 255),
     tab_active_bg: Color::Rgb(58, 18, 118),
@@ -203,7 +216,7 @@ pub static PURPLE_HAZE: Theme = Theme {
 };
 
 // ---- Frozen Phrase (dark: Nordic polar night, frost blue chrome) ----
-pub static FROZEN_PHRASE: Theme = Theme {
+pub static FROZEN_PHRASE: Palette = Palette {
     name: "Frozen Phrase",
     appearance: Appearance::Dark,
     background: Color::Rgb(46, 52, 64),
@@ -225,7 +238,7 @@ pub static FROZEN_PHRASE: Theme = Theme {
 };
 
 // ---- Babel Blend (dark: deep navy page; orange focus/search vs red tab chrome — hues separated by role) ----
-pub static BABEL_BLEND: Theme = Theme {
+pub static BABEL_BLEND: Palette = Palette {
     name: "Babel Blend",
     appearance: Appearance::Dark,
     background: Color::Rgb(12, 22, 46),
@@ -247,7 +260,7 @@ pub static BABEL_BLEND: Theme = Theme {
 };
 
 // ---- Resin Record (dark: amber-terminal phosphor on near-black field) ----
-pub static RESIN_RECORD: Theme = Theme {
+pub static RESIN_RECORD: Palette = Palette {
     name: "Resin Record",
     appearance: Appearance::Dark,
     background: Color::Rgb(18, 12, 0),
@@ -265,11 +278,12 @@ pub static RESIN_RECORD: Theme = Theme {
     delta_mod: DEFAULT_COLORS.yellow,
     delta_removed: DEFAULT_COLORS.red,
     title_brand: Color::Rgb(214, 140, 52),
-    swatch: Color::Rgb(18, 12, 0),
+    swatch: Color::Rgb(214, 140, 52),
 };
 
-// ---- Silent Sheet (white) ----
-pub static SILENT_SHEET: Theme = Theme {
+// ---- Silent Sheet ----
+// Light: white page, black text, slate active tabs (minimal monochrome).
+pub static SILENT_SHEET: Palette = Palette {
     name: "Silent Sheet",
     appearance: Appearance::Light,
     background: Color::Rgb(255, 255, 255),
@@ -291,7 +305,7 @@ pub static SILENT_SHEET: Theme = Theme {
 };
 
 // ---- Obdurate Noon (light: Solarized-light inspired parchment with cyan/blue accents) ----
-pub static OBDURATE_NOON: Theme = Theme {
+pub static OBDURATE_NOON: Palette = Palette {
     name: "Obdurate Noon",
     appearance: Appearance::Light,
     background: Color::Rgb(253, 246, 227),      // base3
@@ -313,7 +327,7 @@ pub static OBDURATE_NOON: Theme = Theme {
 };
 
 // ---- Faded Echo (light: dusty sepia paper and book-ink) ----
-pub static FADED_ECHO: Theme = Theme {
+pub static FADED_ECHO: Palette = Palette {
     name: "Faded Echo",
     appearance: Appearance::Light,
     background: Color::Rgb(244, 236, 222),
@@ -335,7 +349,7 @@ pub static FADED_ECHO: Theme = Theme {
 };
 
 // ---- Parched Page (light: dry manuscript paper, ink-green text) ----
-pub static PARCHED_PAGE: Theme = Theme {
+pub static PARCHED_PAGE: Palette = Palette {
     name: "Parched Page",
     appearance: Appearance::Light,
     background: Color::Rgb(253, 248, 240),
@@ -357,7 +371,7 @@ pub static PARCHED_PAGE: Theme = Theme {
 };
 
 // ---- Pale Mirror (light: frosted blue-lilac page, plum ink — no green/teal chrome) ----
-pub static PALE_MIRROR: Theme = Theme {
+pub static PALE_MIRROR: Palette = Palette {
     name: "Pale Mirror",
     appearance: Appearance::Light,
     background: Color::Rgb(242, 245, 253),
@@ -379,7 +393,7 @@ pub static PALE_MIRROR: Theme = Theme {
 };
 
 // ---- Ochre Thread (light: pale sand page, rust ink) ----
-pub static OCHRE_THREAD: Theme = Theme {
+pub static OCHRE_THREAD: Palette = Palette {
     name: "Ochre Thread",
     appearance: Appearance::Light,
     background: Color::Rgb(250, 242, 228),
@@ -401,7 +415,7 @@ pub static OCHRE_THREAD: Theme = Theme {
 };
 
 // ---- Cryptic Chai (light: tea-stained parchment, chocolate ink) ----
-pub static CRYPTIC_CHAI: Theme = Theme {
+pub static CRYPTIC_CHAI: Palette = Palette {
     name: "Cryptic Chai",
     appearance: Appearance::Light,
     background: Color::Rgb(247, 238, 222),
@@ -423,7 +437,7 @@ pub static CRYPTIC_CHAI: Theme = Theme {
 };
 
 // ---- Asterion Code (light: cool blue-gray stone, blue-forward ink — not Parched’s warm cream + forest green) ----
-pub static ASTERION_CODE: Theme = Theme {
+pub static ASTERION_CODE: Palette = Palette {
     name: "Asterion Code",
     appearance: Appearance::Light,
     background: Color::Rgb(232, 240, 242),
@@ -444,8 +458,9 @@ pub static ASTERION_CODE: Theme = Theme {
     swatch: Color::Rgb(10, 72, 96),
 };
 
-// ---- Infinite Rose (light: very pale steel gray page, rose-gold ink and chrome) ----
-pub static ROSY_INFINITY: Theme = Theme {
+// ---- Infinite Rose (`INFINITE_ROSE`) ----
+// Light: pale cool-gray page, dusty rose/mauve body and chrome.
+pub static INFINITE_ROSE: Palette = Palette {
     name: "Infinite Rose",
     appearance: Appearance::Light,
     background: Color::Rgb(232, 235, 240),
@@ -467,7 +482,7 @@ pub static ROSY_INFINITY: Theme = Theme {
 };
 
 // ---- Barley Bound (light: Gruvbox-light riff — buttercream pad, dark warm ink, teal focus, orange brand) ----
-pub static BARLEY_BOUND: Theme = Theme {
+pub static BARLEY_BOUND: Palette = Palette {
     name: "Barley Bound",
     appearance: Appearance::Light,
     background: Color::Rgb(251, 241, 199),
@@ -488,9 +503,9 @@ pub static BARLEY_BOUND: Theme = Theme {
     swatch: Color::Rgb(60, 56, 54),
 };
 
-// ---- Cold Trace (light: Nord-light riff — snow page, polar-night ink, frost blue chrome) ----
-pub static COLD_TRACE: Theme = Theme {
-    name: "Cold Trace",
+// ---- Verglas Trace (light: Nord-light riff — snow page, polar-night ink, frost blue chrome) ----
+pub static VERGLAS_TRACE: Palette = Palette {
+    name: "Verglas Trace",
     appearance: Appearance::Light,
     background: Color::Rgb(236, 239, 244),
     text: Color::Rgb(46, 52, 64),
@@ -510,14 +525,13 @@ pub static COLD_TRACE: Theme = Theme {
     swatch: Color::Rgb(46, 52, 64),
 };
 
-/// Every palette; order does not matter (derived lists sort by name within dark / light).
-static ALL_THEMES: &[&Theme] = &[
+/// All built-in palettes. Order is irrelevant: [`theme_ordered_list`] sorts by name within dark / light.
+static ALL_THEMES: &[&Palette] = &[
     &ARCHIVAL_SIMULACRA,
     &ASTERION_CODE,
     &BABEL_BLEND,
     &BARLEY_BOUND,
     &BURNING_GLYPH,
-    &COLD_TRACE,
     &CRYPTIC_CHAI,
     &FADED_ECHO,
     &FROZEN_PHRASE,
@@ -530,26 +544,27 @@ static ALL_THEMES: &[&Theme] = &[
     &PARCHED_PAGE,
     &PURPLE_HAZE,
     &RESIN_RECORD,
-    &ROSY_INFINITY,
+    &INFINITE_ROSE,
     &SHADOW_INDEX,
     &SILENT_SHEET,
     &TANGERINE_MEMORY,
+    &VERGLAS_TRACE,
 ];
 
 struct ThemeLists {
-    /// Section rows + theme rows for the picker (dark A–Z, light A–Z).
+    /// Theme selector list: `"Dark"` / `"Light"` section rows, then theme rows (alphabetical under each).
     selector: Vec<SelectorEntry>,
-    /// Same themes as `Item` rows only: dark A–Z, then light A–Z (for config / lookup / flat index).
-    ordered: Vec<&'static Theme>,
+    /// Flat list of themes only: all dark palettes A–Z, then all light A–Z (picker order, config lookup).
+    ordered: Vec<&'static Palette>,
 }
 
 static THEME_LISTS: LazyLock<ThemeLists> = LazyLock::new(|| {
-    let mut dark: Vec<&'static Theme> = ALL_THEMES
+    let mut dark: Vec<&'static Palette> = ALL_THEMES
         .iter()
         .copied()
         .filter(|t| t.appearance == Appearance::Dark)
         .collect();
-    let mut light: Vec<&'static Theme> = ALL_THEMES
+    let mut light: Vec<&'static Palette> = ALL_THEMES
         .iter()
         .copied()
         .filter(|t| t.appearance == Appearance::Light)
@@ -567,7 +582,7 @@ static THEME_LISTS: LazyLock<ThemeLists> = LazyLock::new(|| {
         selector.push(SelectorEntry::Item(t));
     }
 
-    let ordered: Vec<&'static Theme> = selector
+    let ordered: Vec<&'static Palette> = selector
         .iter()
         .filter_map(|e| match e {
             SelectorEntry::Item(t) => Some(*t),
@@ -578,11 +593,13 @@ static THEME_LISTS: LazyLock<ThemeLists> = LazyLock::new(|| {
     ThemeLists { selector, ordered }
 });
 
+/// All themes in picker order (dark A–Z, then light A–Z). Same order as [`theme_selector_entries`] minus section rows.
 #[must_use]
-pub fn theme_ordered_list() -> &'static [&'static Theme] {
+pub fn theme_ordered_list() -> &'static [&'static Palette] {
     &THEME_LISTS.ordered
 }
 
+/// Rows for the in-app theme picker (sections + themes).
 #[must_use]
 pub fn theme_selector_entries() -> &'static [SelectorEntry] {
     &THEME_LISTS.selector

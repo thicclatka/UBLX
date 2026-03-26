@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use ublx::handlers::zahir_ops::{
+use ublx::integrations::{
     ZahirFileType as FileType, ZahirOutput, file_type_from_metadata_name,
     zahir_output_to_json_for_path,
 };

@@ -1,8 +1,7 @@
 pub mod applets;
-pub mod core;
+mod core;
 pub mod snapshot;
 pub mod state_transitions;
 pub mod viewing;
-mod wrappers;
 
-pub use wrappers::*;
+pub use core::*;

@@ -6,8 +6,9 @@ pub mod menu;
 pub mod mouse;
 pub mod snapshot;
 
+use crate::app::RunUblxParams;
 use crate::config::OPERATION_NAME;
-use crate::layout::{event_loop::RunUblxParams, setup::UblxState};
+use crate::layout::setup::UblxState;
 use crate::utils::notifications;
 
 pub use consts::*;

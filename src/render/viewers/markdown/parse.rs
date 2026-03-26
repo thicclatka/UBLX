@@ -4,7 +4,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
-use crate::layout::themes;
+use crate::themes;
 
 use super::rich_utils::{RichBuilder, RichKind, handle_break, link_trailing_glyph_for_dest};
 use super::types::{Block, MarkdownDoc, StyledLines};

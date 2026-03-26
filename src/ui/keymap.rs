@@ -62,7 +62,7 @@ pub enum UblxAction {
     LensMenu,
     /// Spacebar context menu
     SpaceMenu,
-    /// Quick action: Enhance selected path with ZahirScan when available.
+    /// Quick action: Enhance selected path with `ZahirScan` when available.
     EnhanceWithZahir,
     Noop,
 }

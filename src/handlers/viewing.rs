@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::engine::db_ops;
-use crate::handlers::zahir_ops::{ZahirFileType as FileType, file_type_from_metadata_name};
+use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState, ViewData,
 };
@@ -113,7 +113,13 @@ pub fn resolve_right_pane_content(
             let viewer_can_open = !is_likely_binary(&full_path)
                 || matches!(
                     viewer_zahir_type,
-                    Some(FileType::Image | FileType::Pdf | FileType::Audio | FileType::Epub)
+                    Some(
+                        FileType::Image
+                            | FileType::Pdf
+                            | FileType::Video
+                            | FileType::Audio
+                            | FileType::Epub
+                    )
                 );
             let zahir_json: String = db_ops::load_zahir_json_for_path(db_path, path)
                 .ok()

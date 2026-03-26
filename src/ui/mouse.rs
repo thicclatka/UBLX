@@ -174,7 +174,10 @@ fn fullscreen_sort_hit(
 }
 
 fn cycle_sort_from_mouse(state: &mut UblxState, right_content: &RightPaneContent) {
-    state.panels.sort_anchor_path = right_content.viewer_path.clone();
+    state
+        .panels
+        .sort_anchor_path
+        .clone_from(&right_content.viewer_path);
     state.panels.content_sort = state.panels.content_sort.cycle_for_mode(state.main_mode);
 }
 
@@ -211,29 +214,15 @@ fn estimate_total_lines(
     }
 }
 
-pub fn handle_mouse_event(state: &mut UblxState, event: MouseEvent, ctx: MouseContext<'_>) -> bool {
-    let MouseContext {
-        view,
-        right_content,
-        frame_area,
-        layout,
-        tabs,
-    } = ctx;
-    // Keep first pass conservative: no mouse interaction while modals are open.
-    if state.theme.selector_visible
-        || state.chrome.help_visible
-        || state.open_menu.visible
-        || state.lens_menu.visible
-        || state.space_menu.visible
-        || state.enhance_policy_menu.visible
-        || state.lens_confirm.delete_visible
-        || state.initial_prompt.is_some()
-    {
-        return false;
-    }
+struct MouseFrameAreas {
+    tabs_click_rect: Rect,
+    fullscreen_main_area: Rect,
+    left: Rect,
+    middle: Rect,
+    right: Rect,
+}
 
-    let x = event.column;
-    let y = event.row;
+fn compute_mouse_frame_areas(frame_area: Rect, layout: &LayoutOverlay) -> MouseFrameAreas {
     let (tabs_area, body_area) = split_tabs_and_body(frame_area);
     let body_vertical = Layout::default()
         .direction(Direction::Vertical)
@@ -257,16 +246,141 @@ pub fn handle_mouse_event(state: &mut UblxState, event: MouseEvent, ctx: MouseCo
         .split(tab_outer[1]);
     let tabs_click_rect = tab_chunks[0];
 
+    MouseFrameAreas {
+        tabs_click_rect,
+        fullscreen_main_area,
+        left,
+        middle,
+        right,
+    }
+}
+
+fn mouse_left_down_right_pane(
+    state: &mut UblxState,
+    x: u16,
+    y: u16,
+    right: Rect,
+    right_content: &RightPaneContent,
+) -> bool {
+    if !contains(right, x, y) {
+        return false;
+    }
+    let right_inner = Rect {
+        x: right.x.saturating_add(1),
+        y: right.y.saturating_add(1),
+        width: right.width.saturating_sub(2),
+        height: right.height.saturating_sub(2),
+    };
+    let right_split = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .split(right_inner);
+    let right_tab_outer = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(UI_CONSTANTS.h_pad),
+            Constraint::Min(0),
+            Constraint::Length(UI_CONSTANTS.h_pad),
+        ])
+        .split(right_split[0]);
+    let right_tab_rect = right_tab_outer[1];
+    if contains(right_tab_rect, x, y) {
+        let mut tabs = vec![RightPaneMode::Viewer, RightPaneMode::Templates];
+        if right_content.metadata.is_some() {
+            tabs.push(RightPaneMode::Metadata);
+        }
+        if right_content.writing.is_some() {
+            tabs.push(RightPaneMode::Writing);
+        }
+        let labels: Vec<&str> = tabs
+            .iter()
+            .map(|m| match m {
+                RightPaneMode::Viewer => "Viewer",
+                RightPaneMode::Templates => "Templates",
+                RightPaneMode::Metadata => "Metadata",
+                RightPaneMode::Writing => "Writing",
+            })
+            .collect();
+        if let Some(idx) = click_to_labeled_tab_index(right_tab_rect, x, &labels) {
+            state.right_pane_mode = tabs[idx];
+            return true;
+        }
+    }
+
+    if state.right_pane_mode == RightPaneMode::Viewer && right_inner.width > 0 {
+        let content_outer = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(UI_CONSTANTS.h_pad),
+                Constraint::Min(0),
+                Constraint::Length(UI_CONSTANTS.h_pad),
+            ])
+            .split(right_split[2]);
+        let content_rect = content_outer[1];
+        let viewport_h = content_rect.height.saturating_sub(UI_CONSTANTS.v_pad);
+        if content_rect.width > 0 && viewport_h > 0 {
+            let text_width = content_rect.width.saturating_sub(1).max(1);
+            let total_lines = estimate_total_lines(state, right_content, text_width);
+            if total_lines <= usize::from(viewport_h) {
+                return true;
+            }
+            let max_scroll = total_lines.saturating_sub(usize::from(viewport_h)) as u16;
+            let scrollbar_x = content_rect
+                .x
+                .saturating_add(content_rect.width.saturating_sub(1));
+            if x == scrollbar_x && contains(content_rect, x, y) {
+                let track_top = content_rect.y;
+                let rel = y
+                    .saturating_sub(track_top)
+                    .min(viewport_h.saturating_sub(1));
+                let denom = viewport_h.saturating_sub(1).max(1);
+                state.panels.preview_scroll =
+                    ((u32::from(rel) * u32::from(max_scroll)) / u32::from(denom)) as u16;
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn handle_mouse_event(state: &mut UblxState, event: MouseEvent, ctx: MouseContext<'_>) -> bool {
+    let MouseContext {
+        view,
+        right_content,
+        frame_area,
+        layout,
+        tabs,
+    } = ctx;
+    // Keep first pass conservative: no mouse interaction while modals are open.
+    if state.theme.selector_visible
+        || state.chrome.help_visible
+        || state.open_menu.visible
+        || state.lens_menu.visible
+        || state.space_menu.visible
+        || state.enhance_policy_menu.visible
+        || state.lens_confirm.delete_visible
+        || state.initial_prompt.is_some()
+    {
+        return false;
+    }
+
+    let x = event.column;
+    let y = event.row;
+    let areas = compute_mouse_frame_areas(frame_area, layout);
+
     match event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             if state.chrome.viewer_fullscreen
-                && fullscreen_sort_hit(fullscreen_main_area, x, y, state, view, right_content)
+                && fullscreen_sort_hit(areas.fullscreen_main_area, x, y, state, view, right_content)
             {
                 cycle_sort_from_mouse(state, right_content);
                 return true;
             }
-            // Main tabs click: only on actual tabs strip (exclude brand block).
-            if contains(tabs_click_rect, x, y) {
+            if contains(areas.tabs_click_rect, x, y) {
                 let mut main_tabs = vec![MainMode::Snapshot, MainMode::Delta];
                 if tabs.has_lenses {
                     main_tabs.push(MainMode::Lenses);
@@ -283,126 +397,44 @@ pub fn handle_mouse_event(state: &mut UblxState, event: MouseEvent, ctx: MouseCo
                         MainMode::Duplicates => "Duplicates",
                     })
                     .collect();
-                if let Some(idx) = click_to_labeled_tab_index(tabs_click_rect, x, &labels) {
+                if let Some(idx) = click_to_labeled_tab_index(areas.tabs_click_rect, x, &labels) {
                     state.main_mode = main_tabs[idx];
                     return true;
                 }
             }
 
-            if contains(left, x, y) {
+            if contains(areas.left, x, y) {
                 state.panels.focus = PanelFocus::Categories;
-                if let Some(idx) = click_to_list_index(left, y, view.category_list_len) {
+                if let Some(idx) = click_to_list_index(areas.left, y, view.category_list_len) {
                     state.panels.category_state.select(Some(idx));
                 }
                 return true;
             }
 
-            if contains(middle, x, y) {
-                if middle_sort_hit(middle, x, y, state, view) {
+            if contains(areas.middle, x, y) {
+                if middle_sort_hit(areas.middle, x, y, state, view) {
                     cycle_sort_from_mouse(state, right_content);
                     return true;
                 }
                 state.panels.focus = PanelFocus::Contents;
-                if let Some(idx) = click_to_list_index(middle, y, view.content_len) {
+                if let Some(idx) = click_to_list_index(areas.middle, y, view.content_len) {
                     state.panels.content_state.select(Some(idx));
                 }
                 return true;
             }
 
-            if contains(right, x, y) {
-                // Right pane geometry mirrors render::panes::right::draw_right_pane.
-                let right_inner = Rect {
-                    x: right.x.saturating_add(1),
-                    y: right.y.saturating_add(1),
-                    width: right.width.saturating_sub(2),
-                    height: right.height.saturating_sub(2),
-                };
-                let right_split = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Min(0),
-                    ])
-                    .split(right_inner);
-                let right_tab_outer = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([
-                        Constraint::Length(UI_CONSTANTS.h_pad),
-                        Constraint::Min(0),
-                        Constraint::Length(UI_CONSTANTS.h_pad),
-                    ])
-                    .split(right_split[0]);
-                let right_tab_rect = right_tab_outer[1];
-                if contains(right_tab_rect, x, y) {
-                    let mut tabs = vec![RightPaneMode::Viewer, RightPaneMode::Templates];
-                    if right_content.metadata.is_some() {
-                        tabs.push(RightPaneMode::Metadata);
-                    }
-                    if right_content.writing.is_some() {
-                        tabs.push(RightPaneMode::Writing);
-                    }
-                    let labels: Vec<&str> = tabs
-                        .iter()
-                        .map(|m| match m {
-                            RightPaneMode::Viewer => "Viewer",
-                            RightPaneMode::Templates => "Templates",
-                            RightPaneMode::Metadata => "Metadata",
-                            RightPaneMode::Writing => "Writing",
-                        })
-                        .collect();
-                    if let Some(idx) = click_to_labeled_tab_index(right_tab_rect, x, &labels) {
-                        state.right_pane_mode = tabs[idx];
-                        return true;
-                    }
-                }
-
-                // Click on scrollbar track (last column of right pane inner body) to jump preview scroll.
-                if state.right_pane_mode == RightPaneMode::Viewer && right_inner.width > 0 {
-                    // content area used by draw_right_pane_scrollable_body:
-                    let content_outer = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints([
-                            Constraint::Length(UI_CONSTANTS.h_pad),
-                            Constraint::Min(0),
-                            Constraint::Length(UI_CONSTANTS.h_pad),
-                        ])
-                        .split(right_split[2]);
-                    let content_rect = content_outer[1];
-                    let viewport_h = content_rect.height.saturating_sub(UI_CONSTANTS.v_pad);
-                    if content_rect.width > 0 && viewport_h > 0 {
-                        let text_width = content_rect.width.saturating_sub(1).max(1);
-                        let total_lines = estimate_total_lines(state, right_content, text_width);
-                        if total_lines <= usize::from(viewport_h) {
-                            return true;
-                        }
-                        let max_scroll = total_lines.saturating_sub(usize::from(viewport_h)) as u16;
-                        let scrollbar_x = content_rect
-                            .x
-                            .saturating_add(content_rect.width.saturating_sub(1));
-                        if x == scrollbar_x && contains(content_rect, x, y) {
-                            let track_top = content_rect.y;
-                            let rel = y
-                                .saturating_sub(track_top)
-                                .min(viewport_h.saturating_sub(1));
-                            let denom = viewport_h.saturating_sub(1).max(1);
-                            state.panels.preview_scroll = ((u32::from(rel) * u32::from(max_scroll))
-                                / u32::from(denom))
-                                as u16;
-                            return true;
-                        }
-                    }
-                }
+            if mouse_left_down_right_pane(state, x, y, areas.right, right_content) {
+                return true;
             }
         }
         MouseEventKind::ScrollUp => {
-            if contains(right, x, y) {
+            if contains(areas.right, x, y) {
                 state.panels.preview_scroll = state.panels.preview_scroll.saturating_sub(3);
                 return true;
             }
         }
         MouseEventKind::ScrollDown => {
-            if contains(right, x, y) {
+            if contains(areas.right, x, y) {
                 state.panels.preview_scroll = state.panels.preview_scroll.saturating_add(3);
                 return true;
             }

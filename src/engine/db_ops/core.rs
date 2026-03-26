@@ -13,11 +13,9 @@ use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
 use super::utils::{self as db_ops_utils, SnapshotPriorContext};
 
 use crate::config::{UblxPaths, UblxSettings};
-use crate::handlers::{
-    nefax_ops::{NefaxDiff, NefaxResult},
-    zahir_ops::{
-        ZahirOutput, ZahirResult, get_zahir_output_by_path, zahir_output_to_json_for_path,
-    },
+use crate::integrations::{
+    NefaxDiff, NefaxResult, ZahirOutput, ZahirResult, get_zahir_output_by_path,
+    zahir_output_to_json_for_path,
 };
 use crate::utils::{canonicalize_dir_to_ublx, get_created_ns, normalize_snapshot_rel_path_str};
 

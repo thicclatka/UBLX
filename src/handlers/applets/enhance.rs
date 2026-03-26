@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::config::UblxOpts;
 use crate::engine::db_ops;
-use crate::handlers::zahir_ops::{self, get_zahir_output_by_path};
+use crate::integrations;
 use crate::utils::canonicalize_dir_to_ublx;
 
 /// Run `ZahirScan` on one file and update the snapshot row.
@@ -21,8 +21,8 @@ pub fn enhance_single_path(
     let dir_abs = canonicalize_dir_to_ublx(dir_to_ublx);
     let abs = dir_abs.join(path_rel);
     let result = (|| {
-        let zr = zahir_ops::run_zahir_batch(&[abs.as_path()], ublx_opts)?;
-        let map = get_zahir_output_by_path(&zr, Some(&dir_abs));
+        let zr = integrations::run_zahir_batch(&[abs.as_path()], ublx_opts)?;
+        let map = integrations::get_zahir_output_by_path(&zr, Some(&dir_abs));
         let out = map
             .get(path_rel)
             .copied()

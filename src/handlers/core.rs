@@ -1,5 +1,5 @@
 //! Top-level run dispatch: test mode (no TUI) or TUI with background snapshot pipeline.
-//! TUI setup/teardown (terminal, raw mode) lives here; the main loop lives in [`crate::layout::event_loop::main_app_loop`].
+//! TUI setup/teardown (terminal, raw mode) lives here; the main loop lives in [`crate::app::main_loop`].
 
 use std::io;
 use std::path::Path;
@@ -17,13 +17,15 @@ use notify::{RecursiveMode, Watcher};
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
+use crate::app;
 use crate::config::{UblxOpts, UblxPaths};
 use crate::engine::{
     db_ops::{SnapshotReaderPreference, load_lens_names},
     orchestrator,
 };
-use crate::handlers::{applets::first_run, nefax_ops::NefaxResult, snapshot};
-use crate::layout::{event_loop, setup};
+use crate::handlers::{applets::first_run, snapshot};
+use crate::integrations::NefaxResult;
+use crate::layout::setup;
 use crate::utils::notifications;
 
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
@@ -107,13 +109,13 @@ fn run_tui_mode(
     let lens_names = load_lens_names(db_path).unwrap_or_default();
     let pending_force_full_enhance_toast =
         !initial_prompt && orchestrator::should_force_full_zahir(ublx_opts);
-    let mut params = event_loop::RunUblxParams {
+    let mut params = app::RunUblxParams {
         db_path,
         dir_to_ublx,
         snapshot_done_rx: Some(rx),
         snapshot_done_tx: Some(tx_for_tui),
         bumper,
-        display: event_loop::RunUblxDisplayOpts {
+        display: app::RunUblxDisplayOpts {
             dev,
             transparent: ublx_opts.transparent,
         },
@@ -123,7 +125,7 @@ fn run_tui_mode(
         duplicate_groups_rx: None,
         lens_names,
         config_reload_rx,
-        startup: event_loop::RunUblxStartupFlow {
+        startup: app::RunUblxStartupFlow {
             defer_first_snapshot: initial_prompt,
             pending_force_full_enhance_toast,
         },
@@ -168,18 +170,15 @@ pub fn reapply_terminal_after_editor() -> io::Result<()> {
     Ok(())
 }
 
-/// Setup terminal, run [`crate::layout::event_loop::main_app_loop`], then teardown. Called by [`run_tui_mode`].
+/// Setup terminal, run [`crate::app::main_loop`], then teardown. Called by [`run_tui_mode`].
 /// A panic hook restores the terminal on panic so the shell stays usable.
 ///
 /// # Errors
 ///
 /// Returns [`io::Error`] from terminal setup, the main loop, or teardown (raw mode, alternate screen, draw).
-pub fn run_ublx(
-    params: &mut event_loop::RunUblxParams<'_>,
-    ublx_opts: &mut UblxOpts,
-) -> io::Result<()> {
+pub fn run_ublx(params: &mut app::RunUblxParams<'_>, ublx_opts: &mut UblxOpts) -> io::Result<()> {
     let (mut categories, mut all_rows) =
-        event_loop::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
+        app::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
     if params.startup.defer_first_snapshot {
         first_run::init_prompt_state(&mut state);
@@ -212,7 +211,7 @@ pub fn run_ublx(
         default_hook(info);
     }));
 
-    let result = event_loop::main_app_loop(
+    let result = app::main_loop(
         &mut terminal,
         &mut state,
         &mut categories,

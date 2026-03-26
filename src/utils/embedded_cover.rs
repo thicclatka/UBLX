@@ -8,7 +8,7 @@ use lofty::picture::PictureType;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 
-use crate::handlers::zahir_ops::ZahirFileType as FileType;
+use crate::integrations::ZahirFileType as FileType;
 
 /// Reject absurdly large blobs (memory / decode time).
 const MAX_COVER_BYTES: usize = 8 * 1024 * 1024;

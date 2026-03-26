@@ -2,8 +2,10 @@
 
 use std::time::Duration;
 
+use crate::app::RunUblxParams;
 use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths, first_validation_error_message};
-use crate::layout::{event_loop::RunUblxParams, setup::UblxState, themes};
+use crate::layout::setup::UblxState;
+use crate::themes;
 use crate::ui::consts::UI_STRINGS;
 use crate::ui::show_operation_toast;
 use crate::ui::snapshot::show_force_full_enhance_started_toast;

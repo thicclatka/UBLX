@@ -5,7 +5,7 @@ use std::path::Path;
 use log::error;
 
 use crate::config::get_log_path;
-use crate::handlers::zahir_ops::ZahirResult;
+use crate::integrations::ZahirResult;
 
 /// User-facing `log::error!` text and related log-line prefixes for nefax + zahir during indexing.
 pub struct NefaxZahirErrors;

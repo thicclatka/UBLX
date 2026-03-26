@@ -1,13 +1,39 @@
-//! First-run: choose whether to index with full `ZahirScan` (`enable_enhance_all`).
-
 use ratatui::Frame;
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use crate::layout::{style, themes};
+use super::utils::{ListPopupParams, render_list_popup};
+
+use crate::layout::style;
+use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::format::StringObjTraits;
+
+/// Delete lens confirmation popup
+pub fn render_delete_confirm(
+    f: &mut Frame,
+    lens_name: &str,
+    selected_index: usize,
+    anchor_area: Rect,
+    anchor_row_index: usize,
+) {
+    let title = format!("{}'{}'? ", UI_STRINGS.lens.delete_confirm_title, lens_name);
+    let items = [UI_STRINGS.lens.delete_yes, UI_STRINGS.lens.delete_no];
+    render_list_popup(
+        f,
+        &ListPopupParams {
+            title: &title,
+            items: &items,
+            selected_index,
+            anchor_area,
+            anchor_row_index,
+            max_width: 28,
+            max_items: None,
+        },
+    );
+}
 
 /// Centered overlay; `selected_index` 0 = Yes, 1 = No.
 pub fn render_initial_prompt(f: &mut Frame, selected_index: usize) {

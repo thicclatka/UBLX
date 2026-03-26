@@ -12,7 +12,7 @@ use log::Level;
 use ratatui::style::Style;
 
 use crate::config::TOAST_CONFIG;
-use crate::layout::themes;
+use crate::themes;
 
 static BUMPER_FOR_LOG: OnceLock<BumperBuffer> = OnceLock::new();
 static TUI_DRAIN: OnceLock<tui_logger::Drain> = OnceLock::new();

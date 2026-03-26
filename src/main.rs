@@ -7,10 +7,10 @@ use log::debug;
 use ublx::config::{TOAST_CONFIG, UblxOpts, UblxPaths};
 use ublx::engine::db_ops;
 use ublx::fatal;
-use ublx::handlers::{core, nefax_ops};
-use ublx::layout::themes;
-use ublx::utils::notifications::{self, BumperBuffer};
-use ublx::utils::{build_logger_test_mode_no_tui, validate_dir};
+use ublx::handlers;
+use ublx::integrations::load_prior_nefax_or_exit;
+use ublx::themes;
+use ublx::utils::{build_logger_test_mode_no_tui, notifications, validate_dir};
 
 #[derive(Parser)]
 #[command(name = "ublx")]
@@ -55,7 +55,7 @@ fn main() {
         build_logger_test_mode_no_tui();
         None
     } else {
-        let b = BumperBuffer::new(TOAST_CONFIG.bumper_cap_for(args.dev));
+        let b = notifications::BumperBuffer::new(TOAST_CONFIG.bumper_cap_for(args.dev));
         notifications::init_logging(b.clone(), args.dev);
         Some(b)
     };
@@ -75,7 +75,7 @@ fn main() {
         !test_mode && !db_ops::snapshot_has_any_row(&db_path) && paths.toml_path().is_none();
 
     // Load prior Nefax from DB or exit if error
-    let prior_nefax = nefax_ops::load_prior_nefax_or_exit(&dir_to_ublx, &db_path);
+    let prior_nefax = load_prior_nefax_or_exit(&dir_to_ublx, &db_path);
 
     let cached_settings = db_ops::load_settings_from_db(&db_path).ok().flatten();
     if cached_settings.is_some() {
@@ -101,7 +101,7 @@ fn main() {
     );
     debug!("UBLX CONFIG: {ublx_opts:#?}");
 
-    let mut run_params = core::RunAppParams {
+    let mut run_params = handlers::RunAppParams {
         test_mode,
         dir_to_ublx: &dir_to_ublx,
         db_path: &db_path,
@@ -112,5 +112,5 @@ fn main() {
         start_time,
         initial_prompt,
     };
-    fatal!(core::run_app(&mut run_params), "{}");
+    fatal!(handlers::run_app(&mut run_params), "{}");
 }

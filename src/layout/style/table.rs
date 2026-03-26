@@ -2,7 +2,7 @@
 
 use ratatui::style::{Modifier, Style};
 
-use crate::layout::themes;
+use crate::themes;
 use crate::ui::UI_CONSTANTS;
 
 use super::{CurrentTheme, ThemeStyles};

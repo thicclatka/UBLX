@@ -6,7 +6,8 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 
-use crate::layout::{style, themes};
+use crate::layout::style;
+use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::format::StringObjTraits;
 

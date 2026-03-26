@@ -1,9 +1,9 @@
 //! Open menu (Shift+O) and spacebar context menu input handling.
 
+use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
 use crate::handlers::applets::lens;
-use crate::handlers::{applets, core};
-use crate::layout::event_loop::RunUblxParams;
+use crate::handlers::{applets, leave_terminal_for_editor};
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
 };
@@ -19,7 +19,7 @@ fn open_menu_on_submit(
         let terminal_choice = state.open_menu.can_terminal && state.open_menu.selected_index == 0;
         if terminal_choice {
             if let Some(ed) = applets::opener::editor_for_open(ublx_opts.editor_path.as_deref()) {
-                let _ = core::leave_terminal_for_editor();
+                let _ = leave_terminal_for_editor();
                 let _ = applets::opener::open_in_editor(&ed, &full_path);
                 state.session.tick.refresh_terminal_after_editor = true;
             }

@@ -8,7 +8,7 @@ use rayon::prelude::*;
 
 use crate::config::{PARALLEL, RunMode, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
-use crate::handlers::{nefax_ops, zahir_ops};
+use crate::integrations;
 use crate::utils::{
     canonicalize_dir_to_ublx, error_writer, exit_error, path_to_slash_string, rel_path_is_directory,
 };
@@ -47,13 +47,13 @@ fn on_nefax_error(dir_to_ublx: &Path, e: &impl std::fmt::Display) -> ! {
 fn run_nefax_exiting<F>(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    prior_nefax: Option<&integrations::NefaxResult>,
     entry_callback: Option<F>,
-) -> (nefax_ops::NefaxResult, nefax_ops::NefaxDiff)
+) -> (integrations::NefaxResult, integrations::NefaxDiff)
 where
-    F: FnMut(&nefax_ops::NefaxEntry),
+    F: FnMut(&integrations::NefaxEntry),
 {
-    match nefax_ops::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax, entry_callback) {
+    match integrations::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax, entry_callback) {
         Ok(result) => result,
         Err(e) => on_nefax_error(dir_to_ublx, &e),
     }
@@ -63,14 +63,14 @@ where
 #[inline]
 fn path_needs_zahir_extract(
     force_full_zahir: bool,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    prior_nefax: Option<&integrations::NefaxResult>,
     path: &PathBuf,
     mtime_ns: i64,
     rel_str: &str,
     prior_zahir_json: &HashMap<String, String>,
 ) -> bool {
     force_full_zahir
-        || zahir_ops::needs_zahir(prior_nefax, path, mtime_ns)
+        || integrations::needs_zahir(prior_nefax, path, mtime_ns)
         || prior_zahir_json.get(rel_str).is_none_or(String::is_empty)
 }
 
@@ -79,7 +79,7 @@ struct BatchZahirCtx<'a> {
     dir_to_ublx_abs: &'a Path,
     ublx_opts: &'a UblxOpts,
     force_full_zahir: bool,
-    prior_nefax: Option<&'a nefax_ops::NefaxResult>,
+    prior_nefax: Option<&'a integrations::NefaxResult>,
     prior_zahir_json: &'a HashMap<String, String>,
 }
 
@@ -112,8 +112,8 @@ fn entry_should_batch_zahir(
 
 /// Index-time batch `ZahirScan`: paths that pass [`UblxOpts::batch_zahir_for_path`] and still need a Zahir extract (see [`path_needs_zahir_extract`]).
 fn paths_needing_zahir(
-    nefax: &nefax_ops::NefaxResult,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    nefax: &integrations::NefaxResult,
+    prior_nefax: Option<&integrations::NefaxResult>,
     dir_to_ublx_abs: &Path,
     ublx_opts: &UblxOpts,
     force_full_zahir: bool,
@@ -127,7 +127,7 @@ fn paths_needing_zahir(
         prior_zahir_json,
     };
     let entries: Vec<_> = nefax.iter().collect();
-    let filter_map = |(path, meta): &(&PathBuf, &nefax_ops::NefaxPathMeta)| {
+    let filter_map = |(path, meta): &(&PathBuf, &integrations::NefaxPathMeta)| {
         if !entry_should_batch_zahir(&ctx, path, meta.size, meta.mtime_ns) {
             return None;
         }
@@ -161,7 +161,7 @@ pub fn should_force_full_zahir(ublx_opts: &UblxOpts) -> bool {
 pub fn run(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    prior_nefax: Option<&integrations::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let db_path = UblxPaths::new(dir_to_ublx).db();
     // No snapshot rows yet but a leftover `.nefaxer` lets nefax match disk → empty diff (0/0/0) and a stuck first-run TUI.
@@ -183,11 +183,15 @@ pub fn run(
 pub fn run_sequential(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    prior_nefax: Option<&integrations::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let (dir_to_ublx_abs, prior_zahir_json, prior_category) = pre_run_setup(dir_to_ublx);
-    let (nefax, diff) =
-        run_nefax_exiting::<fn(&nefax_ops::NefaxEntry)>(dir_to_ublx, ublx_opts, prior_nefax, None);
+    let (nefax, diff) = run_nefax_exiting::<fn(&integrations::NefaxEntry)>(
+        dir_to_ublx,
+        ublx_opts,
+        prior_nefax,
+        None,
+    );
 
     debug!(
         "indexed {} paths (added: {}, removed: {}, modified: {})",
@@ -211,7 +215,7 @@ pub fn run_sequential(
         path_list.len()
     );
 
-    let zahir_result = match zahir_ops::run_zahir_batch(&path_list, ublx_opts) {
+    let zahir_result = match integrations::run_zahir_batch(&path_list, ublx_opts) {
         Ok(r) => r,
         Err(e) => {
             error!(
@@ -245,7 +249,7 @@ pub fn run_sequential(
 pub fn run_stream(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
-    prior_nefax: Option<&nefax_ops::NefaxResult>,
+    prior_nefax: Option<&integrations::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let (dir_to_ublx_abs, prior_zahir_json, prior_category) = pre_run_setup(dir_to_ublx);
 
@@ -254,8 +258,8 @@ pub fn run_stream(
     let (path_tx, path_rx) = mpsc::channel();
     let (output_tx, output_rx) = mpsc::channel();
     let zahir_handle = std::thread::spawn(move || {
-        let output_sink = zahir_ops::ZahirOutputSink::Channel(output_tx);
-        zahir_ops::run_zahir_from_stream(&path_rx, &ublx_opts_for_zahir, &output_sink)
+        let output_sink = integrations::ZahirOutputSink::Channel(output_tx);
+        integrations::run_zahir_from_stream(&path_rx, &ublx_opts_for_zahir, &output_sink)
     });
     let batch_zahir_ctx = BatchZahirCtx {
         dir_to_ublx_abs: dir_to_ublx_abs.as_path(),
@@ -264,7 +268,7 @@ pub fn run_stream(
         prior_nefax,
         prior_zahir_json: &prior_zahir_json,
     };
-    let on_entry = |e: &nefax_ops::NefaxEntry| {
+    let on_entry = |e: &integrations::NefaxEntry| {
         if !entry_should_batch_zahir(&batch_zahir_ctx, &e.path, e.size, e.mtime_ns) {
             return;
         }
@@ -272,7 +276,7 @@ pub fn run_stream(
         let _ = path_tx.send(abs);
     };
     let (nefax, diff) =
-        match nefax_ops::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax, Some(on_entry)) {
+        match integrations::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax, Some(on_entry)) {
             Ok(result) => result,
             Err(e) => {
                 drop(path_tx);

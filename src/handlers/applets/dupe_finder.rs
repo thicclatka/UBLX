@@ -1,8 +1,8 @@
 //! dupe-finder applet: request load, spawn background load, on result toast or switch to Duplicates tab.
 
+use crate::app::RunUblxParams;
 use crate::config::OPERATION_NAME;
 use crate::engine::db_ops;
-use crate::layout::event_loop::RunUblxParams;
 use crate::layout::setup;
 use crate::ui::consts::UI_STRINGS;
 use crate::utils::notifications;

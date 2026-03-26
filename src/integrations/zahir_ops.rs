@@ -9,32 +9,35 @@ use std::sync::mpsc::Receiver;
 
 use log::debug;
 use serde_json::Value;
-use zahirscan::parsers::structured::detect_delimiter_byte as zahir_detect_delimiter_byte;
-use zahirscan::utils::filetypes::detect_file_type;
-use zahirscan::{FileType, Output, OutputSink, ZahirScanResult, extract_zahir};
+use zahirscan;
 
 use super::nefax_ops;
 
 use crate::config::UblxOpts;
 
-pub type ZahirResult = ZahirScanResult;
-pub type ZahirOutput = Output;
-pub type ZahirOutputSink = OutputSink;
-pub type ZahirFileType = FileType;
+pub type ZahirResult = zahirscan::ZahirScanResult;
+pub type ZahirOutput = zahirscan::Output;
+pub type ZahirOutputSink = zahirscan::OutputSink;
+pub type ZahirFileType = zahirscan::FileType;
+pub type ZahirOutputMode = zahirscan::OutputMode;
+pub type ZahirRuntimeConfig = zahirscan::RuntimeConfig;
+
+/// Safe ffprobe invocation (JSON format/streams). Delegates to [`zahirscan::utils::ffprobe_handler::run_ffprobe_safe`].
+pub use zahirscan::utils::ffprobe_handler::run_ffprobe_safe;
 
 /// Parse a DB `category` string into [`FileType`] when it matches [`FileType::as_metadata_name`].
 ///
 /// Delegates to [`FileType::from_metadata_name`] (zahirscan); full round-trip tests live there.
 #[must_use]
-pub fn file_type_from_metadata_name(s: &str) -> Option<FileType> {
-    FileType::from_metadata_name(s)
+pub fn file_type_from_metadata_name(s: &str) -> Option<zahirscan::FileType> {
+    zahirscan::FileType::from_metadata_name(s)
 }
 
 /// Sniff delimiter from the first lines of `content` (comma, semicolon, tab, pipe, colon).
 /// Use as a **fallback** when the file path has no recognized extension (see [`delimiter_from_path_for_viewer`]).
 #[must_use]
 pub fn detect_delimiter_byte(content: &str) -> u8 {
-    zahir_detect_delimiter_byte(content)
+    zahirscan::parsers::structured::detect_delimiter_byte(content)
 }
 
 /// Delimiter implied by the path’s extension, when it matches zahirscan’s delimited types.
@@ -57,8 +60,8 @@ pub fn delimiter_from_path_for_viewer(path: &str) -> Option<u8> {
 
 #[must_use]
 fn metadata_name_from_detect_key(key: &str) -> Option<String> {
-    let ft = detect_file_type(key);
-    (ft != FileType::Unknown).then(|| ft.as_metadata_name().to_string())
+    let ft = zahirscan::utils::filetypes::detect_file_type(key);
+    (ft != zahirscan::FileType::Unknown).then(|| ft.as_metadata_name().to_string())
 }
 
 /// Metadata name string for [`FileType`] from path/extension only (ZahirScan’s [`detect_file_type`]), without a full extract.
@@ -101,10 +104,10 @@ pub fn needs_zahir(
 fn zahir_empty_when_no_paths(
     paths: &[String],
     mode_label: &'static str,
-) -> Option<ZahirScanResult> {
+) -> Option<zahirscan::ZahirScanResult> {
     if paths.is_empty() {
         debug!("zahir {mode_label}: no paths received, returning empty result");
-        Some(ZahirScanResult::default())
+        Some(zahirscan::ZahirScanResult::default())
     } else {
         None
     }
@@ -120,7 +123,7 @@ fn zahir_empty_when_no_paths(
 pub fn run_zahir_batch(
     paths: &[impl AsRef<Path>],
     ublx_opts: &UblxOpts,
-) -> Result<ZahirScanResult, anyhow::Error> {
+) -> Result<zahirscan::ZahirScanResult, anyhow::Error> {
     let config = ublx_opts.zahir_runtime_config();
     let path_strings: Vec<String> = paths
         .iter()
@@ -129,7 +132,7 @@ pub fn run_zahir_batch(
     if let Some(empty) = zahir_empty_when_no_paths(&path_strings, "batch") {
         return Ok(empty);
     }
-    extract_zahir(
+    zahirscan::extract_zahir(
         path_strings,
         config.output_mode,
         Some(&config),
@@ -151,13 +154,13 @@ pub fn run_zahir_from_stream(
     paths_rx: &Receiver<String>,
     ublx_opts: &UblxOpts,
     output_sink: &ZahirOutputSink,
-) -> Result<ZahirScanResult, anyhow::Error> {
+) -> Result<zahirscan::ZahirScanResult, anyhow::Error> {
     let config = ublx_opts.zahir_runtime_config();
     let path_strings: Vec<String> = paths_rx.iter().collect();
     if let Some(empty) = zahir_empty_when_no_paths(&path_strings, "stream") {
         return Ok(empty);
     }
-    extract_zahir(
+    zahirscan::extract_zahir(
         path_strings,
         config.output_mode,
         Some(&config),

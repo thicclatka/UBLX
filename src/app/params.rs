@@ -23,7 +23,7 @@ pub struct RunUblxStartupFlow {
     pub pending_force_full_enhance_toast: bool,
 }
 
-/// Parameters for the TUI event loop. Passed from [`crate::handlers::core::run_ublx`] into [`super::main_app_loop`].
+/// Parameters for the TUI event loop. Passed from [`crate::handlers::core::run_ublx`] into [`super::main_loop`].
 pub struct RunUblxParams<'a> {
     pub db_path: &'a Path,
     pub dir_to_ublx: &'a Path,

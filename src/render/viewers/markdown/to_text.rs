@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span, Text};
 use rayon::prelude::*;
 
 use crate::config::PARALLEL;
-use crate::layout::themes::{self, Theme};
+use crate::themes::{self, Palette};
 
 use super::flow_wrap;
 use super::md_tables::render_markdown_table_lines;
@@ -13,7 +13,7 @@ use super::types::{Block, MarkdownDoc, StyledLines};
 
 const FENCED_CODE_BG_PCT: f32 = 0.20;
 
-fn fenced_code_line_style(theme: &Theme) -> Style {
+fn fenced_code_line_style(theme: &Palette) -> Style {
     let bg = themes::adjust_surface_rgb(theme.background, FENCED_CODE_BG_PCT, theme.appearance);
     Style::default().fg(theme.text).bg(bg)
 }
@@ -36,11 +36,11 @@ impl LinePushExt for Vec<Line<'static>> {
     }
 }
 
-pub(crate) fn block_to_lines(
+pub fn block_to_lines(
     block: &Block,
     width: u16,
     next_block: Option<&Block>,
-    theme: &Theme,
+    theme: &Palette,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     match block {

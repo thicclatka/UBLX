@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span, Text};
 use rayon::prelude::*;
 
 use crate::config::PARALLEL;
-use crate::layout::themes;
+use crate::themes;
 
 // -----------------------------------------------------------------------------
 // Truncation helpers (legacy explicit max, parallel path)

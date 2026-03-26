@@ -1,4 +1,6 @@
-//! Theme and colors for the TUI. Multiple themes can be added; the active theme is chosen via opts (e.g. config `theme` key).
+//! Theme and color palettes for the TUI. Multiple themes can be added; the active theme is chosen via opts (e.g. config `theme` key).
+//!
+//! **Ownership vs [`crate::layout`]:** this crate owns named [`Palette`]s, appearance, and helpers (`current`, `get`, `adjust_surface_rgb`, etc.). It must not import `layout`—callers in `layout::style` and `render` read palettes from here. “Theme” in user-facing copy means the selectable name; [`Palette`] is the concrete color set.
 
 mod color_utils;
 mod palettes;
@@ -14,7 +16,7 @@ pub use palettes::{DEFAULT_COLORS, OBLIVION_INK, theme_ordered_list, theme_selec
 #[derive(Clone, Copy)]
 pub enum SelectorEntry {
     Section(&'static str),
-    Item(&'static Theme),
+    Item(&'static Palette),
 }
 
 /// Whether the theme is predominantly dark or light. Drives [`adjust_surface_rgb`]: dark themes *lighten*
@@ -27,11 +29,11 @@ pub enum Appearance {
 }
 
 /// Default theme (Oblivion Ink). Used when opts theme is unset or "default".
-pub const DEFAULT_THEME: &Theme = &OBLIVION_INK;
+pub const DEFAULT_THEME: &Palette = &OBLIVION_INK;
 
 /// Named set of colors for the TUI. Extend with more fields as styles are themed.
 #[derive(Clone, Debug)]
-pub struct Theme {
+pub struct Palette {
     // #[allow(dead_code)]
     pub name: &'static str,
     /// See [`Appearance`] and [`adjust_surface_rgb`].
@@ -70,12 +72,15 @@ pub struct Theme {
     pub swatch: Color,
 }
 
-/// HSL step off [`Theme::background`] for light-theme footer/status powerline pills.
+// NOTE: Intentionally no `Theme` type alias. "theme" is a user-facing concept (select by name);
+// `Palette` is the underlying color set type.
+
+/// HSL step off [`Palette::background`] for light-theme footer/status powerline pills.
 const LIGHT_THEME_NODE_PILL_PCT: f32 = 0.11;
 
-/// Fill color for powerline footer nodes and related chrome. Dark themes: [`Theme::node_bg`]. Light themes: [`adjust_surface_rgb`] from background so bars read against the page.
+/// Fill color for powerline footer nodes and related chrome. Dark themes: [`Palette::node_bg`]. Light themes: [`adjust_surface_rgb`] from background so bars read against the page.
 #[must_use]
-pub fn node_pill_background(theme: &Theme) -> Color {
+pub fn node_pill_background(theme: &Palette) -> Color {
     match theme.appearance {
         Appearance::Light => adjust_surface_rgb(
             theme.background,
@@ -99,7 +104,7 @@ pub fn set_current(name: Option<&str>) {
 
 /// Current theme for this frame. Use in style functions.
 #[must_use]
-pub fn current() -> &'static Theme {
+pub fn current() -> &'static Palette {
     let name = CURRENT_THEME_NAME.with(|cell| cell.borrow().clone());
     get(name.as_deref())
 }
@@ -120,9 +125,9 @@ pub fn theme_name_from_config(config_theme: Option<&str>) -> &str {
     }
 }
 
-/// Resolve theme by name. Uses [`theme_name_from_config`] so `None` / empty / `"default"` use [`DEFAULT_THEME`]; then matches [`Theme::name`] (same strings as in [`theme_ordered_list`] / TOML).
+/// Resolve theme by name. Uses [`theme_name_from_config`] so `None` / empty / `"default"` use [`DEFAULT_THEME`]; then matches [`Palette::name`] (same strings as in [`theme_ordered_list`] / TOML).
 #[must_use]
-pub fn get(name: Option<&str>) -> &'static Theme {
+pub fn get(name: Option<&str>) -> &'static Palette {
     let n = theme_name_from_config(name);
     if n == DEFAULT_THEME.name {
         return DEFAULT_THEME;

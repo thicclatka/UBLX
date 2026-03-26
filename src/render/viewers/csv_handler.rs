@@ -1,7 +1,7 @@
 //! Render delimiter-separated file content in the viewer as a table with box-drawing borders
 //! (comfy-table). **Delimiter:** extension on the viewed path first (`.csv` → comma, `.tsv`/`.tab` →
-//! tab, `.psv` → pipe) via [`crate::handlers::zahir_ops::delimiter_from_path_for_viewer`]; if the
-//! extension doesn’t decide, fall back to zahirscan’s [`crate::handlers::zahir_ops::detect_delimiter_byte`]
+//! tab, `.psv` → pipe) via [`crate::integrations::delimiter_from_path_for_viewer`]; if the
+//! extension doesn’t decide, fall back to zahirscan’s [`crate::integrations::detect_delimiter_byte`]
 //! on the file contents.
 //!
 //! Layout matches markdown tables: word wrap, short columns without wrap (still row-padded), and
@@ -10,7 +10,7 @@
 use ratatui::text::Text;
 use std::io::Cursor;
 
-use crate::handlers::zahir_ops::{delimiter_from_path_for_viewer, detect_delimiter_byte};
+use crate::integrations::{delimiter_from_path_for_viewer, detect_delimiter_byte};
 use crate::render::viewers::pretty_tables;
 
 /// Parse with a single-byte delimiter. Uses the **`csv`** crate via `::csv::` (avoids confusion with
@@ -75,7 +75,7 @@ pub fn table_string(rows: &[Vec<String>], content_width: u16) -> String {
     pretty_tables::table_string_header_body_smart_wrap(&header, &rows, content_width)
 }
 
-/// Table as styled [`Text`] for the viewer, using [`crate::layout::themes::current`] text color for the whole table.
+/// Table as styled [`Text`] for the viewer, using [`crate::themes::current`] text color for the whole table.
 #[must_use]
 pub fn table_to_text(rows: &[Vec<String>], content_width: u16) -> Text<'static> {
     table_string_to_text(&table_string(rows, content_width))

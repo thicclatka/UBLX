@@ -6,7 +6,8 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::layout::{style, themes};
+use crate::layout::style;
+use crate::themes;
 
 pub const DEFAULT_MAX_ITEMS: usize = 20;
 

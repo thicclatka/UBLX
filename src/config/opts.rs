@@ -1,28 +1,23 @@
 //! Options for ublx, extending per-tool opts (e.g. `NefaxOpts`, zahirscan `RuntimeConfig`).
 //!
-//! Worker pool: [`Self::max_workers_available`] is derived from nefax tuning (drive-type aware).
-//! When >= [`Self::SEQUENTIAL_THRESHOLD`], workers are split by ratio (or overrides) across nefax, zahir, and ublx.
+//! Worker pool: [`UblxOpts::max_workers_available`] is derived from nefax tuning (drive-type aware).
+//! When >= [`STREAMING_THRESHOLD`], workers are split by ratio (or overrides) across nefax, zahir, and ublx.
 //! When below threshold, sequential mode: run phases one after another, each using all available workers.
-//! For zahir-only (e.g. single file, no nefax), use [`Self::for_zahir_only`] with a chosen max (e.g. from tuning).
+//! For zahir-only (e.g. single file, no nefax), use [`UblxOpts::for_zahir_only`] with a chosen max (e.g. from tuning).
 //!
 //! Config overlay: global `~/.config/ublx/ublx.toml` (if present) is applied first, then local (`.ublx.toml` or `ublx.toml` in the indexed dir). Only keys present in each file override defaults.
 
-use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use log::warn;
-use nefaxer::NefaxOpts;
-use serde::{Deserialize, Serialize};
-use zahirscan::{OutputMode, RuntimeConfig};
-
-use super::paths::UblxPaths;
+use super::paths::{UblxPaths, normalize_rel_path_for_policy, path_is_under_or_equal};
 use super::toast::OPERATION_NAME;
-use super::validation::{
-    HotReloadValidationError, ReloadResult, first_validation_error_message,
-    validate_hot_reload_overlay,
+use super::validation;
+
+use crate::config::profile;
+use crate::integrations::{
+    NefaxDriveType, NefaxOpts, ZahirOutputMode, ZahirRuntimeConfig, pre_opts_for_nefaxer,
 };
-use crate::handlers::nefax_ops::{NefaxDriveType, pre_opts_for_nefaxer};
 use crate::utils::notifications::BumperBuffer;
 
 /// Parameters for config validation and optional bumper when loading opts in [`UblxOpts::for_dir`].
@@ -64,127 +59,6 @@ fn drive_type_to_string(d: NefaxDriveType) -> &'static str {
 /// At or above this many workers we set [`UblxOpts::streaming`] to true (callback path for nefax).
 pub const STREAMING_THRESHOLD: usize = 6;
 
-/// Layout pane percentages (0–100). Used for main 3-pane split: left (categories), middle (contents), right (preview).
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(default)]
-pub struct LayoutOverlay {
-    pub left_pct: u16,
-    pub middle_pct: u16,
-    pub right_pct: u16,
-}
-
-impl Default for LayoutOverlay {
-    fn default() -> Self {
-        Self {
-            left_pct: 20,
-            middle_pct: 30,
-            right_pct: 50,
-        }
-    }
-}
-
-/// Per-directory policy for automatic (index-time) `ZahirScan`. Longest matching path prefix wins; absent entry inherits [`UblxOpts::enable_enhance_all`].
-/// Does not apply to per-file "Enhance with `ZahirScan`" from the space menu.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum EnhancePolicy {
-    /// Index-time batch Zahir for paths under this subtree (same idea as global `enable_enhance_all` for that prefix).
-    #[serde(alias = "always")]
-    Auto,
-    /// No batch Zahir under this subtree; enrich per file from the space menu only.
-    #[serde(alias = "never")]
-    Manual,
-}
-
-/// One `[[enhance_policy]]` row in `ublx.toml` / `.ublx.toml`.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EnhancePolicyEntry {
-    /// Path relative to the indexed directory, using `/` separators (e.g. `photos/vacation`).
-    pub path: String,
-    pub policy: EnhancePolicy,
-}
-
-/// Config overlay read from config files. Only present keys override; used for global + local overlay.
-/// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
-/// [theme], [transparent], [layout], [hash], and [`show_hidden_files`] are hot-reloadable; [exclude] is applied only at startup.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(default)]
-pub struct UblxOverlay {
-    /// Extra paths/patterns to exclude from indexing (appended to nefax [`NefaxOpts::exclude`]). Startup-only; not hot-reloadable.
-    pub exclude: Option<Vec<String>>,
-    /// When true, show hidden files; when false, exclude `.*` per segment and zahir skips hidden. Hot-reloadable.
-    /// When omitted, treated as false (same as explicit false).
-    #[serde(rename = "show_hidden_files")]
-    pub show_hidden_files: Option<bool>,
-    /// When true, nefaxer computes blake3 hash for files (slower, more accurate change detection). Hot-reloadable.
-    pub hash: Option<bool>,
-    /// Theme selection (e.g. "default"). Hot-reloadable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub theme: Option<String>,
-    /// When true, do not paint app background; terminal default (or transparency) shows through. Hot-reloadable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transparent: Option<bool>,
-    /// Optional [layout] section: left/middle/right pane percentages. Hot-reloadable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub layout: Option<LayoutOverlay>,
-    /// Editor for Open (Terminal) (e.g. "vim", "nvim"). When unset, uses $EDITOR.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub editor_path: Option<String>,
-    /// When `true`, index runs full `ZahirScan` enrichment on paths that need it (normal pipeline).
-    /// When `false` (default), only nefax + path-based category from `ZahirScan` file-type hints; empty `zahir_json` until per-file "Enhance with `ZahirScan`" or flip to `true` (next run re-enhances all). Hot-reloadable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enable_enhance_all: Option<bool>,
-    /// Optional per-path subtree rules for index-time Zahir (`[[enhance_policy]]`). Hot-reloadable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enhance_policy: Option<Vec<EnhancePolicyEntry>>,
-}
-
-impl UblxOverlay {
-    /// Overlay with values from `other`; only fields set in `other` are applied (local overrides global when merging).
-    pub fn merge_from(&mut self, other: &UblxOverlay) {
-        if other.exclude.is_some() {
-            self.exclude.clone_from(&other.exclude);
-        }
-        if other.show_hidden_files.is_some() {
-            self.show_hidden_files = other.show_hidden_files;
-        }
-        if other.hash.is_some() {
-            self.hash = other.hash;
-        }
-        if other.theme.is_some() {
-            self.theme.clone_from(&other.theme);
-        }
-        if other.transparent.is_some() {
-            self.transparent = other.transparent;
-        }
-        if other.layout.is_some() {
-            self.layout.clone_from(&other.layout);
-        }
-        if other.editor_path.is_some() {
-            self.editor_path.clone_from(&other.editor_path);
-        }
-        if other.enable_enhance_all.is_some() {
-            self.enable_enhance_all = other.enable_enhance_all;
-        }
-        if other.enhance_policy.is_some() {
-            self.enhance_policy.clone_from(&other.enhance_policy);
-        }
-    }
-
-    /// Merge global then local into one overlay (local wins). Used to apply once and to cache the effective config.
-    #[must_use]
-    pub fn merge(global: Option<UblxOverlay>, local: Option<UblxOverlay>) -> UblxOverlay {
-        let mut out = UblxOverlay::default();
-        if let Some(g) = global {
-            out.merge_from(&g);
-        }
-        if let Some(l) = local {
-            out.merge_from(&l);
-        }
-        out
-    }
-}
-
 const HIDDEN_EXCLUDE_PATTERN: &str = ".*";
 
 /// Options for ublx. Extends [`NefaxOpts`] and [`RuntimeConfig`]; owns worker-pool sizing and streaming.
@@ -193,10 +67,10 @@ pub struct UblxOpts {
     /// Options passed to the nefaxer indexer (base; use [`Self::nefax_opts_with_workers`] for run).
     pub nefax: NefaxOpts,
     /// `ZahirScan` runtime config. Use [`Self::zahir_runtime_config`] to get config with ublx overrides applied.
-    pub zahir: RuntimeConfig,
+    pub zahir: ZahirRuntimeConfig,
     /// Max workers suggested by tuning (drive-type aware). From nefax [`tuning_for_path`] in [`Self::for_dir`].
     pub max_workers_available: usize,
-    /// Override workers for nefaxer. When unset and >= [`SEQUENTIAL_THRESHOLD`], uses share from 1:1:1 ratio.
+    /// Override workers for nefaxer. When unset and >= [`STREAMING_THRESHOLD`], uses share from 1:1:1 ratio.
     pub nefax_workers_override: Option<usize>,
     /// Override workers for zahirscan. When unset and >= threshold, uses share from ratio.
     pub zahir_workers_override: Option<usize>,
@@ -207,12 +81,12 @@ pub struct UblxOpts {
     pub streaming: bool,
     /// When global config exists: "local" | "global". Preserved from `cached_settings` for writing back to DB.
     pub config_source: Option<String>,
-    /// Theme name (e.g. "default"). From config overlay; used by `layout::themes::get`.
+    /// Theme name (e.g. "default"). From config overlay; used by `themes::get`.
     pub theme: Option<String>,
     /// When true, skip painting app background so terminal default/transparency shows.
     pub transparent: bool,
     /// Left/middle/right pane percentages (0–100). From config [layout]. Hot-reloadable.
-    pub layout: LayoutOverlay,
+    pub layout: profile::LayoutOverlay,
     /// Editor for Open (Terminal). When None, use $EDITOR.
     pub editor_path: Option<String>,
     /// When true, run full `ZahirScan` on indexed files; when false, path-only category + space-menu enhance.
@@ -220,151 +94,14 @@ pub struct UblxOpts {
     /// `enable_enhance_all` from the config cache **before** [`Self::for_dir`] applied the current overlay and called [`Self::save_overlay_to_cache`]. Used by snapshot `force_full` Zahir when flipping the flag to `true`.
     pub enable_enhance_all_cache_before_apply: Option<bool>,
     /// Effective `[[enhance_policy]]` entries (merged global + local). Used only for index-time batch Zahir.
-    pub enhance_policy: Vec<EnhancePolicyEntry>,
+    pub enhance_policy: Vec<profile::EnhancePolicyEntry>,
 }
 
 impl UblxOpts {
-    fn normalize_theme_key(s: &str) -> String {
-        s.chars()
-            .filter(|c| c.is_alphanumeric())
-            .flat_map(char::to_lowercase)
-            .collect()
-    }
-
-    /// Damerau-Levenshtein (optimal string alignment): insert/delete/replace + adjacent transposition.
-    fn theme_distance(a: &str, b: &str) -> usize {
-        if a.is_empty() {
-            return b.chars().count();
-        }
-        if b.is_empty() {
-            return a.chars().count();
-        }
-        let a_chars: Vec<char> = a.chars().collect();
-        let b_chars: Vec<char> = b.chars().collect();
-        let mut prev_prev: Vec<usize> = (0..=b_chars.len()).collect();
-        let mut prev: Vec<usize> = (0..=b_chars.len()).collect();
-        let mut curr = vec![0usize; b_chars.len() + 1];
-        for (i, ac) in a_chars.iter().enumerate() {
-            curr[0] = i + 1;
-            for (j, bc) in b_chars.iter().enumerate() {
-                let cost = if ac == bc { 0 } else { 1 };
-                let mut cell = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
-                // Adjacent transposition: e.g. "bbale" vs "babel"
-                if i > 0 && j > 0 && *ac == b_chars[j - 1] && a_chars[i - 1] == *bc {
-                    cell = cell.min(prev_prev[j - 1] + 1);
-                }
-                curr[j + 1] = cell;
-            }
-            prev_prev.clone_from(&prev);
-            std::mem::swap(&mut prev, &mut curr);
-        }
-        prev[b_chars.len()]
-    }
-
-    fn auto_correct_theme_name<'a>(
-        input: &'a str,
-        valid_theme_names: &'a [&'a str],
-    ) -> Option<&'a str> {
-        let trimmed = input.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        if valid_theme_names.contains(&trimmed) {
-            return Some(trimmed);
-        }
-        let norm_input = Self::normalize_theme_key(trimmed);
-        if norm_input.is_empty() {
-            return None;
-        }
-        // Exact normalized match (e.g. "BabelBlend" -> "Babel Blend")
-        for &name in valid_theme_names {
-            if Self::normalize_theme_key(name) == norm_input {
-                return Some(name);
-            }
-        }
-        // Fuzzy fallback (e.g. "Bl Blend" -> "Babel Blend"), confidence-gated.
-        let mut best: Option<(&str, f32)> = None;
-        let mut second_best = 0.0f32;
-        for &name in valid_theme_names {
-            let cand = Self::normalize_theme_key(name);
-            if cand.is_empty() {
-                continue;
-            }
-            let dist = Self::theme_distance(&norm_input, &cand) as f32;
-            let max_len = norm_input.chars().count().max(cand.chars().count()) as f32;
-            let score = 1.0 - (dist / max_len);
-            match best {
-                None => best = Some((name, score)),
-                Some((_, s)) if score > s => {
-                    second_best = s;
-                    best = Some((name, score));
-                }
-                _ if score > second_best => second_best = score,
-                _ => {}
-            }
-        }
-        let (name, score) = best?;
-        if score >= 0.80 && (score - second_best) >= 0.08 {
-            Some(name)
-        } else {
-            None
-        }
-    }
-
-    /// Build ublx options for indexing `dir`. [`Self::max_workers_available`] comes from [`tuning_for_path`](nefaxer::tuning_for_path).
-    /// Zahir config is loaded with [`RuntimeConfig::new`]. [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
-    /// Load overlay from a single toml file. Returns None if path is None, file missing, or parse error.
-    fn load_ublx_toml(
-        path: Option<std::path::PathBuf>,
-        valid_theme_names: Option<&[&str]>,
-    ) -> Option<UblxOverlay> {
-        let path = path?;
-        let s = fs::read_to_string(&path).ok()?;
-        match toml::from_str::<UblxOverlay>(&s) {
-            Ok(mut overlay) => {
-                let corrected_theme =
-                    valid_theme_names
-                        .zip(overlay.theme.as_deref())
-                        .and_then(|(valid, theme)| {
-                            Self::auto_correct_theme_name(theme, valid)
-                                .filter(|corrected| *corrected != theme)
-                        });
-                if let Some(corrected) = corrected_theme {
-                    overlay.theme = Some(corrected.to_string());
-                    Self::write_corrected_overlay(&path, &overlay);
-                }
-                Some(overlay)
-            }
-            Err(e) => {
-                warn!("{}: parse error, ignoring: {}", path.display(), e);
-                None
-            }
-        }
-    }
-
-    fn write_corrected_overlay(path: &Path, overlay: &UblxOverlay) {
-        match toml::to_string_pretty(overlay) {
-            Ok(updated) => {
-                if let Err(e) = fs::write(path, updated) {
-                    warn!(
-                        "could not write corrected theme to {}: {}",
-                        path.display(),
-                        e
-                    );
-                }
-            }
-            Err(e) => warn!(
-                "could not serialize corrected overlay {}: {}",
-                path.display(),
-                e
-            ),
-        }
-    }
-
     /// Load the last applied overlay from cache (`cache_dir()/configs/[path_hex].toml`). Fallback when hot reload gets invalid config.
     #[must_use]
-    pub fn load_overlay_from_cache(ublx_paths: &UblxPaths) -> Option<UblxOverlay> {
-        Self::load_ublx_toml(ublx_paths.last_applied_config_path(), None)
+    pub fn load_overlay_from_cache(ublx_paths: &UblxPaths) -> Option<profile::UblxOverlay> {
+        profile::load_ublx_toml(ublx_paths.last_applied_config_path(), None)
     }
 
     /// Load merged overlay (global then local). Same merge as [`Self::for_dir`]; used for hot reload.
@@ -372,41 +109,20 @@ impl UblxOpts {
     pub fn load_merged_overlay(
         ublx_paths: &UblxPaths,
         valid_theme_names: Option<&[&str]>,
-    ) -> UblxOverlay {
-        let global = Self::load_ublx_toml(ublx_paths.global_config(), valid_theme_names);
-        let local = Self::load_ublx_toml(ublx_paths.toml_path(), valid_theme_names);
-        UblxOverlay::merge(global, local)
+    ) -> profile::UblxOverlay {
+        let global = profile::load_ublx_toml(ublx_paths.global_config(), valid_theme_names);
+        let local = profile::load_ublx_toml(ublx_paths.toml_path(), valid_theme_names);
+        profile::UblxOverlay::merge(global, local)
     }
 
     /// Load overlay from a single toml file path. Returns default if path is None, file missing, or parse error.
     #[must_use]
-    pub fn load_overlay_from_path(path: Option<PathBuf>) -> UblxOverlay {
-        Self::load_ublx_toml(path, None).unwrap_or_default()
-    }
-
-    /// Save overlay to cache dir as `last_config.toml`. Creates cache dir if needed. Logs and ignores write errors.
-    fn save_overlay_to_cache(ublx_paths: &UblxPaths, overlay: &UblxOverlay) {
-        let Some(path) = ublx_paths.last_applied_config_path() else {
-            return;
-        };
-        if let Some(parent) = path.parent()
-            && let Err(e) = fs::create_dir_all(parent)
-        {
-            warn!("could not create cache dir {}: {}", parent.display(), e);
-            return;
-        }
-        match toml::to_string_pretty(overlay) {
-            Ok(s) => {
-                if let Err(e) = fs::write(&path, s) {
-                    warn!("could not write cache config {}: {}", path.display(), e);
-                }
-            }
-            Err(e) => warn!("could not serialize overlay for cache: {e}"),
-        }
+    pub fn load_overlay_from_path(path: Option<PathBuf>) -> profile::UblxOverlay {
+        profile::load_ublx_toml(path, None).unwrap_or_default()
     }
 
     /// Apply full overlay at startup (exclude + hot-reloadable fields). [exclude] is only applied here.
-    fn apply_overlay(&mut self, overlay: &UblxOverlay) {
+    fn apply_overlay(&mut self, overlay: &profile::UblxOverlay) {
         if let Some(ref extra) = overlay.exclude {
             self.nefax.exclude.extend(extra.iter().cloned());
         }
@@ -415,9 +131,7 @@ impl UblxOpts {
 
     /// Apply only hot-reloadable fields: theme, transparent, layout, hash, `show_hidden_files`. Used when reloading config without restart.
     /// On invalid config from disk, caller should fall back to [`Self::load_overlay_from_cache`] and pass that overlay here.
-    pub fn apply_hot_reload_overlay(&mut self, overlay: &UblxOverlay) {
-        // When `show_hidden_files` is omitted from merged overlay, default to false (do not index dotfiles).
-        // Otherwise `.*` is never added to nefax exclude and paths like `.mise.toml` are still walked.
+    pub fn apply_hot_reload_overlay(&mut self, overlay: &profile::UblxOverlay) {
         let show_hidden = overlay.show_hidden_files.unwrap_or(false);
         if show_hidden {
             self.nefax.exclude.retain(|p| p != HIDDEN_EXCLUDE_PATTERN);
@@ -457,26 +171,26 @@ impl UblxOpts {
     /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
     /// On success, writes the merged overlay to the config cache (same path as startup `for_dir`).
     /// Validates before applying; on validation failure the overlay is not applied and errors are returned.
-    /// `valid_theme_names`: allowed theme values (e.g. from [`crate::layout::themes::theme_ordered_list`] names).
+    /// `valid_theme_names`: allowed theme values (e.g. from [`crate::themes::theme_ordered_list`] names).
     pub fn reload_hot_config(
         &mut self,
         ublx_paths: &UblxPaths,
         valid_theme_names: &[&str],
-    ) -> ReloadResult {
+    ) -> validation::ReloadResult {
         let from_disk = Self::load_merged_overlay(ublx_paths, Some(valid_theme_names));
-        let to_apply = if from_disk == UblxOverlay::default() {
+        let to_apply = if from_disk == profile::UblxOverlay::default() {
             Self::load_overlay_from_cache(ublx_paths).unwrap_or_default()
         } else {
             from_disk
         };
-        if to_apply == UblxOverlay::default() {
-            return ReloadResult::default();
+        if to_apply == profile::UblxOverlay::default() {
+            return validation::ReloadResult::default();
         }
-        match validate_hot_reload_overlay(&to_apply, valid_theme_names) {
+        match validation::validate_hot_reload_overlay(&to_apply, valid_theme_names) {
             Ok(()) => {
                 self.apply_hot_reload_overlay(&to_apply);
-                Self::save_overlay_to_cache(ublx_paths, &to_apply);
-                ReloadResult {
+                profile::save_overlay_to_cache(ublx_paths, &to_apply);
+                validation::ReloadResult {
                     applied: true,
                     validation_errors: Vec::new(),
                 }
@@ -484,7 +198,7 @@ impl UblxOpts {
             Err(validation_errors) => {
                 let cached = Self::load_overlay_from_cache(ublx_paths).unwrap_or_default();
                 self.apply_hot_reload_overlay(&cached);
-                ReloadResult {
+                validation::ReloadResult {
                     applied: false,
                     validation_errors,
                 }
@@ -493,18 +207,15 @@ impl UblxOpts {
     }
 
     /// Message for bumper when startup config is invalid and we fall back to cache.
-    fn startup_validation_fallback_message(errors: &[HotReloadValidationError]) -> String {
+    fn startup_validation_fallback_message(errors: &[validation::HotReloadError]) -> String {
         format!(
             "Config invalid at startup, using cache: {}",
-            first_validation_error_message(errors)
+            validation::first_validation_error_message(errors)
         )
     }
 
-    /// Build ublx options for indexing `dir`. When `cached_settings` is `Some`, use those values and skip disk check; otherwise call [`tuning_for_path`](nefaxer::tuning_for_path).
+    /// Build ublx options for indexing `dir`. [`Self::max_workers_available`] comes from [`tuning_for_path`](nefaxer::tuning_for_path).
     /// Zahir config is loaded with [`RuntimeConfig::new`]. [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
-    /// If a config file exists (`paths.toml_path()`: `.ublx.toml` or `ublx.toml`), only keys present in it overlay these opts.
-    /// Merged overlay is validated; if invalid, cache (or default) is applied and not saved.
-    /// When validation fails, if `config.bumper` is provided, pushes a warning so the user sees "using cache" (e.g. toast in TUI).
     #[must_use]
     pub fn for_dir(
         dir_to_ublx: &Path,
@@ -518,7 +229,7 @@ impl UblxOpts {
         let exclude = ublx_paths.exclude();
         let nefax = pre_opts_for_nefaxer(dir_to_ublx, &exclude, cached_settings);
         let num_threads = nefax.num_threads.unwrap_or(1);
-        let zahir = RuntimeConfig::new();
+        let zahir = ZahirRuntimeConfig::new();
         let streaming = num_threads >= STREAMING_THRESHOLD;
         let config_source = cached_settings.and_then(|s| s.config_source.clone());
         let enable_enhance_all_cache_before_apply =
@@ -534,20 +245,20 @@ impl UblxOpts {
             config_source,
             theme: None,
             transparent: false,
-            layout: LayoutOverlay::default(),
+            layout: profile::LayoutOverlay::default(),
             editor_path: None,
             enable_enhance_all: false,
             enable_enhance_all_cache_before_apply,
             enhance_policy: Vec::new(),
         };
         let global =
-            Self::load_ublx_toml(ublx_paths.global_config(), Some(config.valid_theme_names));
-        let local = Self::load_ublx_toml(ublx_paths.toml_path(), Some(config.valid_theme_names));
-        let merged = UblxOverlay::merge(global, local);
-        match validate_hot_reload_overlay(&merged, config.valid_theme_names) {
+            profile::load_ublx_toml(ublx_paths.global_config(), Some(config.valid_theme_names));
+        let local = profile::load_ublx_toml(ublx_paths.toml_path(), Some(config.valid_theme_names));
+        let merged = profile::UblxOverlay::merge(global, local);
+        match validation::validate_hot_reload_overlay(&merged, config.valid_theme_names) {
             Ok(()) => {
                 opts.apply_overlay(&merged);
-                Self::save_overlay_to_cache(ublx_paths, &merged);
+                profile::save_overlay_to_cache(ublx_paths, &merged);
             }
             Err(validation_errors) => {
                 let cached = Self::load_overlay_from_cache(ublx_paths).unwrap_or_default();
@@ -582,7 +293,7 @@ impl UblxOpts {
     /// [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
     #[allow(dead_code)]
     #[must_use]
-    pub fn for_zahir_only(max_workers_available: usize, zahir: RuntimeConfig) -> Self {
+    pub fn for_zahir_only(max_workers_available: usize, zahir: ZahirRuntimeConfig) -> Self {
         let nefax = NefaxOpts::default();
         let streaming = max_workers_available >= STREAMING_THRESHOLD;
         Self {
@@ -596,7 +307,7 @@ impl UblxOpts {
             config_source: None,
             theme: None,
             transparent: false,
-            layout: LayoutOverlay::default(),
+            layout: profile::LayoutOverlay::default(),
             editor_path: None,
             enable_enhance_all: true,
             enable_enhance_all_cache_before_apply: None,
@@ -604,7 +315,7 @@ impl UblxOpts {
         }
     }
 
-    /// True when [`Self::max_workers_available`] < [`SEQUENTIAL_THRESHOLD`]: run phases sequentially, each phase using all workers.
+    /// True when [`Self::max_workers_available`] < [`STREAMING_THRESHOLD`]: run phases sequentially, each phase using all workers.
     #[must_use]
     pub fn is_sequential_mode(&self) -> bool {
         self.max_workers_available < STREAMING_THRESHOLD
@@ -686,10 +397,9 @@ impl UblxOpts {
     /// `ZahirScan` runtime config with ublx overrides: [`OutputMode::Templates`], [`Self::effective_zahir_workers`] for `max_workers`.
     #[allow(dead_code)]
     #[must_use]
-    pub fn zahir_runtime_config(&self) -> RuntimeConfig {
+    pub fn zahir_runtime_config(&self) -> ZahirRuntimeConfig {
         let mut config = self.zahir.clone();
-        // config.output_mode = OutputMode::Full;
-        config.output_mode = OutputMode::Templates;
+        config.output_mode = ZahirOutputMode::Templates;
         config.max_workers = self.effective_zahir_workers();
         config
     }
@@ -698,7 +408,7 @@ impl UblxOpts {
     #[must_use]
     pub fn batch_zahir_for_path(&self, rel_path: &str) -> bool {
         let rel = normalize_rel_path_for_policy(rel_path);
-        let mut best: Option<(usize, EnhancePolicy)> = None;
+        let mut best: Option<(usize, profile::EnhancePolicy)> = None;
         for e in &self.enhance_policy {
             let p = normalize_rel_path_for_policy(&e.path);
             if p.is_empty() {
@@ -712,88 +422,9 @@ impl UblxOpts {
             }
         }
         match best.map(|(_, pol)| pol) {
-            Some(EnhancePolicy::Auto) => true,
-            Some(EnhancePolicy::Manual) => false,
+            Some(profile::EnhancePolicy::Auto) => true,
+            Some(profile::EnhancePolicy::Manual) => false,
             None => self.enable_enhance_all,
         }
-    }
-}
-
-#[must_use]
-fn normalize_rel_path_for_policy(s: &str) -> String {
-    let s = s.replace('\\', "/");
-    let s = s.trim_start_matches("./");
-    s.trim_end_matches('/').to_string()
-}
-
-fn path_is_under_or_equal(rel: &str, prefix: &str) -> bool {
-    rel == prefix || (rel.starts_with(prefix) && rel.as_bytes().get(prefix.len()) == Some(&b'/'))
-}
-
-/// Write local config with `theme = "display_name"`. Uses existing file at [`UblxPaths::toml_path`] if present, otherwise creates `.ublx.toml`. Preserves other keys from existing file or default. Logs and ignores errors.
-pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
-    let path = paths.toml_path().unwrap_or_else(|| paths.hidden_toml());
-    let mut overlay = UblxOpts::load_overlay_from_path(Some(path.clone()));
-    overlay.theme = Some(theme_display_name.to_string());
-    if let Some(parent) = path.parent()
-        && let Err(e) = fs::create_dir_all(parent)
-    {
-        warn!("could not create config dir {}: {}", parent.display(), e);
-        return;
-    }
-    match toml::to_string_pretty(&overlay) {
-        Ok(s) => {
-            if let Err(e) = fs::write(&path, s) {
-                warn!("could not write theme to {}: {}", path.display(), e);
-            }
-        }
-        Err(e) => warn!("could not serialize overlay: {e}"),
-    }
-}
-
-/// Write `ublx.toml` in the indexed directory with only [`UblxOverlay::enable_enhance_all`] set (first-run prompt).
-///
-/// # Errors
-///
-/// Returns [`std::io::Error`] if TOML serialization fails or if writing [`UblxPaths::visible_toml`] fails
-/// (e.g. missing parent directory, permission denied, or disk full).
-pub fn write_visible_enhance_only_toml(
-    ublx_paths: &UblxPaths,
-    enable_enhance_all: bool,
-) -> std::io::Result<()> {
-    let overlay = UblxOverlay {
-        enable_enhance_all: Some(enable_enhance_all),
-        ..Default::default()
-    };
-    let s = toml::to_string(&overlay).map_err(std::io::Error::other)?;
-    fs::write(ublx_paths.visible_toml(), s)
-}
-
-/// Merge `[[enhance_policy]]` for `rel_path` into local config (`.ublx.toml` or `ublx.toml`). Preserves other keys.
-pub fn write_local_enhance_policy(paths: &UblxPaths, rel_path: &str, policy: EnhancePolicy) {
-    let path = paths.toml_path().unwrap_or_else(|| paths.hidden_toml());
-    let mut overlay = UblxOpts::load_overlay_from_path(Some(path.clone()));
-    let mut entries = overlay.enhance_policy.unwrap_or_default();
-    let norm = normalize_rel_path_for_policy(rel_path);
-    entries.retain(|e| normalize_rel_path_for_policy(&e.path) != norm);
-    entries.push(EnhancePolicyEntry { path: norm, policy });
-    overlay.enhance_policy = Some(entries);
-    if let Some(parent) = path.parent()
-        && let Err(e) = fs::create_dir_all(parent)
-    {
-        warn!("could not create config dir {}: {}", parent.display(), e);
-        return;
-    }
-    match toml::to_string_pretty(&overlay) {
-        Ok(s) => {
-            if let Err(e) = fs::write(&path, s) {
-                warn!(
-                    "could not write enhance_policy to {}: {}",
-                    path.display(),
-                    e
-                );
-            }
-        }
-        Err(e) => warn!("could not serialize overlay: {e}"),
     }
 }

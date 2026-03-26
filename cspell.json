@@ -10,9 +10,11 @@
     "cmark",
     "crossterm",
     "Deque",
+    "ffprobe",
     "halfblocks",
     "ilog",
     "imageops",
+    "loglevel",
     "maxlens",
     "mupdf",
     "mutool",
@@ -25,7 +27,10 @@
     "spacebar",
     "strs",
     "ublx",
-    "vecs"
+    "vcodec",
+    "vecs",
+    "Verglas",
+    "vframes"
   ],
   "ignoreWords": [],
   "import": []

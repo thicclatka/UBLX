@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::config::UblxPaths;
-use crate::handlers::zahir_ops::{ZahirFileType as FileType, file_type_from_metadata_name};
+use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
 
 /// Schema for the ublx DB
 pub struct UblxDbSchema;
@@ -160,7 +160,7 @@ impl UblxDbStatements {
     pub const SELECT_SNAPSHOT_MTIME_BY_PATH: &'static str =
         "SELECT mtime_ns FROM snapshot WHERE path = ?1";
 
-    /// (path, mtime_ns) for all snapshot rows (used by Mod sort in middle pane).
+    /// (path, `mtime_ns`) for all snapshot rows (used by Mod sort in middle pane).
     pub const SELECT_SNAPSHOT_PATH_MTIME_ALL: &'static str = "SELECT path, mtime_ns FROM snapshot";
 
     /// (path, size, hash) for non-directory rows; used for duplicate detection (by hash or content).

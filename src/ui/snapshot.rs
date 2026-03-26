@@ -1,8 +1,8 @@
 //! Snapshot-related toasts (background index run, completion).
 
+use crate::app::RunUblxParams;
 use crate::config::OPERATION_NAME;
 use crate::handlers::snapshot;
-use crate::layout::event_loop::RunUblxParams;
 use crate::layout::setup::UblxState;
 use crate::ui::consts::UI_STRINGS;
 use crate::ui::show_operation_toast;

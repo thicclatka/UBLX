@@ -1,5 +1,5 @@
-//! Image / PDF page viewer: decode, tiered downscale by file size, optional background thread
-//! for large files or PDF rasterization, and `ratatui-image` terminal preview.
+//! Image / PDF page / video preview-frame viewer: decode, tiered downscale by file size, optional background thread
+//! for large files, PDF rasterization, or ffmpeg mid-timeline frame grab, and `ratatui-image` terminal preview.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -9,10 +9,10 @@ use image::imageops::FilterType;
 use ratatui_image::{Resize, StatefulImage, protocol::StatefulProtocol};
 
 use super::raster_policy;
-use crate::render::viewers::pdf_preview;
 
-use crate::handlers::zahir_ops::ZahirFileType as FileType;
+use crate::integrations::ZahirFileType as FileType;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
+use crate::render::viewers::{pdf_preview, video_preview};
 use crate::ui::UI_GLYPHS;
 use crate::utils::HALF_MIB_BYTES;
 
@@ -26,14 +26,17 @@ pub fn is_image_category(rc: &RightPaneContent) -> bool {
     rc.viewer_zahir_type == Some(FileType::Image)
 }
 
-/// True when the viewer should show a **raster** preview (image file, PDF page, or embedded audio/EPUB cover).
+/// True when the viewer should show a **raster** preview (image file, PDF page, video preview frame, or embedded audio/EPUB cover).
 #[inline]
 #[must_use]
 pub fn is_raster_preview_category(rc: &RightPaneContent) -> bool {
     rc.viewer_embedded_cover_raster
         .as_ref()
         .is_some_and(|b| !b.is_empty())
-        || matches!(rc.viewer_zahir_type, Some(FileType::Image | FileType::Pdf))
+        || matches!(
+            rc.viewer_zahir_type,
+            Some(FileType::Image | FileType::Pdf | FileType::Video)
+        )
 }
 
 /// Right-pane text under the **Image** heading (e.g. loading line).
@@ -47,6 +50,7 @@ pub fn label_body(raw: &str) -> String {
 pub fn raster_preview_label_body(rc: &RightPaneContent, raw: &str) -> String {
     let name = match rc.viewer_zahir_type {
         Some(FileType::Pdf) => FileType::Pdf.as_metadata_name(),
+        Some(FileType::Video) => FileType::Video.as_metadata_name(),
         Some(FileType::Audio) => FileType::Audio.as_metadata_name(),
         Some(FileType::Epub) => FileType::Epub.as_metadata_name(),
         _ => FileType::Image.as_metadata_name(),
@@ -288,7 +292,82 @@ fn poll_decode_rx_if_same_selection(state: &mut UblxState, selection_key: &str) 
     true
 }
 
-/// Load [`ViewerImageState::protocol`] when the viewer is an **Image** or **PDF** row (raster preview).
+fn spawn_or_decode_raster_preview(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    abs: &std::path::Path,
+    is_pdf: bool,
+    viewport_cells: Option<(u16, u16)>,
+) {
+    let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
+    let max_dim = raster_max_dimension_for_file_size(file_size, is_pdf, viewport_cells);
+    let is_video = right_content.viewer_zahir_type == Some(FileType::Video);
+
+    if is_pdf {
+        let (tx, rx) = mpsc::channel();
+        state.viewer_image.decode_rx = Some(rx);
+        let path = abs.to_path_buf();
+        let page = state.viewer_image.pdf.page.max(1);
+        std::thread::spawn(move || {
+            let res = pdf_preview::render_pdf_page(&path, page, max_dim)
+                .map(|img| raster_policy::downscale_with_max(img, max_dim));
+            let _ = tx.send(res);
+        });
+    } else if let Some(bytes) = right_content
+        .viewer_embedded_cover_raster
+        .as_ref()
+        .filter(|b| !b.is_empty())
+    {
+        if bytes.len() as u64 >= ASYNC_DECODE_MIN_BYTES {
+            let (tx, rx) = mpsc::channel();
+            state.viewer_image.decode_rx = Some(rx);
+            let bytes = bytes.to_vec();
+            std::thread::spawn(move || {
+                let res = image::load_from_memory(&bytes)
+                    .map(|img| raster_policy::downscale_with_max(img, max_dim))
+                    .map_err(|e| e.to_string());
+                let _ = tx.send(res);
+            });
+        } else {
+            match image::load_from_memory(bytes)
+                .map(|img| raster_policy::downscale_with_max(img, max_dim))
+            {
+                Ok(img) => finish_protocol_from_image(state, img),
+                Err(e) => {
+                    state.viewer_image.err = Some(format!("Could not decode cover: {e}"));
+                }
+            }
+        }
+    } else if is_video {
+        let (tx, rx) = mpsc::channel();
+        state.viewer_image.decode_rx = Some(rx);
+        let path = abs.to_path_buf();
+        std::thread::spawn(move || {
+            let res = video_preview::decode_preview_frame(&path)
+                .map(|img| raster_policy::downscale_with_max(img, max_dim));
+            let _ = tx.send(res);
+        });
+    } else if file_size >= ASYNC_DECODE_MIN_BYTES {
+        let (tx, rx) = mpsc::channel();
+        state.viewer_image.decode_rx = Some(rx);
+        let path = abs.to_path_buf();
+        std::thread::spawn(move || {
+            let res = image::open(&path).map(|img| raster_policy::downscale_with_max(img, max_dim));
+            let _ = tx.send(res.map_err(|e| e.to_string()));
+        });
+    } else {
+        match image::open(abs) {
+            Ok(img) => {
+                finish_protocol_from_image(state, raster_policy::downscale_with_max(img, max_dim));
+            }
+            Err(e) => {
+                state.viewer_image.err = Some(format!("Could not open image: {e}"));
+            }
+        }
+    }
+}
+
+/// Load [`ViewerImageState::protocol`] when the viewer is an **Image**, **PDF**, or **Video** row (raster preview).
 ///
 /// `viewport_cells`: `(width, height)` of the padded preview area in **terminal cells**; pass
 /// [`None`] to use only file-size tiers (e.g. tests). When set, decode size is `min(tier, viewport)`.
@@ -359,60 +438,5 @@ pub fn ensure_viewer_image(
     state.viewer_image.protocol = None;
     state.viewer_image.err = None;
 
-    let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
-    let max_dim = raster_max_dimension_for_file_size(file_size, is_pdf, viewport_cells);
-
-    if is_pdf {
-        let (tx, rx) = mpsc::channel();
-        state.viewer_image.decode_rx = Some(rx);
-        let path = abs.clone();
-        let page = state.viewer_image.pdf.page.max(1);
-        std::thread::spawn(move || {
-            let res = pdf_preview::render_pdf_page(&path, page, max_dim)
-                .map(|img| raster_policy::downscale_with_max(img, max_dim));
-            let _ = tx.send(res);
-        });
-    } else if let Some(bytes) = right_content
-        .viewer_embedded_cover_raster
-        .as_ref()
-        .filter(|b| !b.is_empty())
-    {
-        if bytes.len() as u64 >= ASYNC_DECODE_MIN_BYTES {
-            let (tx, rx) = mpsc::channel();
-            state.viewer_image.decode_rx = Some(rx);
-            let bytes = bytes.to_vec();
-            std::thread::spawn(move || {
-                let res = image::load_from_memory(&bytes)
-                    .map(|img| raster_policy::downscale_with_max(img, max_dim))
-                    .map_err(|e| e.to_string());
-                let _ = tx.send(res);
-            });
-        } else {
-            match image::load_from_memory(bytes)
-                .map(|img| raster_policy::downscale_with_max(img, max_dim))
-            {
-                Ok(img) => finish_protocol_from_image(state, img),
-                Err(e) => {
-                    state.viewer_image.err = Some(format!("Could not decode cover: {e}"));
-                }
-            }
-        }
-    } else if file_size >= ASYNC_DECODE_MIN_BYTES {
-        let (tx, rx) = mpsc::channel();
-        state.viewer_image.decode_rx = Some(rx);
-        let path = abs.clone();
-        std::thread::spawn(move || {
-            let res = image::open(&path).map(|img| raster_policy::downscale_with_max(img, max_dim));
-            let _ = tx.send(res.map_err(|e| e.to_string()));
-        });
-    } else {
-        match image::open(abs) {
-            Ok(img) => {
-                finish_protocol_from_image(state, raster_policy::downscale_with_max(img, max_dim));
-            }
-            Err(e) => {
-                state.viewer_image.err = Some(format!("Could not open image: {e}"));
-            }
-        }
-    }
+    spawn_or_decode_raster_preview(state, right_content, abs, is_pdf, viewport_cells);
 }

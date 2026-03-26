@@ -23,4 +23,4 @@ Layout and scrollbar are handled by `render::scrollable_content`; here we parse 
 | **draw**     | `draw_tables(area, json, scroll_y)`: layout sections, slice to viewport, render.                                                                                 |
 | **consts**   | Section key names, table gap.                                                                                                                                    |
 
-Used by `render::panes::right` when `right_pane_mode` is Metadata or Writing.
+Used from `render::panes::right::draw` (scrollable body) when `right_pane_mode` is Metadata or Writing.

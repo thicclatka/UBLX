@@ -10,7 +10,7 @@ pub struct Parallel {
     pub categories_for_search: usize,
     /// Delta rows filtered by path containing query. (`layout::filter::filter_delta_rows`)
     pub delta_rows: usize,
-    /// Duplicates groups or Lenses names filtered by search. (`layout::event_loop::user_selected`)
+    /// Duplicates groups or Lenses names filtered by search. (`app::user_selected`)
     pub user_selected_filter: usize,
     /// CSV / comfy-table: parallel truncate cells when row count ≥ this. (`render::viewers::pretty_tables::truncate_all_cells`)
     pub csv_truncate: usize,

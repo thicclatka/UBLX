@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use ratatui::style::Color;
-use ublx::layout::themes::{Appearance, adjust_surface_rgb};
 use ublx::render::viewers::markdown::is_markdown_path;
+use ublx::themes::{Appearance, adjust_surface_rgb};
 use ublx::utils::ClipboardCopyCommand;
 use ublx::utils::format::{
     clamp_selection, clamp_selection_opt, format_timestamp_ns, frame_string_with_spaces,
@@ -158,7 +158,7 @@ fn print_lighten_values() {
         ("Tangerine Memory", 42, 26, 0),
         ("Asterion Code", 232, 240, 242),
         ("Barley Bound", 251, 241, 199),
-        ("Cold Trace", 236, 239, 244),
+        ("Verglas Trace", 236, 239, 244),
         ("Cryptic Chai", 247, 238, 222),
         ("Faded Echo", 246, 237, 225),
         ("Infinite Rose", 232, 235, 240),
@@ -182,7 +182,7 @@ fn print_lighten_values() {
                 | "Cryptic Chai"
                 | "Asterion Code"
                 | "Barley Bound"
-                | "Cold Trace"
+                | "Verglas Trace"
         ) {
             Appearance::Light
         } else {

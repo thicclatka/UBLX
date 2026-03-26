@@ -1,10 +1,7 @@
 //! Config overlays: layout TOML, merge, and enhance (zahir batch) policy.
 
-use nefaxer::NefaxOpts;
-use zahirscan::RuntimeConfig;
-
-use ublx::config::LayoutOverlay;
-use ublx::config::{EnhancePolicy, EnhancePolicyEntry, UblxOpts, UblxOverlay};
+use ublx::config::{EnhancePolicy, EnhancePolicyEntry, LayoutOverlay, UblxOpts, UblxOverlay};
+use ublx::integrations::{NefaxOpts, ZahirRuntimeConfig};
 
 #[test]
 fn layout_overlay_default() {
@@ -50,7 +47,7 @@ fn ublx_overlay_merge_layout() {
 fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> UblxOpts {
     UblxOpts {
         nefax: NefaxOpts::default(),
-        zahir: RuntimeConfig::new(),
+        zahir: ZahirRuntimeConfig::new(),
         max_workers_available: 1,
         nefax_workers_override: None,
         zahir_workers_override: None,

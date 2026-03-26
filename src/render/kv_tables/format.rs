@@ -2,7 +2,7 @@
 
 use ratatui::style::Style;
 
-use crate::layout::themes::DEFAULT_COLORS;
+use crate::themes::DEFAULT_COLORS;
 use crate::utils::format::Epsilon;
 use crate::utils::format_bytes;
 

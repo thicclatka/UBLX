@@ -1,18 +1,18 @@
 //! Validation for hot-reloadable config. Variable-specific errors so the user sees which field failed and why.
 
-use super::opts::UblxOverlay;
+use super::profile::UblxOverlay;
 
 /// Maximum value for layout pane percentages (`left_pct`, `middle_pct`, `right_pct`). Each must be 0–100 and they must sum to this.
 pub const LAYOUT_PCT_MAX: u16 = 100;
 
 /// One validation failure: which field and a short message.
 #[derive(Clone, Debug)]
-pub struct HotReloadValidationError {
+pub struct HotReloadError {
     pub field: &'static str,
     pub message: String,
 }
 
-impl std::fmt::Display for HotReloadValidationError {
+impl std::fmt::Display for HotReloadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.field, self.message)
     }
@@ -20,7 +20,7 @@ impl std::fmt::Display for HotReloadValidationError {
 
 /// Format all validation errors for display (numbered, newline-separated). Used for startup and hot-reload toasts.
 #[must_use]
-pub fn first_validation_error_message(errors: &[HotReloadValidationError]) -> String {
+pub fn first_validation_error_message(errors: &[HotReloadError]) -> String {
     if errors.is_empty() {
         "invalid config".to_string()
     } else {
@@ -41,11 +41,11 @@ pub struct ReloadResult {
     /// True if the overlay was valid and applied.
     pub applied: bool,
     /// Non-empty when validation failed (overlay was not applied).
-    pub validation_errors: Vec<HotReloadValidationError>,
+    pub validation_errors: Vec<HotReloadError>,
 }
 
 /// Validates only the hot-reloadable parts of the overlay. Call before applying.
-/// `valid_theme_names`: allowed values for `theme` (e.g. from [`crate::layout::themes::theme_ordered_list`] names).
+/// `valid_theme_names`: allowed values for `theme` (e.g. from [`crate::themes::theme_ordered_list`] names).
 ///
 /// # Errors
 ///
@@ -53,18 +53,15 @@ pub struct ReloadResult {
 pub fn validate_hot_reload_overlay(
     overlay: &UblxOverlay,
     valid_theme_names: &[&str],
-) -> Result<(), Vec<HotReloadValidationError>> {
+) -> Result<(), Vec<HotReloadError>> {
     let mut errors = Vec::new();
 
     if let Some(ref name) = overlay.theme {
         let name = name.trim();
         if !name.is_empty() && !valid_theme_names.contains(&name) {
-            errors.push(HotReloadValidationError {
+            errors.push(HotReloadError {
                 field: "theme",
-                message: format!(
-                    "invalid: \"{}\"; run `ublx --themes` to list valid options",
-                    name
-                ),
+                message: format!("invalid: \"{name}\"; run `ublx --themes` to list valid options"),
             });
         }
     }
@@ -76,7 +73,7 @@ pub fn validate_hot_reload_overlay(
             ("layout.right_pct", layout.right_pct),
         ] {
             if pct > LAYOUT_PCT_MAX {
-                errors.push(HotReloadValidationError {
+                errors.push(HotReloadError {
                     field,
                     message: format!("must be 0–{LAYOUT_PCT_MAX} (got {pct})"),
                 });
@@ -86,7 +83,7 @@ pub fn validate_hot_reload_overlay(
             u32::from(layout.left_pct) + u32::from(layout.middle_pct) + u32::from(layout.right_pct);
         if errors.iter().all(|e| !e.field.starts_with("layout")) && sum != u32::from(LAYOUT_PCT_MAX)
         {
-            errors.push(HotReloadValidationError {
+            errors.push(HotReloadError {
                 field: "layout",
                 message: format!(
                     "left_pct + middle_pct + right_pct must = {LAYOUT_PCT_MAX} (got {sum})"
