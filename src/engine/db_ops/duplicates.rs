@@ -8,7 +8,7 @@ use std::path::Path;
 use blake3::Hasher;
 use rayon::prelude::*;
 
-use crate::utils::path::resolve_under_root;
+use crate::utils::resolve_under_root;
 
 use super::{SnapshotPathSizeHash, load_snapshot_path_size_hash};
 

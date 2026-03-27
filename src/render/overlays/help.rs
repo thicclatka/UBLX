@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 use crate::layout::style;
 use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
-use crate::utils::format::StringObjTraits;
+use crate::utils::StringObjTraits;
 
 macro_rules! help_entries {
     ($( ($key:expr, $action:expr) ),* $(,)?) => {
@@ -37,13 +37,20 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("h | l", "Focus on Left or Middle panes"),
     ("j | k", "Move down / up in Left or Middle panes"),
     (
+        "Ctrl+j/k | Ctrl+↑↓",
+        "Jump down / up by 10 in Left or Middle panes"
+    ),
+    (
         "gg | G",
         "Go to top / bottom of list (Left or Middle panes)"
     ),
     ("Ctrl+b | +e", "Scroll to beginning / end of preview"),
     ("Shift+↑↓", "Scroll up / down in preview"),
     ("Shift+J | +K", "Scroll down / up in preview"),
-    ("Tab", "Switch between left and middle panes"),
+    (
+        "Tab",
+        "Switch left or middle pane focus; on Settings tab switches Global vs Local"
+    ),
     (
         "v/t/m/w",
         "Focus on Viewer/Templates/Metadata/Writing tab in right pane"
@@ -51,7 +58,11 @@ const HELP_ENTRIES: &[(&str, &str)] = help_entries![
     ("Ctrl+v", "Cycle right pane tab"),
     (
         "Ctrl+t",
-        "Theme selector (j/k preview, Enter save to .ublx.toml, Esc cancel)"
+        "Theme selector — writes theme to local ublx.toml / .ublx.toml"
+    ),
+    (
+        "Shift+O",
+        "Open menu (Terminal/GUI) for selected file; in Settings tab opens active config in EDITOR"
     ),
     (
         "Ctrl+l",

@@ -266,7 +266,6 @@ impl DeltaType {
 /// Category for ublx db: ublx-defined variants plus all [`FileType`] (zahirscan) via [`UblxDbCategory::Zahir`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UblxDbCategory {
-    UblxSettings,
     UblxLog,
     Git,
     // Hidden,
@@ -280,7 +279,6 @@ impl UblxDbCategory {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
-            UblxDbCategory::UblxSettings => "UBLX Settings",
             UblxDbCategory::UblxLog => "UBLX Log",
             UblxDbCategory::Git => "Git",
             // UblxDbCategory::Hidden => "Hidden",
@@ -297,10 +295,6 @@ impl UblxDbCategory {
         ublx_paths: Option<&UblxPaths>,
         zahir_file_type: Option<&str>,
     ) -> String {
-        // Check for ublx.toml
-        if ublx_paths.is_some_and(|p| p.is_config_file(path_ref)) {
-            return UblxDbCategory::UblxSettings.as_str().to_string();
-        }
         // Check for ublx.log
         if ublx_paths.is_some_and(|p| p.log_path() == path_ref) {
             return UblxDbCategory::UblxLog.as_str().to_string();

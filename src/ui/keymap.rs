@@ -13,6 +13,8 @@ pub enum UblxAction {
     MainModeDelta,
     /// Switch to Duplicates main tab (only when duplicates exist).
     MainModeDuplicates,
+    /// Switch to Settings main tab (global / local `ublx.toml`).
+    MainModeSettings,
     /// Switch to Lenses main tab (only when any lenses exist).
     MainModeLenses,
     /// Alternate between Snapshot, Delta, Duplicates, and Lenses when available (Shift+Tab).
@@ -45,6 +47,8 @@ pub enum UblxAction {
     PreviewBottom,
     MoveUp,
     MoveDown,
+    MoveUpFast,
+    MoveDownFast,
     FocusCategories,
     FocusContents,
     Tab,
@@ -52,9 +56,11 @@ pub enum UblxAction {
     TakeSnapshot,
     /// Cycle middle-pane content sort mode (Name → Size → Mod).
     CycleContentSort,
-    /// Open theme selector popup (j/k to preview, Enter to pick and save to local .ublx.toml, Esc to revert).
+    /// Theme selector popup (Ctrl+t). Writes theme to **local** project `ublx.toml` / `.ublx.toml`.
     ThemeSelector,
-    /// Reload hot-reloadable config (theme, transparent, layout, hash, `show_hidden`) from disk. Ctrl+R.
+    /// Open the active Settings file in $EDITOR / `editor_path` (plain `e`).
+    OpenConfigInEditor,
+    /// Reload hot-reloadable config (theme, layout, hash, `show_hidden`, etc.) from disk. Ctrl+R.
     ReloadConfig,
     /// Open menu (Shift+O): Open (Terminal) or Open (GUI). Only when selection is a non-binary file.
     OpenMenu,
@@ -127,6 +133,8 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
         KeyCode::Char('b' | 'B') if ctrl => (UblxAction::PreviewTop, None),
         KeyCode::Char('d' | 'D') if ctrl => (UblxAction::LoadDuplicates, None),
         KeyCode::Char('e' | 'E') if ctrl => (UblxAction::PreviewBottom, None),
+        KeyCode::Char('j' | 'J') | KeyCode::Down if ctrl => (UblxAction::MoveDownFast, None),
+        KeyCode::Char('k' | 'K') | KeyCode::Up if ctrl => (UblxAction::MoveUpFast, None),
         KeyCode::Char('r' | 'R') if ctrl => (UblxAction::ReloadConfig, None),
         KeyCode::Char('s' | 'S') if ctrl => (UblxAction::TakeSnapshot, None),
         KeyCode::Char('v' | 'V') if ctrl => (UblxAction::CycleRightPane, None),
@@ -146,8 +154,10 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
                 ' ' => UblxAction::SpaceMenu,
                 '1' => UblxAction::MainModeSnapshot,
                 '2' => UblxAction::MainModeDelta,
+                '3' => UblxAction::MainModeSettings,
+                '4' if ctx.tabs.lenses => UblxAction::MainModeLenses,
                 '9' if ctx.tabs.duplicates => UblxAction::MainModeDuplicates,
-                '3' if ctx.tabs.lenses => UblxAction::MainModeLenses,
+                'e' => UblxAction::OpenConfigInEditor,
                 'v' => UblxAction::RightPaneViewer,
                 't' => UblxAction::RightPaneTemplates,
                 'm' => UblxAction::RightPaneMetadata,

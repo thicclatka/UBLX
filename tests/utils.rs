@@ -6,7 +6,7 @@ use ratatui::style::Color;
 use ublx::render::viewers::markdown::is_markdown_path;
 use ublx::themes::{Appearance, adjust_surface_rgb};
 use ublx::utils::ClipboardCopyCommand;
-use ublx::utils::format::{
+use ublx::utils::{
     clamp_selection, clamp_selection_opt, format_timestamp_ns, frame_string_with_spaces,
     truncate_middle,
 };

@@ -3,7 +3,7 @@
 use crate::engine::db_ops::{self, DELTA_CATEGORY_COUNT, DeltaType};
 use crate::layout::{filter, setup};
 use crate::ui::UI_STRINGS;
-use crate::utils::format::{clamp_selection, clamp_selection_opt, format_timestamp_ns};
+use crate::utils::{clamp_selection, clamp_selection_opt, format_timestamp_ns};
 
 /// Load `delta_log` data for Delta mode: overview text (snapshot count + timestamps) and paths per type.
 pub fn build_delta_view_data(db_path: &std::path::Path) -> setup::DeltaViewData {
@@ -55,18 +55,19 @@ fn sort_delta_rows_by_time(rows: &mut [(i64, String)], sort: setup::ContentSort)
 }
 
 /// Clamp list selection for Delta mode (category and content from view).
-pub fn clamp_delta_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
+pub fn clamp_delta_selection(state_mut: &mut setup::UblxState, view_ref: &setup::ViewData) {
     let cat_idx = clamp_selection(
-        state.panels.category_state.selected().unwrap_or(0),
-        view.category_list_len,
+        state_mut.panels.category_state.selected().unwrap_or(0),
+        view_ref.category_list_len,
     );
-    state.panels.category_state.select(Some(cat_idx));
-    let len = view.content_len;
-    if let Some(sel) = clamp_selection_opt(state.panels.content_state.selected().unwrap_or(0), len)
+    state_mut.panels.category_state.select(Some(cat_idx));
+    let len = view_ref.content_len;
+    if let Some(sel) =
+        clamp_selection_opt(state_mut.panels.content_state.selected().unwrap_or(0), len)
     {
-        state.panels.content_state.select(Some(sel));
+        state_mut.panels.content_state.select(Some(sel));
     } else {
-        state.panels.content_state.select(None);
+        state_mut.panels.content_state.select(None);
     }
 }
 

@@ -84,7 +84,7 @@ fn click_to_labeled_tab_index(area: Rect, x: u16, labels: &[&str]) -> Option<usi
     None
 }
 
-fn middle_sort_hit(area: Rect, x: u16, y: u16, state: &UblxState, view: &ViewData) -> bool {
+fn middle_sort_hit(area: Rect, x: u16, y: u16, state_ref: &UblxState, view_ref: &ViewData) -> bool {
     if area.height == 0 || area.width == 0 {
         return false;
     }
@@ -92,13 +92,18 @@ fn middle_sort_hit(area: Rect, x: u16, y: u16, state: &UblxState, view: &ViewDat
     if y != footer_y {
         return false;
     }
-    let Some(sort_text) = panes::sort_node_text(state.main_mode, state.panels.content_sort) else {
+    let Some(sort_text) = panes::sort_node_text(state_ref.main_mode, state_ref.panels.content_sort)
+    else {
         return false;
     };
     let sort_w = panes::node_display_width(&sort_text);
     let counter = panes::format_selection_counter(
-        state.panels.content_state.selected().map_or(0, |i| i + 1),
-        view.content_len,
+        state_ref
+            .panels
+            .content_state
+            .selected()
+            .map_or(0, |i| i + 1),
+        view_ref.content_len,
     );
     let counter_w = panes::node_display_width(&counter);
     let total_w = sort_w.saturating_add(counter_w);
@@ -115,21 +120,23 @@ fn middle_sort_hit(area: Rect, x: u16, y: u16, state: &UblxState, view: &ViewDat
 }
 
 fn fullscreen_viewer_footer_width(
-    state: &mut UblxState,
-    right_content: &RightPaneContent,
+    state_mut: &mut UblxState,
+    right_content_ref: &RightPaneContent,
 ) -> usize {
-    if state.right_pane_mode != RightPaneMode::Viewer {
+    if state_mut.right_pane_mode != RightPaneMode::Viewer {
         return 0;
     }
-    viewer_image::sync_pdf_selection_state(state, right_content);
+    viewer_image::sync_pdf_selection_state(state_mut, right_content_ref);
     let mut width = 0usize;
-    if let Some(pdf) = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image) {
+    if let Some(pdf) =
+        viewer_image::pdf_page_footer_text(right_content_ref, &state_mut.viewer_image)
+    {
         width = width.saturating_add(panes::node_display_width(&pdf));
     }
-    if let Some(size) = right_content.viewer_byte_size {
+    if let Some(size) = right_content_ref.viewer_byte_size {
         width = width.saturating_add(panes::node_display_width(&format_bytes(size)));
     }
-    if let Some(ns) = right_content.viewer_mtime_ns {
+    if let Some(ns) = right_content_ref.viewer_mtime_ns {
         width = width.saturating_add(panes::node_display_width(&format_timestamp_ns(ns)));
     }
     width
@@ -139,9 +146,9 @@ fn fullscreen_sort_hit(
     area: Rect,
     x: u16,
     y: u16,
-    state: &mut UblxState,
-    view: &ViewData,
-    right_content: &RightPaneContent,
+    state_mut: &mut UblxState,
+    view_ref: &ViewData,
+    right_content_ref: &RightPaneContent,
 ) -> bool {
     if area.height == 0 || area.width == 0 {
         return false;
@@ -150,16 +157,21 @@ fn fullscreen_sort_hit(
     if y != footer_y {
         return false;
     }
-    let Some(sort_text) = panes::sort_node_text(state.main_mode, state.panels.content_sort) else {
+    let Some(sort_text) = panes::sort_node_text(state_mut.main_mode, state_mut.panels.content_sort)
+    else {
         return false;
     };
     let sort_w = panes::node_display_width(&sort_text);
     let counter = panes::format_selection_counter(
-        state.panels.content_state.selected().map_or(0, |i| i + 1),
-        view.content_len,
+        state_mut
+            .panels
+            .content_state
+            .selected()
+            .map_or(0, |i| i + 1),
+        view_ref.content_len,
     );
     let counter_w = panes::node_display_width(&counter);
-    let trailer_w = fullscreen_viewer_footer_width(state, right_content);
+    let trailer_w = fullscreen_viewer_footer_width(state_mut, right_content_ref);
     let total_w = sort_w.saturating_add(counter_w).saturating_add(trailer_w);
     let area_left = usize::from(area.x);
     let area_w = usize::from(area.width);
@@ -173,12 +185,15 @@ fn fullscreen_sort_hit(
     click_x >= sort_start && click_x < sort_end
 }
 
-fn cycle_sort_from_mouse(state: &mut UblxState, right_content: &RightPaneContent) {
-    state
+fn cycle_sort_from_mouse(state_mut: &mut UblxState, right_content_ref: &RightPaneContent) {
+    state_mut
         .panels
         .sort_anchor_path
-        .clone_from(&right_content.viewer_path);
-    state.panels.content_sort = state.panels.content_sort.cycle_for_mode(state.main_mode);
+        .clone_from(&right_content_ref.viewer_path);
+    state_mut.panels.content_sort = state_mut
+        .panels
+        .content_sort
+        .cycle_for_mode(state_mut.main_mode);
 }
 
 fn rough_wrapped_line_count(text: &str, width: u16) -> usize {
@@ -193,21 +208,23 @@ fn rough_wrapped_line_count(text: &str, width: u16) -> usize {
 }
 
 fn estimate_total_lines(
-    state: &UblxState,
-    right_content: &RightPaneContent,
+    state_ref: &UblxState,
+    right_content_ref: &RightPaneContent,
     text_width: u16,
 ) -> usize {
-    match state.right_pane_mode {
-        RightPaneMode::Viewer => right_content
+    match state_ref.right_pane_mode {
+        RightPaneMode::Viewer => right_content_ref
             .viewer
             .as_deref()
             .map_or(1, |s| rough_wrapped_line_count(s, text_width)),
-        RightPaneMode::Templates => rough_wrapped_line_count(&right_content.templates, text_width),
-        RightPaneMode::Metadata => right_content
+        RightPaneMode::Templates => {
+            rough_wrapped_line_count(&right_content_ref.templates, text_width)
+        }
+        RightPaneMode::Metadata => right_content_ref
             .metadata
             .as_deref()
             .map_or(1, |s| rough_wrapped_line_count(s, text_width)),
-        RightPaneMode::Writing => right_content
+        RightPaneMode::Writing => right_content_ref
             .writing
             .as_deref()
             .map_or(1, |s| rough_wrapped_line_count(s, text_width)),
@@ -256,11 +273,11 @@ fn compute_mouse_frame_areas(frame_area: Rect, layout: &LayoutOverlay) -> MouseF
 }
 
 fn mouse_left_down_right_pane(
-    state: &mut UblxState,
+    state_mut: &mut UblxState,
     x: u16,
     y: u16,
     right: Rect,
-    right_content: &RightPaneContent,
+    right_content_ref: &RightPaneContent,
 ) -> bool {
     if !contains(right, x, y) {
         return false;
@@ -290,10 +307,10 @@ fn mouse_left_down_right_pane(
     let right_tab_rect = right_tab_outer[1];
     if contains(right_tab_rect, x, y) {
         let mut tabs = vec![RightPaneMode::Viewer, RightPaneMode::Templates];
-        if right_content.metadata.is_some() {
+        if right_content_ref.metadata.is_some() {
             tabs.push(RightPaneMode::Metadata);
         }
-        if right_content.writing.is_some() {
+        if right_content_ref.writing.is_some() {
             tabs.push(RightPaneMode::Writing);
         }
         let labels: Vec<&str> = tabs
@@ -306,12 +323,12 @@ fn mouse_left_down_right_pane(
             })
             .collect();
         if let Some(idx) = click_to_labeled_tab_index(right_tab_rect, x, &labels) {
-            state.right_pane_mode = tabs[idx];
+            state_mut.right_pane_mode = tabs[idx];
             return true;
         }
     }
 
-    if state.right_pane_mode == RightPaneMode::Viewer && right_inner.width > 0 {
+    if state_mut.right_pane_mode == RightPaneMode::Viewer && right_inner.width > 0 {
         let content_outer = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -324,7 +341,7 @@ fn mouse_left_down_right_pane(
         let viewport_h = content_rect.height.saturating_sub(UI_CONSTANTS.v_pad);
         if content_rect.width > 0 && viewport_h > 0 {
             let text_width = content_rect.width.saturating_sub(1).max(1);
-            let total_lines = estimate_total_lines(state, right_content, text_width);
+            let total_lines = estimate_total_lines(state_mut, right_content_ref, text_width);
             if total_lines <= usize::from(viewport_h) {
                 return true;
             }
@@ -338,7 +355,7 @@ fn mouse_left_down_right_pane(
                     .saturating_sub(track_top)
                     .min(viewport_h.saturating_sub(1));
                 let denom = viewport_h.saturating_sub(1).max(1);
-                state.panels.preview_scroll =
+                state_mut.panels.preview_scroll =
                     ((u32::from(rel) * u32::from(max_scroll)) / u32::from(denom)) as u16;
                 return true;
             }
@@ -347,23 +364,27 @@ fn mouse_left_down_right_pane(
     false
 }
 
-pub fn handle_mouse_event(state: &mut UblxState, event: MouseEvent, ctx: MouseContext<'_>) -> bool {
+pub fn handle_mouse_event(
+    state_mut: &mut UblxState,
+    event: MouseEvent,
+    ctx: MouseContext<'_>,
+) -> bool {
     let MouseContext {
-        view,
-        right_content,
+        view: view_ref,
+        right_content: right_content_ref,
         frame_area,
         layout,
         tabs,
     } = ctx;
     // Keep first pass conservative: no mouse interaction while modals are open.
-    if state.theme.selector_visible
-        || state.chrome.help_visible
-        || state.open_menu.visible
-        || state.lens_menu.visible
-        || state.space_menu.visible
-        || state.enhance_policy_menu.visible
-        || state.lens_confirm.delete_visible
-        || state.initial_prompt.is_some()
+    if state_mut.theme.selector_visible
+        || state_mut.chrome.help_visible
+        || state_mut.open_menu.visible
+        || state_mut.lens_menu.visible
+        || state_mut.space_menu.visible
+        || state_mut.enhance_policy_menu.visible
+        || state_mut.lens_confirm.delete_visible
+        || state_mut.startup_prompt.is_some()
     {
         return false;
     }
@@ -374,14 +395,21 @@ pub fn handle_mouse_event(state: &mut UblxState, event: MouseEvent, ctx: MouseCo
 
     match event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            if state.chrome.viewer_fullscreen
-                && fullscreen_sort_hit(areas.fullscreen_main_area, x, y, state, view, right_content)
+            if state_mut.chrome.viewer_fullscreen
+                && fullscreen_sort_hit(
+                    areas.fullscreen_main_area,
+                    x,
+                    y,
+                    state_mut,
+                    view_ref,
+                    right_content_ref,
+                )
             {
-                cycle_sort_from_mouse(state, right_content);
+                cycle_sort_from_mouse(state_mut, right_content_ref);
                 return true;
             }
             if contains(areas.tabs_click_rect, x, y) {
-                let mut main_tabs = vec![MainMode::Snapshot, MainMode::Delta];
+                let mut main_tabs = vec![MainMode::Snapshot, MainMode::Delta, MainMode::Settings];
                 if tabs.has_lenses {
                     main_tabs.push(MainMode::Lenses);
                 }
@@ -393,49 +421,50 @@ pub fn handle_mouse_event(state: &mut UblxState, event: MouseEvent, ctx: MouseCo
                     .map(|m| match m {
                         MainMode::Snapshot => "Snapshot",
                         MainMode::Delta => "Delta",
+                        MainMode::Settings => "Settings",
                         MainMode::Lenses => "Lenses",
                         MainMode::Duplicates => "Duplicates",
                     })
                     .collect();
                 if let Some(idx) = click_to_labeled_tab_index(areas.tabs_click_rect, x, &labels) {
-                    state.main_mode = main_tabs[idx];
+                    state_mut.main_mode = main_tabs[idx];
                     return true;
                 }
             }
 
             if contains(areas.left, x, y) {
-                state.panels.focus = PanelFocus::Categories;
-                if let Some(idx) = click_to_list_index(areas.left, y, view.category_list_len) {
-                    state.panels.category_state.select(Some(idx));
+                state_mut.panels.focus = PanelFocus::Categories;
+                if let Some(idx) = click_to_list_index(areas.left, y, view_ref.category_list_len) {
+                    state_mut.panels.category_state.select(Some(idx));
                 }
                 return true;
             }
 
             if contains(areas.middle, x, y) {
-                if middle_sort_hit(areas.middle, x, y, state, view) {
-                    cycle_sort_from_mouse(state, right_content);
+                if middle_sort_hit(areas.middle, x, y, state_mut, view_ref) {
+                    cycle_sort_from_mouse(state_mut, right_content_ref);
                     return true;
                 }
-                state.panels.focus = PanelFocus::Contents;
-                if let Some(idx) = click_to_list_index(areas.middle, y, view.content_len) {
-                    state.panels.content_state.select(Some(idx));
+                state_mut.panels.focus = PanelFocus::Contents;
+                if let Some(idx) = click_to_list_index(areas.middle, y, view_ref.content_len) {
+                    state_mut.panels.content_state.select(Some(idx));
                 }
                 return true;
             }
 
-            if mouse_left_down_right_pane(state, x, y, areas.right, right_content) {
+            if mouse_left_down_right_pane(state_mut, x, y, areas.right, right_content_ref) {
                 return true;
             }
         }
         MouseEventKind::ScrollUp => {
             if contains(areas.right, x, y) {
-                state.panels.preview_scroll = state.panels.preview_scroll.saturating_sub(3);
+                state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_sub(3);
                 return true;
             }
         }
         MouseEventKind::ScrollDown => {
             if contains(areas.right, x, y) {
-                state.panels.preview_scroll = state.panels.preview_scroll.saturating_add(3);
+                state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_add(3);
                 return true;
             }
         }

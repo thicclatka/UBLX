@@ -17,7 +17,7 @@ use super::style;
 use crate::engine::{cache, db_ops::DeltaType};
 use crate::integrations::ZahirFileType as FileType;
 use crate::render::viewers::pdf_preview::PDFPrefetch;
-use crate::utils::ClipboardCopyCommand;
+use crate::utils::{ClipboardCopyCommand, ToastSlot};
 
 /// Re-export snapshot row type for layout/view/render (`path`, category, size).
 pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
@@ -119,7 +119,7 @@ impl ContentSort {
                 delta_dir: self.delta_dir.next(),
                 ..self
             },
-            MainMode::Lenses => self,
+            MainMode::Lenses | MainMode::Settings => self,
         }
     }
 }
@@ -143,7 +143,7 @@ pub struct ThemeState {
 /// Toast notifications stack and per-operation consumed counts.
 #[derive(Default)]
 pub struct ToastState {
-    pub slots: Vec<crate::utils::notifications::ToastSlot>,
+    pub slots: Vec<ToastSlot>,
     pub consumed_per_operation: HashMap<String, usize>,
 }
 
@@ -197,11 +197,21 @@ pub struct ViewerChrome {
     pub viewer_fullscreen: bool,
 }
 
-/// First-run modal: choose `enable_enhance_all` when there was no DB and no local `ublx.toml`.
+/// First-run flow when the index is empty and there is no local `ublx.toml`: pick root, optional path to an existing index, then enhance-all.
 #[derive(Debug, Clone)]
-pub struct InitialEnhancePromptState {
+pub struct StartupPromptState {
+    pub phase: StartupPromptPhase,
+}
+
+#[derive(Debug, Clone)]
+pub enum StartupPromptPhase {
+    /// Single-screen first-run choice: current dir first, then optional recent prior roots.
+    RootChoice {
+        selected_index: usize,
+        roots: Vec<PathBuf>,
+    },
     /// 0 = Yes (full Zahir on index), 1 = No.
-    pub selected_index: usize,
+    Enhance { selected_index: usize },
 }
 
 /// Background snapshot: user request, poll `.ublx_tmp` while running, and completion.
@@ -371,8 +381,9 @@ pub struct UblxState {
     pub session: SessionFlow,
     /// CLI to pipe UTF-8 into for clipboard (see [`ClipboardCopyCommand::detect`]); None if nothing found.
     pub clipboard_copy: Option<ClipboardCopyCommand>,
-    /// Shown once when the indexed dir had no `.ublx` yet and no local config file.
-    pub initial_prompt: Option<InitialEnhancePromptState>,
+    /// Shown once when the indexed dir had an empty snapshot and no local config file.
+    pub startup_prompt: Option<StartupPromptState>,
+    pub settings: SettingsPaneState,
 }
 
 impl Default for UblxState {
@@ -407,7 +418,8 @@ impl UblxState {
             config_written_by_us_at: None,
             session: SessionFlow::default(),
             clipboard_copy: ClipboardCopyCommand::detect(),
-            initial_prompt: None,
+            startup_prompt: None,
+            settings: SettingsPaneState::default(),
         }
     }
 
@@ -475,25 +487,66 @@ impl UblxState {
     }
 }
 
-/// Top-level mode: Snapshot (categories/contents/preview), Delta (added/mod/removed), Duplicates (if any), or Lenses (if any).
+/// Which config file the Settings tab edits (`~/.config/ublx/ublx.toml` vs project `ublx.toml`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SettingsConfigScope {
+    #[default]
+    Global,
+    Local,
+}
+
+/// Settings tab: bool/layout editor, raw TOML preview scroll, and path to the file being edited.
+#[derive(Clone, Debug)]
+pub struct SettingsPaneState {
+    pub scope: SettingsConfigScope,
+    /// Focus row on the left: bool indices, then layout button, then three layout fields when unlocked.
+    pub left_cursor: usize,
+    pub right_scroll: u16,
+    pub layout_unlocked: bool,
+    pub layout_left_buf: String,
+    pub layout_mid_buf: String,
+    pub layout_right_buf: String,
+    /// Resolved path for the active scope (refreshed on enter / scope change).
+    pub editing_path: Option<std::path::PathBuf>,
+}
+
+impl Default for SettingsPaneState {
+    fn default() -> Self {
+        Self {
+            scope: SettingsConfigScope::Global,
+            left_cursor: 0,
+            right_scroll: 0,
+            layout_unlocked: false,
+            layout_left_buf: String::new(),
+            layout_mid_buf: String::new(),
+            layout_right_buf: String::new(),
+            editing_path: None,
+        }
+    }
+}
+
+/// Top-level mode: Snapshot, Delta, Settings, Duplicates (if any), or Lenses (if any).
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum MainMode {
     #[default]
     Snapshot,
     Delta,
+    /// Single-pane config editor (global / local `ublx.toml`).
+    Settings,
     Duplicates,
     Lenses,
 }
 
 impl MainMode {
-    /// Cycle Snapshot → Delta → Lenses (when available) → Duplicates (when available) → Snapshot. Used for `MainModeToggle` (Shift+Tab).
+    /// Cycle Snapshot → Delta → Settings → Lenses (when available) → Duplicates (when available) → Snapshot. Used for `MainModeToggle` (Shift+Tab).
     #[must_use]
     pub fn next(self, has_duplicates: bool, has_lenses: bool) -> MainMode {
         match self {
             MainMode::Snapshot => MainMode::Delta,
-            MainMode::Delta if has_lenses => MainMode::Lenses,
-            MainMode::Delta | MainMode::Lenses if has_duplicates => MainMode::Duplicates,
-            MainMode::Delta | MainMode::Lenses | MainMode::Duplicates => MainMode::Snapshot,
+            MainMode::Delta => MainMode::Settings,
+            MainMode::Settings if has_lenses => MainMode::Lenses,
+            MainMode::Settings | MainMode::Lenses if has_duplicates => MainMode::Duplicates,
+            MainMode::Settings | MainMode::Lenses | MainMode::Duplicates => MainMode::Snapshot,
         }
     }
 }
@@ -509,7 +562,9 @@ pub enum PanelFocus {
 /// Which variant of the spacebar context menu is open (determines items and Enter behavior).
 #[derive(Clone, Debug)]
 pub enum SpaceMenuKind {
-    /// File actions: path is the selected file (relative). `can_open_in_terminal`: when true, Open shows Terminal+GUI; else GUI only.
+    /// File actions for a selected file path (relative): Open, Show in folder, Copy Path,
+    /// optional enhance actions, and add/remove lens. `can_open_in_terminal`: when true,
+    /// Open shows Terminal+GUI; else GUI only.
     FileActions {
         path: String,
         can_open_in_terminal: bool,

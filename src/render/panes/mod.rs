@@ -6,6 +6,7 @@ mod right;
 mod user_selected_mode;
 
 pub mod delta_mode;
+pub mod settings_mode;
 pub mod snapshot_mode;
 
 pub use layout::*;

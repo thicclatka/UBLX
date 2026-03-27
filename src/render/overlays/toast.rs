@@ -8,8 +8,8 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::themes;
 use crate::ui::UI_STRINGS;
-use crate::utils::format::StringObjTraits;
-use crate::utils::notifications::{ToastSlot, level_short, level_style};
+use crate::utils::StringObjTraits;
+use crate::utils::{ToastSlot, level_short, level_style};
 
 /// Draw one toast slot in the given rect (used for stacked toasts).
 pub fn render_toast_slot(f: &mut Frame, area: Rect, slot: &ToastSlot) {

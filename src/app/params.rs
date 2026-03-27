@@ -5,13 +5,12 @@ use std::sync::mpsc;
 
 use crate::config::LayoutOverlay;
 use crate::engine::db_ops::DuplicateGroup;
-use crate::utils::notifications;
+use crate::utils;
 
-/// Dev logging + transparent terminal background (from CLI / config).
+/// Dev logging (from CLI / config).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RunUblxDisplayOpts {
     pub dev: bool,
-    pub transparent: bool,
 }
 
 /// First-run enhance prompt and deferred “full Zahir in background” toast.
@@ -29,7 +28,7 @@ pub struct RunUblxParams<'a> {
     pub dir_to_ublx: &'a Path,
     pub snapshot_done_rx: Option<mpsc::Receiver<(usize, usize, usize)>>,
     pub snapshot_done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
-    pub bumper: Option<&'a notifications::BumperBuffer>,
+    pub bumper: Option<&'a utils::BumperBuffer>,
     pub display: RunUblxDisplayOpts,
     pub theme: Option<String>,
     /// Left/middle/right pane percentages (0–100). Hot-reloadable from config [layout].

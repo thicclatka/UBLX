@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use crate::config::PARALLEL;
 use crate::engine::db_ops::{self, DuplicateGroup};
 use crate::layout::setup;
-use crate::utils::format::clamp_selection;
+use crate::utils::clamp_selection;
 
 use super::view_data;
 

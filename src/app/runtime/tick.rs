@@ -20,7 +20,7 @@ use crate::ui::{
     input::{InputContext, handle_ublx_input},
     snapshot::{show_force_full_enhance_started_toast, show_snapshot_completed_toast},
 };
-use crate::utils::notifications;
+use crate::utils;
 
 const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -37,7 +37,7 @@ pub fn run_tick(
     tick_toasts_and_snapshot(state, categories, all_rows, params, ublx_opts);
 
     if params.display.dev {
-        notifications::move_log_events();
+        utils::move_log_events();
     }
 
     let (view, right_content, delta_data, rows_for_draw) = build_view_and_right_content(
@@ -67,12 +67,13 @@ pub fn run_tick(
         draw_one_frame(terminal, state, &view, &right_content, &draw_inputs)?;
     }
     let layout_for_input = params.layout.clone();
+    let theme_ctx = applets::theme_selector::context_from_state(state, params, theme_name);
     let quit = handle_ublx_input(
         state,
         InputContext {
             view: &view,
             right_content: &right_content,
-            theme_ctx: Some((params.dir_to_ublx, theme_name)),
+            theme_ctx,
             frame_area: {
                 let sz = terminal.size()?;
                 Rect::new(0, 0, sz.width, sz.height)
@@ -157,8 +158,8 @@ fn tick_toasts_and_snapshot(
     poll_snapshot_if_due(state, categories, all_rows, params);
 }
 
-fn prune_toasts(state: &mut setup::UblxState) {
-    state
+fn prune_toasts(state_mut: &mut setup::UblxState) {
+    state_mut
         .toasts
         .slots
         .retain(|s| Instant::now() < s.visible_until);

@@ -18,7 +18,9 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::app;
-use crate::config::{UblxOpts, UblxPaths};
+use crate::config::{
+    UblxOpts, UblxPaths, ensure_global_config_file_with_defaults, record_ublx_session_open,
+};
 use crate::engine::{
     db_ops::{SnapshotReaderPreference, load_lens_names},
     orchestrator,
@@ -26,7 +28,8 @@ use crate::engine::{
 use crate::handlers::{applets::first_run, snapshot};
 use crate::integrations::NefaxResult;
 use crate::layout::setup;
-use crate::utils::notifications;
+use crate::themes::default_theme_for_new_config_file;
+use crate::utils::{BumperBuffer, flush_bumper_to_stderr};
 
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
@@ -35,10 +38,10 @@ pub struct RunAppParams<'a> {
     pub db_path: &'a Path,
     pub ublx_opts: &'a mut UblxOpts,
     pub prior_nefax: Option<&'a NefaxResult>,
-    pub bumper: Option<&'a notifications::BumperBuffer>,
+    pub bumper: Option<&'a BumperBuffer>,
     pub dev: bool,
     pub start_time: Option<Instant>,
-    /// No `.ublx` DB yet and no local `ublx.toml` / `.ublx.toml` — show first-run enhance prompt (TUI only).
+    /// Show first-run welcome when [`crate::config::paths::should_show_initial_prompt`] is true (see its doc).
     pub initial_prompt: bool,
 }
 
@@ -83,7 +86,7 @@ fn run_tui_mode(
     db_path: &Path,
     ublx_opts: &mut UblxOpts,
     prior_nefax: Option<&NefaxResult>,
-    bumper: Option<&notifications::BumperBuffer>,
+    bumper: Option<&BumperBuffer>,
     dev: bool,
     initial_prompt: bool,
 ) -> std::io::Result<()> {
@@ -109,16 +112,16 @@ fn run_tui_mode(
     let lens_names = load_lens_names(db_path).unwrap_or_default();
     let pending_force_full_enhance_toast =
         !initial_prompt && orchestrator::should_force_full_zahir(ublx_opts);
+    if !initial_prompt {
+        let _ = record_ublx_session_open(dir_to_ublx);
+    }
     let mut params = app::RunUblxParams {
         db_path,
         dir_to_ublx,
         snapshot_done_rx: Some(rx),
         snapshot_done_tx: Some(tx_for_tui),
         bumper,
-        display: app::RunUblxDisplayOpts {
-            dev,
-            transparent: ublx_opts.transparent,
-        },
+        display: app::RunUblxDisplayOpts { dev },
         theme: ublx_opts.theme.clone(),
         layout: ublx_opts.layout.clone(),
         duplicate_groups: Vec::new(),
@@ -134,13 +137,13 @@ fn run_tui_mode(
     if let Some(b) = bumper
         && dev
     {
-        notifications::flush_bumper_to_stderr(b);
+        flush_bumper_to_stderr(b);
     }
     Ok(())
 }
 
 /// Restore terminal to cooked mode, leave alternate screen, show cursor. Used on normal exit and from panic hook.
-fn restore_terminal() {
+pub fn restore_terminal() {
     let _ = disable_raw_mode();
     let mut out = io::stdout();
     let _ = crossterm::execute!(out, DisableMouseCapture, LeaveAlternateScreen, ShowCursor);
@@ -180,8 +183,14 @@ pub fn run_ublx(params: &mut app::RunUblxParams<'_>, ublx_opts: &mut UblxOpts) -
     let (mut categories, mut all_rows) =
         app::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
+    {
+        let paths = UblxPaths::new(params.dir_to_ublx);
+        if let Some(g) = paths.global_config() {
+            ensure_global_config_file_with_defaults(&g, default_theme_for_new_config_file());
+        }
+    }
     if params.startup.defer_first_snapshot {
-        first_run::init_prompt_state(&mut state);
+        first_run::init_prompt_state(&mut state, params.dir_to_ublx);
     }
     debug!(
         "clipboard copy command: {}",

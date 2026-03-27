@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::layout::{filter, setup};
-use crate::utils::format::{clamp_selection, clamp_selection_opt};
+use crate::utils::{clamp_selection, clamp_selection_opt};
 
 fn sort_indices_by_mode(
     indices: &mut [usize],
@@ -83,24 +83,24 @@ fn selected_category(filtered_categories: &[String], category_idx: usize) -> Opt
 }
 
 /// Clamp category list selection to valid range and update state.
-fn clamp_category_selection(state: &mut setup::UblxState, category_list_len: usize) {
+fn clamp_category_selection(state_mut: &mut setup::UblxState, category_list_len: usize) {
     if category_list_len == 0 {
         return;
     }
-    let category_idx = state.panels.category_state.selected().unwrap_or(0);
-    state
+    let category_idx = state_mut.panels.category_state.selected().unwrap_or(0);
+    state_mut
         .panels
         .category_state
         .select(Some(clamp_selection(category_idx, category_list_len)));
 }
 
 /// Clamp content list selection to valid range and update state.
-fn clamp_content_selection(state: &mut setup::UblxState, content_len: usize) {
-    let current = state.panels.content_state.selected().unwrap_or(0);
+fn clamp_content_selection(state_mut: &mut setup::UblxState, content_len: usize) {
+    let current = state_mut.panels.content_state.selected().unwrap_or(0);
     if let Some(sel) = clamp_selection_opt(current, content_len) {
-        state.panels.content_state.select(Some(sel));
+        state_mut.panels.content_state.select(Some(sel));
     } else {
-        state.panels.content_state.select(None);
+        state_mut.panels.content_state.select(None);
     }
 }
 
@@ -137,32 +137,32 @@ pub fn build_user_selected_mode_view_data(
 }
 
 /// Clamp category and content list selection from a [`ViewData`]. Shared by Duplicates and Lenses (and any two-pane list mode).
-pub fn clamp_two_pane_selection(state: &mut setup::UblxState, view: &setup::ViewData) {
-    clamp_category_selection(state, view.category_list_len);
-    clamp_content_selection(state, view.content_len);
+pub fn clamp_two_pane_selection(state_mut: &mut setup::UblxState, view_ref: &setup::ViewData) {
+    clamp_category_selection(state_mut, view_ref.category_list_len);
+    clamp_content_selection(state_mut, view_ref.content_len);
 }
 
 /// Reset preview scroll when category or content selection changes.
-fn sync_preview_scroll(state: &mut setup::UblxState, category_idx: usize) {
-    let content_sel = state.panels.content_state.selected();
+fn sync_preview_scroll(state_mut: &mut setup::UblxState, category_idx: usize) {
+    let content_sel = state_mut.panels.content_state.selected();
     let preview_key = (category_idx, content_sel);
-    if state.panels.prev_preview_key.as_ref() != Some(&preview_key) {
-        state.panels.preview_scroll = 0;
-        state.panels.prev_preview_key = Some(preview_key);
+    if state_mut.panels.prev_preview_key.as_ref() != Some(&preview_key) {
+        state_mut.panels.preview_scroll = 0;
+        state_mut.panels.prev_preview_key = Some(preview_key);
     }
 }
 
 /// Compute filtered categories and contents from search + category selection; clamp list
 /// selection and reset preview scroll when selection changes.
 pub fn build_view_data(
-    state: &mut setup::UblxState,
+    state_mut: &mut setup::UblxState,
     categories: &[String],
     all_rows: &[setup::TuiRow],
     mtimes_by_path: Option<&HashMap<String, Option<i64>>>,
 ) -> setup::ViewData {
-    let search_query = state.search.query.trim();
+    let search_query = state_mut.search.query.trim();
     let filtered_categories = filter::categories_for_search(categories, all_rows, search_query);
-    let category_idx = state.panels.category_state.selected().unwrap_or(0);
+    let category_idx = state_mut.panels.category_state.selected().unwrap_or(0);
     let selected_category = selected_category(&filtered_categories, category_idx);
     let contents_indices =
         filter::content_indices_for_view(all_rows, selected_category, search_query);
@@ -170,16 +170,16 @@ pub fn build_view_data(
     sort_indices_by_mode(
         &mut contents_indices,
         all_rows,
-        state.panels.content_sort,
+        state_mut.panels.content_sort,
         mtimes_by_path,
     );
 
     let category_list_len = 1 + filtered_categories.len();
     let content_len = contents_indices.len();
 
-    clamp_category_selection(state, category_list_len);
-    clamp_content_selection(state, content_len);
-    sync_preview_scroll(state, category_idx);
+    clamp_category_selection(state_mut, category_list_len);
+    clamp_content_selection(state_mut, content_len);
+    sync_preview_scroll(state_mut, category_idx);
 
     setup::ViewData {
         filtered_categories,

@@ -33,9 +33,10 @@ fn duration_secs_from_probe(path: &Path) -> Option<f64> {
 /// Returns a short message when `ffmpeg` cannot be run, exits non-zero, or output is not a valid image.
 pub fn decode_preview_frame(path: &Path) -> Result<DynamicImage, String> {
     let path_str = path.to_str().ok_or("invalid path")?;
-    let seek = duration_secs_from_probe(path)
-        .map(|d| format!("{}", d * 0.5))
-        .unwrap_or_else(|| FALLBACK_SEEK_SECS.to_string());
+    let seek = duration_secs_from_probe(path).map_or_else(
+        || FALLBACK_SEEK_SECS.to_string(),
+        |d| format!("{}", d * 0.5),
+    );
 
     let out = Command::new("ffmpeg")
         .args([

@@ -21,13 +21,19 @@ pub fn render_context_menu(
     anchor_area: Rect,
     anchor_row_index: usize,
 ) {
+    // File actions are shown in this order: Open, Show in folder, Copy Path,
+    // optional enhance actions, then lens action.
     let (title, items): (&str, Vec<&str>) = match kind {
         SpaceMenuKind::FileActions {
             show_enhance_directory_policy,
             show_enhance_zahir,
             ..
         } => {
-            let mut items = vec![UI_STRINGS.space.open, UI_STRINGS.space.show_in_folder];
+            let mut items = vec![
+                UI_STRINGS.space.open,
+                UI_STRINGS.space.show_in_folder,
+                UI_STRINGS.space.copy_path,
+            ];
             if *show_enhance_directory_policy {
                 items.push(UI_STRINGS.space.enhance_policy);
             }

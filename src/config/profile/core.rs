@@ -14,9 +14,9 @@ pub struct LayoutOverlay {
 impl Default for LayoutOverlay {
     fn default() -> Self {
         Self {
-            left_pct: 20,
+            left_pct: 10,
             middle_pct: 30,
-            right_pct: 50,
+            right_pct: 60,
         }
     }
 }
@@ -44,7 +44,7 @@ pub struct EnhancePolicyEntry {
 
 /// Config overlay read from config files. Only present keys override; used for global + local overlay.
 /// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
-/// [theme], [transparent], [layout], [hash], and [`show_hidden_files`] are hot-reloadable; [exclude] is applied only at startup.
+/// [theme], [layout], [hash], and [`show_hidden_files`] are hot-reloadable; [exclude] is applied only at startup.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UblxOverlay {
@@ -59,9 +59,6 @@ pub struct UblxOverlay {
     /// Theme selection (e.g. "default"). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
-    /// When true, do not paint app background; terminal default (or transparency) shows through. Hot-reloadable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transparent: Option<bool>,
     /// Optional [layout] section: left/middle/right pane percentages. Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<LayoutOverlay>,
@@ -72,6 +69,9 @@ pub struct UblxOverlay {
     /// When `false` (default), only nefax + path-based category from `ZahirScan` file-type hints; empty `zahir_json` until per-file "Enhance with `ZahirScan`" or flip to `true` (next run re-enhances all). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_enhance_all: Option<bool>,
+    /// When `false`, skip the first-run "Enhance all files" prompt for a new root; use [`Self::enable_enhance_all`] from config instead. Set in `~/.config/ublx/ublx.toml` to stop being asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ask_enhance_on_new_root: Option<bool>,
     /// Optional per-path subtree rules for index-time Zahir (`[[enhance_policy]]`). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enhance_policy: Option<Vec<EnhancePolicyEntry>>,
@@ -92,9 +92,6 @@ impl UblxOverlay {
         if other.theme.is_some() {
             self.theme.clone_from(&other.theme);
         }
-        if other.transparent.is_some() {
-            self.transparent = other.transparent;
-        }
         if other.layout.is_some() {
             self.layout.clone_from(&other.layout);
         }
@@ -103,6 +100,9 @@ impl UblxOverlay {
         }
         if other.enable_enhance_all.is_some() {
             self.enable_enhance_all = other.enable_enhance_all;
+        }
+        if other.ask_enhance_on_new_root.is_some() {
+            self.ask_enhance_on_new_root = other.ask_enhance_on_new_root;
         }
         if other.enhance_policy.is_some() {
             self.enhance_policy.clone_from(&other.enhance_policy);

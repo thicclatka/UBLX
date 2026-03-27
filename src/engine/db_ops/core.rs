@@ -12,7 +12,7 @@ use rusqlite::{Connection, OptionalExtension};
 use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
 use super::utils::{self as db_ops_utils, SnapshotPriorContext};
 
-use crate::config::{UblxPaths, UblxSettings};
+use crate::config::{UblxPaths, UblxSettings, rel_path_is_exact_local_config_toml};
 use crate::integrations::{
     NefaxDiff, NefaxResult, ZahirOutput, ZahirResult, get_zahir_output_by_path,
     zahir_output_to_json_for_path,
@@ -351,6 +351,43 @@ pub fn snapshot_has_any_row(db_path: &Path) -> bool {
         return false;
     }
     db_ops_utils::snapshot_table_has_rows(db_path)
+}
+
+/// True if `snapshot` has at least one row that is real indexed project content (not local config filenames, not absolute-path rows).
+///
+/// First-run in `main` uses this instead of [`snapshot_has_any_row`]: legacy `ublx.toml` / `.ublx.toml`
+/// rows or stray rows must not hide the welcome screen.
+#[must_use]
+pub fn snapshot_has_indexed_paths(db_path: &Path) -> bool {
+    if !db_path.exists() {
+        return false;
+    }
+    let Ok(conn) = Connection::open(db_path) else {
+        return false;
+    };
+    let Ok(mut stmt) = conn.prepare("SELECT path FROM snapshot") else {
+        return false;
+    };
+    let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) else {
+        return false;
+    };
+    for row in rows {
+        let Ok(path_str) = row else {
+            continue;
+        };
+        if snapshot_row_is_indexed_path(&path_str) {
+            return true;
+        }
+    }
+    false
+}
+
+fn snapshot_row_is_indexed_path(path_str: &str) -> bool {
+    let trim = path_str.trim();
+    if Path::new(trim).is_absolute() {
+        return false;
+    }
+    !rel_path_is_exact_local_config_toml(path_str)
 }
 
 /// Load (path, `zahir_json`) from the snapshot table for paths that have non-empty `zahir_json`. Use when reusing prior zahir for unchanged mtime. Empty if DB missing or table empty.

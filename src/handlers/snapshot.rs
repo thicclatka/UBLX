@@ -8,7 +8,7 @@ use crate::engine::{db_ops, orchestrator};
 use crate::fatal;
 use crate::integrations::NefaxResult;
 use crate::themes;
-use crate::utils::notifications::BumperBuffer;
+use crate::utils::BumperBuffer;
 
 /// Run snapshot pipeline in test mode (no TUI).
 /// Returns `Err` on failure.

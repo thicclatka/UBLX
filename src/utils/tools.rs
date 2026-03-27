@@ -130,6 +130,23 @@ pub fn validate_dir(path: &std::path::Path) -> PathBuf {
     })
 }
 
+/// Like [`validate_dir`] but returns `Err` instead of exiting (e.g. first-run path input).
+///
+/// # Errors
+///
+/// Returns `Err` with a message if the path does not exist, is not a directory, or cannot be canonicalized.
+pub fn try_validate_dir(path: &Path) -> Result<PathBuf, String> {
+    let path = expand_home_dir_arg(path);
+    if !path.exists() {
+        return Err(format!("no such file or directory: {}", path.display()));
+    }
+    if !path.is_dir() {
+        return Err(format!("not a directory: {}", path.display()));
+    }
+    path.canonicalize()
+        .map_err(|e| format!("cannot canonicalize '{}': {e}", path.display()))
+}
+
 #[must_use]
 pub fn canonicalize_dir_to_ublx(dir_to_ublx: &Path) -> PathBuf {
     dir_to_ublx

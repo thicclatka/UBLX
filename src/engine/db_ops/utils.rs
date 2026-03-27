@@ -2,7 +2,6 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 
 use log::{debug, warn};
 use rayon::prelude::*;
@@ -15,7 +14,7 @@ use crate::integrations::{
     NefaxDiff, NefaxPathMeta, NefaxResult, ZahirOutput, zahir_metadata_name_from_indexed_file,
     zahir_output_to_json_for_path,
 };
-use crate::utils::path::snapshot_rel_path_buf;
+use crate::utils::snapshot_rel_path_buf;
 
 /// How often to emit [`debug_snapshot_write_progress`] (also logs the first step, and the last when `total` is known).
 pub const SNAPSHOT_DB_WRITE_PROGRESS_LOG_EVERY: u64 = 10_000;
@@ -62,6 +61,7 @@ pub fn get_full_path_and_path_str(dir_to_ublx: &Path, path_ref: &Path) -> (PathB
 /// Returns [`anyhow::Error`] on `SQLite` I/O or schema initialization errors.
 pub fn ensure_ublx_and_db(dir_to_ublx: &Path) -> Result<PathBuf, anyhow::Error> {
     let paths = UblxPaths::new(dir_to_ublx);
+    let _ = paths.ensure_db_dir()?;
     let path = paths.db();
     let conn = Connection::open(&path)?;
     conn.execute_batch(&UblxDbSchema::create_ublx_db_sql())?;
@@ -113,11 +113,11 @@ pub fn prepare_results_for_snapshot_insertion(
 /// Hash is owned so the vec can be built in parallel (Send).
 type SnapshotInsertRow = (String, String, String, i64, i64, Option<Vec<u8>>);
 
-/// Insert all nefax rows into the prepared snapshot `INSERT` statement, then optional global config row.
+/// Insert all nefax rows into the prepared snapshot `INSERT` statement.
 ///
 /// # Errors
 ///
-/// Returns [`anyhow::Error`] on `SQLite` execute errors or filesystem metadata errors when inserting global config.
+/// Returns [`anyhow::Error`] on `SQLite` execute errors.
 pub fn insert_results_into_snapshot(
     stmt: &mut Statement,
     nefax: &NefaxResult,
@@ -196,44 +196,6 @@ pub fn insert_results_into_snapshot(
             );
         }
     }
-    insert_global_config_row_if_exists(stmt, ublx_paths)?;
-    Ok(())
-}
-
-/// If global config file exists, insert a row under UBLX Settings with path = absolute path to that config.
-fn insert_global_config_row_if_exists(
-    stmt: &mut Statement,
-    ublx_paths: Option<&UblxPaths>,
-) -> Result<(), anyhow::Error> {
-    let Some(paths) = ublx_paths else {
-        return Ok(());
-    };
-    let Some(global_path) = paths.global_config() else {
-        return Ok(());
-    };
-    if !global_path.exists() {
-        return Ok(());
-    }
-    let (mtime_ns, size) = fs::metadata(&global_path)
-        .map(|m| {
-            let mtime_ns = m
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX));
-            let size = m.len().cast_signed();
-            (mtime_ns, size)
-        })
-        .unwrap_or((0, 0));
-    let path_str = global_path.to_string_lossy().into_owned();
-    stmt.execute(rusqlite::params![
-        path_str,
-        mtime_ns,
-        size,
-        None::<&[u8]>,
-        UblxDbCategory::UblxSettings.as_str(),
-        "",
-    ])?;
     Ok(())
 }
 
@@ -269,7 +231,6 @@ pub fn insert_nefax_only_into_snapshot(
         ])?;
         debug_snapshot_write_progress("snapshot rows insert (Nefax)", i as u64 + 1, Some(total));
     }
-    insert_global_config_row_if_exists(stmt, ublx_paths)?;
     Ok(())
 }
 

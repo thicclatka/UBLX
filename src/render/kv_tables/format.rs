@@ -3,7 +3,7 @@
 use ratatui::style::Style;
 
 use crate::themes::DEFAULT_COLORS;
-use crate::utils::format::Epsilon;
+use crate::utils::Epsilon;
 use crate::utils::format_bytes;
 
 /// Words that are displayed in full caps (e.g. "svo" -> "SVO", "pdf" -> "PDF").

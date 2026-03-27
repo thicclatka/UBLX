@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::layout::style;
 use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_GLYPHS, UI_STRINGS};
-use crate::utils::format::StringObjTraits;
+use crate::utils::StringObjTraits;
 
 /// Draw centered popup with theme list; **Dark** / **Light** rows are centered in the inner width; theme name rows are left-aligned (swatch + name). See `themes::theme_ordered_list` for order.
 pub fn render_theme_selector(f: &mut Frame, selected_index: usize) {

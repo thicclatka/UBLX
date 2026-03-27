@@ -2,7 +2,7 @@ use ratatui::layout::Constraint;
 use ratatui::style::Style;
 use ratatui::text::Span;
 
-use crate::utils::format::StringObjTraits;
+use crate::utils::StringObjTraits;
 
 /// Generic and feature-specific loading lines.
 pub struct UiStringsLoading {
@@ -50,6 +50,7 @@ pub struct UiStringsList {
 pub struct UiStringsMainTabs {
     pub snapshot: &'static str,
     pub delta: &'static str,
+    pub settings: &'static str,
     pub duplicates: &'static str,
     pub lenses: &'static str,
 }
@@ -114,6 +115,14 @@ pub struct UiStringsLens {
 
 /// First launch: no local `ublx.toml` yet.
 pub struct UiStringsFirstRun {
+    pub welcome_title: &'static str,
+    pub root_choice_title: &'static str,
+    pub root_choice_footer: &'static str,
+    pub recent_heading: &'static str,
+    pub index_this_dir: &'static str,
+    pub open_prior_ublx: &'static str,
+    pub prior_pick_title: &'static str,
+    pub path_prompt_footer: &'static str,
     pub enhance_prompt_title: &'static str,
     /// Shown below Yes/No (hint style). `ublx.toml` / `.ublx.toml`: `enable_enhance_all`.
     pub enhance_prompt_footnote: &'static str,
@@ -125,6 +134,7 @@ pub struct UiStringsSpaceMenu {
     pub open: &'static str,
     /// Reveal in Finder / Explorer, or open parent folder (Linux).
     pub show_in_folder: &'static str,
+    pub copy_path: &'static str,
     /// Index-time batch Zahir for this directory subtree (`[[enhance_policy]]`); snapshot Directory rows only.
     pub enhance_policy: &'static str,
     pub enhance_policy_always: &'static str,
@@ -217,6 +227,7 @@ impl UiStrings {
         UiStringsMainTabs {
             snapshot: "Snapshot",
             delta: "Delta",
+            settings: "Settings",
             duplicates: "Duplicates",
             lenses: "Lenses",
         }
@@ -295,6 +306,7 @@ impl UiStrings {
         UiStringsSpaceMenu {
             open: "Open",
             show_in_folder: "Show in folder",
+            copy_path: "Copy Path",
             enhance_policy: "Enhance policy",
             enhance_policy_always: "Always (automatic)",
             enhance_policy_never: "Per-file (manual)",
@@ -308,8 +320,16 @@ impl UiStrings {
 
     const fn first_run() -> UiStringsFirstRun {
         UiStringsFirstRun {
+            welcome_title: "Welcome to UBLX",
+            root_choice_title: "Choose where to start:",
+            root_choice_footer: "Enter — confirm   Esc / q — quit",
+            recent_heading: "Recent UBLX",
+            index_this_dir: "Index this directory",
+            open_prior_ublx: "Open prior ublx",
+            prior_pick_title: "Pick a prior ublx root",
+            path_prompt_footer: "Enter — open   Esc — back",
             enhance_prompt_title: "Index with full ZahirScan for all files automatically?",
-            enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in settings file (`enable_enhance_all`).",
+            enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in `ublx.toml` (`enable_enhance_all`).\nTo turn off this prompt: `ask_enhance_on_new_root = false` in Global Settings (CONFIG_DIR/ublx.toml).\nDefault is off unless you set `enable_enhance_all = true`.",
             enhance_yes: "Yes",
             enhance_no: "No",
         }
@@ -484,6 +504,10 @@ pub struct UiGlyphs {
     pub arrow_up: char,
     /// Sort direction glyph for descending/down.
     pub arrow_down: char,
+    /// Settings left pane: prefix when this row is focused (`›` + space).
+    pub settings_row_active: &'static str,
+    /// Two-space indent: inactive Settings row prefix and wrapped path continuation lines.
+    pub indent_two_spaces: &'static str,
 }
 
 impl Default for UiGlyphs {
@@ -511,6 +535,8 @@ impl UiGlyphs {
             markdown_image: '\u{1f5bc}',      // 🖼 (framed picture)
             arrow_up: '\u{2191}',             // ↑
             arrow_down: '\u{2193}',           // ↓
+            settings_row_active: "\u{203a} ", // ›
+            indent_two_spaces: "  ",
         }
     }
 }

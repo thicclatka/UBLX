@@ -1,12 +1,22 @@
 use anyhow::Result;
 use std::{
-    env, fs,
+    collections::hash_map::Entry,
+    env,
+    ffi::OsStr,
+    fs,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 /// Package name from Cargo; used as stem for all index files.
 pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+/// Plural of `PKG_NAME` for the directory name.
+pub const PKG_NAME_PLURAL: &str = "ubli";
+/// Basename of visible local config (`ublx.toml`). Same leaf as [`UblxPaths::visible_toml`].
+pub const LOCAL_CONFIG_VISIBLE_TOML: &str = concat!(env!("CARGO_PKG_NAME"), ".toml");
+/// Basename of hidden local config (`.ublx.toml`). Same leaf as [`UblxPaths::hidden_toml`].
+pub const LOCAL_CONFIG_HIDDEN_TOML: &str = concat!(".", env!("CARGO_PKG_NAME"), ".toml");
 /// Name of the Nefaxer DB file.
 pub const NEFAX_DB: &str = ".nefaxer";
 
@@ -16,6 +26,23 @@ pub fn path_to_hex(path: &Path) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     path.to_string_lossy().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
+}
+
+fn sanitize_name_for_fs(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    let trimmed = out.trim_matches('_');
+    if trimmed.is_empty() {
+        "root".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// User config directory for ublx. Global config lives here (e.g. `ublx.toml`).
@@ -56,10 +83,313 @@ fn cache_dir() -> Option<PathBuf> {
     }
 }
 
+/// Per-project `SQLite` files live under `cache_dir()/ubli/` (e.g. `~/.local/share/ublx/ubli`).
+#[must_use]
+fn db_dir() -> Option<PathBuf> {
+    cache_dir().map(|c| c.join(PKG_NAME_PLURAL))
+}
+
+/// Per-indexed-dir metadata for welcome-screen recents: `cache_dir()/recents/<path_hash>.txt`.
+const RECENTS_SUBDIR: &str = "recents";
+
+/// Weight for [`times_opened`] in [`recents_composite_score`]: each session open adds this many
+/// effective nanoseconds so frequently opened roots stay competitive vs raw `last_open_ns`.
+const RECENTS_OPEN_WEIGHT_NS: u128 = 3_600_000_000_000; // 1 hour per open
+
+#[must_use]
+fn recents_dir() -> Option<PathBuf> {
+    cache_dir().map(|c| c.join(RECENTS_SUBDIR))
+}
+
+#[must_use]
+fn now_ns() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+}
+
+#[derive(Debug, Clone)]
+struct RecentsFileData {
+    path: PathBuf,
+    times_opened: u64,
+    last_open_ns: u64,
+}
+
+fn fmt_recents_txt(data: &RecentsFileData) -> String {
+    format!(
+        "path={}\ntimes_opened={}\nlast_open_ns={}\n",
+        data.path.to_string_lossy(),
+        data.times_opened,
+        data.last_open_ns
+    )
+}
+
+fn parse_recents_txt(content: &str) -> Option<RecentsFileData> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if !trimmed.contains('=') {
+        let p = PathBuf::from(trimmed);
+        return Some(RecentsFileData {
+            path: p,
+            times_opened: 0,
+            last_open_ns: 0,
+        });
+    }
+    let mut path: Option<PathBuf> = None;
+    let mut times_opened: u64 = 0;
+    let mut last_open_ns: u64 = 0;
+    for line in trimmed.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let (k, v) = line.split_once('=')?;
+        match k.trim() {
+            "path" => path = Some(PathBuf::from(v.trim())),
+            "times_opened" => times_opened = v.trim().parse().unwrap_or(0),
+            "last_open_ns" => last_open_ns = v.trim().parse().unwrap_or(0),
+            _ => {}
+        }
+    }
+    path.map(|p| RecentsFileData {
+        path: p,
+        times_opened,
+        last_open_ns,
+    })
+}
+
+fn read_recents_file(path: &Path) -> Option<RecentsFileData> {
+    let s = fs::read_to_string(path).ok()?;
+    parse_recents_txt(&s)
+}
+
+/// Composite ordering: mostly `last_open_ns`, with a boost from `times_opened`.
+#[must_use]
+fn recents_composite_score(data: &RecentsFileData) -> u128 {
+    (data.last_open_ns as u128)
+        .saturating_add((data.times_opened as u128).saturating_mul(RECENTS_OPEN_WEIGHT_NS))
+}
+
+/// True if `cache_dir()/recents/{path_hash(dir)}.txt` exists (this root was registered after the welcome flow).
+#[must_use]
+pub fn has_recents_entry_for_dir(dir: &Path) -> bool {
+    let Some(recents) = recents_dir() else {
+        return false;
+    };
+    let key = path_to_hex(dir);
+    recents.join(format!("{key}.txt")).exists()
+}
+
+/// Whether to show the first-run welcome UI for this indexed root.
+///
+/// **Product rule:** when not in test mode, show if this root has **never** been registered for the
+/// welcome flow: either there is no recents cache entry (`cache_dir()/recents/<path_hash>.txt`), or
+/// the per-root `SQLite` file under [`UblxPaths::db`] does not exist yet.
+///
+/// Local `ublx.toml` / `.ublx.toml` is **not** part of this gate — Settings may create it before the
+/// first index.
+///
+/// Callers should compute `had_recents_entry` with [`has_recents_entry_for_dir`] and
+/// `had_ubli_db_file` with `UblxPaths::new(dir).db().exists()` **before** [`crate::engine::db_ops::ensure_ublx_and_db`]
+/// (same order as [`crate::main`]).
+#[must_use]
+pub fn should_show_initial_prompt(
+    test_mode: bool,
+    had_recents_entry: bool,
+    had_ubli_db_file: bool,
+) -> bool {
+    !test_mode && (!had_recents_entry || !had_ubli_db_file)
+}
+
+/// True when the shared `ubli` directory contains at least one DB file.
+#[must_use]
+pub fn has_any_cached_ublx_db() -> bool {
+    let Some(dir) = db_dir() else {
+        return false;
+    };
+    let Ok(rd) = fs::read_dir(dir) else {
+        return false;
+    };
+    rd.flatten().any(|e| {
+        e.path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| {
+                n.starts_with(&format!("{PKG_NAME}_")) || n.ends_with(&format!("_{PKG_NAME}"))
+            })
+    })
+}
+
+/// Register this root after first-run **UBLX here**: creates or updates `recents` entry (path, `last_open_ns`; `times_opened` starts at 0 and is incremented by [`record_ublx_session_open`] on each post-prompt session).
+///
+/// # Errors
+///
+/// Returns an error if the recents directory cannot be created or the recents file cannot be written.
+pub fn remember_indexed_root_path(dir: &Path) -> Result<()> {
+    let Some(recents) = recents_dir() else {
+        return Ok(());
+    };
+    fs::create_dir_all(&recents)?;
+    let key = path_to_hex(dir);
+    let canon = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let path_file = recents.join(format!("{key}.txt"));
+    let mut data = read_recents_file(&path_file).unwrap_or(RecentsFileData {
+        path: canon.clone(),
+        times_opened: 0,
+        last_open_ns: 0,
+    });
+    data.path = canon;
+    data.last_open_ns = now_ns();
+    fs::write(path_file, fmt_recents_txt(&data))?;
+    Ok(())
+}
+
+/// Refresh `last_open_ns` when the user picks a prior root from the welcome list (does not create a file).
+/// Session `times_opened` is updated when the new process runs [`record_ublx_session_open`].
+///
+/// # Errors
+///
+/// Returns an error if the recents file cannot be written.
+pub fn record_prior_root_selected(dir: &Path) -> Result<()> {
+    let Some(recents) = recents_dir() else {
+        return Ok(());
+    };
+    let key = path_to_hex(dir);
+    let canon = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let path_file = recents.join(format!("{key}.txt"));
+    if !path_file.exists() {
+        return Ok(());
+    }
+    let Some(mut data) = read_recents_file(&path_file) else {
+        return Ok(());
+    };
+    data.path = canon;
+    data.last_open_ns = now_ns();
+    fs::write(path_file, fmt_recents_txt(&data))?;
+    Ok(())
+}
+
+/// Each normal TUI session for a root that already has a recents file: increment `times_opened`, refresh `last_open_ns`.
+/// Does not create a file (first registration is only via [`remember_indexed_root_path`] after **UBLX here**).
+///
+/// # Errors
+///
+/// Returns an error if the recents file cannot be written.
+pub fn record_ublx_session_open(dir: &Path) -> Result<()> {
+    let Some(recents) = recents_dir() else {
+        return Ok(());
+    };
+    let key = path_to_hex(dir);
+    let canon = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let path_file = recents.join(format!("{key}.txt"));
+    if !path_file.exists() {
+        return Ok(());
+    }
+    let Some(mut data) = read_recents_file(&path_file) else {
+        return Ok(());
+    };
+    data.path = canon;
+    data.times_opened = data.times_opened.saturating_add(1);
+    data.last_open_ns = now_ns();
+    fs::write(path_file, fmt_recents_txt(&data))?;
+    Ok(())
+}
+
+/// Collect all recents entries
+fn collect_recents_entries() -> Vec<RecentsFileData> {
+    let Some(dir) = recents_dir() else {
+        return Vec::new();
+    };
+    let Ok(rd) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut best: std::collections::HashMap<PathBuf, RecentsFileData> =
+        std::collections::HashMap::new();
+    for entry in rd.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("txt") {
+            continue;
+        }
+        let Some(mut data) = read_recents_file(&p) else {
+            continue;
+        };
+        let canon = data
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| data.path.clone());
+        data.path.clone_from(&canon);
+        match best.entry(canon) {
+            Entry::Occupied(mut o) => {
+                let ex = o.get_mut();
+                if data.last_open_ns > ex.last_open_ns
+                    || (data.last_open_ns == ex.last_open_ns && data.times_opened > ex.times_opened)
+                {
+                    *ex = data;
+                }
+            }
+            Entry::Vacant(v) => {
+                v.insert(data);
+            }
+        }
+    }
+    best.into_values().collect()
+}
+
+/// Prior indexed roots that still look valid (directory exists and has a DB file), excluding `current`.
+#[must_use]
+pub fn prior_indexed_roots(current: &Path) -> Vec<PathBuf> {
+    prior_indexed_roots_scored(current, usize::MAX)
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect()
+}
+
+/// Scoring prior indexed roots based on time last opened and times opened
+fn prior_indexed_roots_scored(current: &Path, max: usize) -> Vec<(PathBuf, RecentsFileData)> {
+    let current_canon = current
+        .canonicalize()
+        .unwrap_or_else(|_| current.to_path_buf());
+    let mut scored: Vec<(PathBuf, RecentsFileData)> = Vec::new();
+    for mut data in collect_recents_entries() {
+        let dir = data
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| data.path.clone());
+        if dir == current_canon || !dir.is_dir() {
+            continue;
+        }
+        let db = UblxPaths::new(&dir).db();
+        if !db.exists() {
+            continue;
+        }
+        data.path.clone_from(&dir);
+        scored.push((dir, data));
+    }
+    scored.sort_by(|a, b| {
+        recents_composite_score(&b.1)
+            .cmp(&recents_composite_score(&a.1))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    scored.truncate(max);
+    scored
+}
+
+/// Same as [`prior_indexed_roots`], but sorted by [`recents_composite_score`], capped.
+#[must_use]
+pub fn prior_indexed_roots_recent(current: &Path, max: usize) -> Vec<PathBuf> {
+    prior_indexed_roots_scored(current, max)
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect()
+}
+
 /// Path to the global config file: `config_dir()/ublx.toml`. `None` if [`config_dir`] is unavailable.
 #[must_use]
 pub fn global_config_toml() -> Option<PathBuf> {
-    config_dir().map(|c| c.join(format!("{PKG_NAME}.toml")))
+    config_dir().map(|c| c.join(LOCAL_CONFIG_VISIBLE_TOML))
 }
 
 /// Path to the cached "last applied" config for this dir: `cache_dir()/configs/[path_hex].toml`.
@@ -67,6 +397,18 @@ pub fn global_config_toml() -> Option<PathBuf> {
 #[must_use]
 pub fn last_applied_config_path(dir: &Path) -> Option<PathBuf> {
     cache_dir().map(|c| c.join("configs").join(format!("{}.toml", path_to_hex(dir))))
+}
+
+/// True if `path_str` is a relative snapshot path equal only to [`LOCAL_CONFIG_VISIBLE_TOML`] / [`LOCAL_CONFIG_HIDDEN_TOML`] at the indexed root (normalized).
+#[must_use]
+pub fn rel_path_is_exact_local_config_toml(path_str: &str) -> bool {
+    let trim = path_str.trim();
+    if Path::new(trim).is_absolute() {
+        return false;
+    }
+    let norm = trim.replace('\\', "/");
+    let norm = norm.trim_start_matches("./");
+    norm == LOCAL_CONFIG_VISIBLE_TOML || norm == LOCAL_CONFIG_HIDDEN_TOML
 }
 
 /// Paths for the index DB and related files under an indexed `dir_to_ublx_abs`. All names use `PKG_NAME` (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
@@ -83,6 +425,35 @@ impl UblxPaths {
         }
     }
 
+    fn db_stem(&self) -> String {
+        let dir_name = self
+            .dir_to_ublx_abs
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("root");
+        let safe_name = sanitize_name_for_fs(dir_name);
+        let hash = path_to_hex(&self.dir_to_ublx_abs);
+        format!("{safe_name}_{hash}")
+    }
+
+    #[must_use]
+    pub fn db_dir(&self) -> Option<PathBuf> {
+        db_dir()
+    }
+
+    /// Ensure the cache db folder exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`anyhow::Error`] when creating the db directory fails.
+    pub fn ensure_db_dir(&self) -> Result<PathBuf> {
+        let dir = self
+            .db_dir()
+            .ok_or_else(|| anyhow::anyhow!("could not resolve user cache directory"))?;
+        fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
     #[must_use]
     pub fn log_path(&self) -> PathBuf {
         self.dir_to_ublx_abs.join(format!("{PKG_NAME}.log"))
@@ -91,13 +462,13 @@ impl UblxPaths {
     /// Hidden config path: `dir_to_ublx_abs/.ublx.toml`.
     #[must_use]
     pub fn hidden_toml(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}.toml"))
+        self.dir_to_ublx_abs.join(LOCAL_CONFIG_HIDDEN_TOML)
     }
 
     /// Visible config path: `dir_to_ublx_abs/ublx.toml`.
     #[must_use]
     pub fn visible_toml(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!("{PKG_NAME}.toml"))
+        self.dir_to_ublx_abs.join(LOCAL_CONFIG_VISIBLE_TOML)
     }
 
     /// True if `path` (relative to `dir_to_ublx_abs`) is the hidden or visible ublx config file.
@@ -106,8 +477,8 @@ impl UblxPaths {
         let Some(name) = path.file_name() else {
             return false;
         };
-        self.hidden_toml().file_name() == Some(name)
-            || self.visible_toml().file_name() == Some(name)
+        name == OsStr::new(LOCAL_CONFIG_VISIBLE_TOML)
+            || name == OsStr::new(LOCAL_CONFIG_HIDDEN_TOML)
     }
 
     /// Path to the config file to use: checks for `dir_to_ublx_abs/.ublx.toml` then `dir_to_ublx_abs/ublx.toml`; returns the first that exists, or `None`.
@@ -127,7 +498,9 @@ impl UblxPaths {
     /// Main DB file. e.g. `dir_to_ublx_abs/.ublx`. `SQLite` creates it if missing.
     #[must_use]
     pub fn db(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}"))
+        self.db_dir()
+            .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
+            .join(self.db_stem())
     }
 
     /// Nefaxer index file (e.g. `dir_to_ublx_abs/.nefaxer`). When present, used as prior snapshot before ublx snapshot.
@@ -139,47 +512,52 @@ impl UblxPaths {
     /// Temp file (e.g. write-then-rename). e.g. `dir_to_ublx_abs/.ublx_tmp`.
     #[must_use]
     pub fn tmp(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}_tmp"))
+        self.db_dir()
+            .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
+            .join(format!("{}_tmp", self.db_stem()))
     }
 
     /// WAL file for [`Self::tmp`] when snapshot build uses `journal_mode=WAL`. e.g. `.ublx_tmp-wal`.
     #[must_use]
     pub fn tmp_wal(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}_tmp-wal"))
+        self.db_dir()
+            .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
+            .join(format!("{}_tmp-wal", self.db_stem()))
     }
 
     /// Shared-memory file for [`Self::tmp`] in WAL mode. e.g. `.ublx_tmp-shm`.
     #[must_use]
     pub fn tmp_shm(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}_tmp-shm"))
+        self.db_dir()
+            .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
+            .join(format!("{}_tmp-shm", self.db_stem()))
     }
 
     /// `SQLite` WAL file (created by `SQLite` when WAL mode is on). e.g. `dir_to_ublx_abs/.ublx-wal`.
     #[must_use]
     pub fn wal(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}-wal"))
+        self.db_dir()
+            .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
+            .join(format!("{}-wal", self.db_stem()))
     }
 
     /// `SQLite` shared-memory file (WAL mode). e.g. `dir_to_ublx_abs/.ublx-shm`.
     #[must_use]
     pub fn shm(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!(".{PKG_NAME}-shm"))
+        self.db_dir()
+            .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
+            .join(format!("{}-shm", self.db_stem()))
     }
 
     /// Paths to exclude from indexing (db, tmp, wal, shm). Returns segment-style names so nefaxer’s exclude (matched per path component) works, e.g. `.ublx`, `.ublx_tmp`.
+    /// Local `ublx.toml` / `.ublx.toml` are edited from the Settings tab, not listed as a snapshot category.
     #[must_use]
     pub fn exclude(&self) -> Vec<String> {
-        [
-            self.db(),
-            self.tmp(),
-            self.tmp_wal(),
-            self.tmp_shm(),
-            self.wal(),
-            self.shm(),
+        vec![
+            NEFAX_DB.to_string(),
+            LOCAL_CONFIG_VISIBLE_TOML.to_string(),
+            LOCAL_CONFIG_HIDDEN_TOML.to_string(),
         ]
-        .into_iter()
-        .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .collect()
     }
 
     /// Remove tmp, WAL, and SHM files if they exist. No error if any are missing.

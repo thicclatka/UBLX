@@ -6,9 +6,9 @@ use ublx::integrations::{NefaxOpts, ZahirRuntimeConfig};
 #[test]
 fn layout_overlay_default() {
     let layout = LayoutOverlay::default();
-    assert_eq!(layout.left_pct, 20);
+    assert_eq!(layout.left_pct, 10);
     assert_eq!(layout.middle_pct, 30);
-    assert_eq!(layout.right_pct, 50);
+    assert_eq!(layout.right_pct, 60);
 }
 
 #[test]
@@ -55,10 +55,10 @@ fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> Ublx
         streaming: false,
         config_source: None,
         theme: None,
-        transparent: false,
         layout: LayoutOverlay::default(),
         editor_path: None,
         enable_enhance_all,
+        ask_enhance_on_new_root: true,
         enable_enhance_all_cache_before_apply: None,
         enhance_policy: entries,
     }

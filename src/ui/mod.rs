@@ -9,7 +9,7 @@ pub mod snapshot;
 use crate::app::RunUblxParams;
 use crate::config::OPERATION_NAME;
 use crate::layout::setup::UblxState;
-use crate::utils::notifications;
+use crate::utils;
 
 pub use consts::*;
 
@@ -32,7 +32,7 @@ pub fn show_operation_toast(
     if let Some(b) = params.bumper {
         let msg = message.as_ref();
         b.push_with_operation(level, msg, Some(op.as_str()));
-        notifications::show_toast_slot(
+        utils::show_toast_slot(
             &mut state.toasts.slots,
             b,
             Some(op.as_str()),

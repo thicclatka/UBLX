@@ -8,11 +8,12 @@ use crate::ui::keymap::UblxAction;
 use crate::utils::clamp_selection;
 
 pub const PREVIEW_SCROLL_STEP_LINES: u16 = 5;
+pub const LIST_FAST_STEP_ROWS: usize = 10;
 
 /// Quit the application
-fn apply_quit(state: &mut UblxState) -> bool {
-    if state.chrome.viewer_fullscreen {
-        state.chrome.viewer_fullscreen = false;
+fn apply_quit(state_mut: &mut UblxState) -> bool {
+    if state_mut.chrome.viewer_fullscreen {
+        state_mut.chrome.viewer_fullscreen = false;
         false
     } else {
         true
@@ -20,74 +21,76 @@ fn apply_quit(state: &mut UblxState) -> bool {
 }
 
 /// Apply miscellaneous actions to state
-fn apply_misc(state: &mut UblxState, action: UblxAction) {
+fn apply_misc(state_mut: &mut UblxState, action: UblxAction) {
     match action {
-        UblxAction::Help => state.chrome.help_visible = true,
-        UblxAction::TakeSnapshot => state.snapshot_bg.requested = true,
+        UblxAction::Help => state_mut.chrome.help_visible = true,
+        UblxAction::TakeSnapshot => state_mut.snapshot_bg.requested = true,
         _ => {}
     }
 }
 
 /// Apply mode switch actions to state
 fn apply_mode_switch(
-    state: &mut UblxState,
+    state_mut: &mut UblxState,
     action: UblxAction,
     has_duplicates: bool,
     has_lenses: bool,
 ) {
     match action {
-        UblxAction::MainModeSnapshot => state.main_mode = MainMode::Snapshot,
-        UblxAction::MainModeDelta => state.main_mode = MainMode::Delta,
-        UblxAction::MainModeDuplicates => state.main_mode = MainMode::Duplicates,
-        UblxAction::MainModeLenses => state.main_mode = MainMode::Lenses,
-        UblxAction::LoadDuplicates => state.duplicate_load.requested = true,
+        UblxAction::MainModeSnapshot => state_mut.main_mode = MainMode::Snapshot,
+        UblxAction::MainModeDelta => state_mut.main_mode = MainMode::Delta,
+        UblxAction::MainModeSettings => state_mut.main_mode = MainMode::Settings,
+        UblxAction::MainModeDuplicates => state_mut.main_mode = MainMode::Duplicates,
+        UblxAction::MainModeLenses => state_mut.main_mode = MainMode::Lenses,
+        UblxAction::LoadDuplicates => state_mut.duplicate_load.requested = true,
         UblxAction::MainModeToggle => {
-            state.main_mode = state.main_mode.next(has_duplicates, has_lenses);
+            state_mut.main_mode = state_mut.main_mode.next(has_duplicates, has_lenses);
         }
         _ => {}
     }
 }
 
 /// Apply preview scroll actions to state
-fn apply_preview_scroll(state: &mut UblxState, action: UblxAction) {
+fn apply_preview_scroll(state_mut: &mut UblxState, action: UblxAction) {
     let step = PREVIEW_SCROLL_STEP_LINES;
     match action {
         UblxAction::ScrollPreviewUp => {
-            state.panels.preview_scroll = state.panels.preview_scroll.saturating_sub(step);
+            state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_sub(step);
         }
         UblxAction::ScrollPreviewDown => {
-            state.panels.preview_scroll = state.panels.preview_scroll.saturating_add(step);
+            state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_add(step);
         }
-        UblxAction::PreviewTop => state.panels.preview_scroll = 0,
-        UblxAction::PreviewBottom => state.panels.preview_scroll = u16::MAX,
+        UblxAction::PreviewTop => state_mut.panels.preview_scroll = 0,
+        UblxAction::PreviewBottom => state_mut.panels.preview_scroll = u16::MAX,
         _ => {}
     }
 }
 
 /// Check if PDF page navigation applies
-fn pdf_page_nav_applies(state: &UblxState, right: &RightPaneContent) -> bool {
-    state.right_pane_mode == RightPaneMode::Viewer
-        && right.viewer_zahir_type == Some(FileType::Pdf)
-        && right.viewer_abs_path.is_some()
+fn pdf_page_nav_applies(state_ref: &UblxState, right_content_ref: &RightPaneContent) -> bool {
+    state_ref.right_pane_mode == RightPaneMode::Viewer
+        && right_content_ref.viewer_zahir_type == Some(FileType::Pdf)
+        && right_content_ref.viewer_abs_path.is_some()
 }
 
 /// Apply PDF page scroll actions to state
-fn apply_pdf_page_scroll(state: &mut UblxState, action: UblxAction) {
-    let max = state.viewer_image.pdf.page_count;
+fn apply_pdf_page_scroll(state_mut: &mut UblxState, action: UblxAction) {
+    let max = state_mut.viewer_image.pdf.page_count;
     match action {
         UblxAction::ScrollPreviewDown => {
-            let next = state.viewer_image.pdf.page.saturating_add(1);
-            state.viewer_image.pdf.page = if let Some(m) = max { next.min(m) } else { next };
+            let next = state_mut.viewer_image.pdf.page.saturating_add(1);
+            state_mut.viewer_image.pdf.page = if let Some(m) = max { next.min(m) } else { next };
         }
         UblxAction::ScrollPreviewUp => {
-            state.viewer_image.pdf.page = state.viewer_image.pdf.page.saturating_sub(1).max(1);
+            state_mut.viewer_image.pdf.page =
+                state_mut.viewer_image.pdf.page.saturating_sub(1).max(1);
         }
         UblxAction::PreviewTop => {
-            state.viewer_image.pdf.page = 1;
+            state_mut.viewer_image.pdf.page = 1;
         }
         UblxAction::PreviewBottom => {
             if let Some(m) = max {
-                state.viewer_image.pdf.page = m;
+                state_mut.viewer_image.pdf.page = m;
             }
         }
         _ => {}
@@ -96,26 +99,26 @@ fn apply_pdf_page_scroll(state: &mut UblxState, action: UblxAction) {
 
 /// Context (view + right-pane content) required to apply actions to state.
 pub struct UblxActionContext<'a> {
-    view: &'a ViewData,
-    right_content: &'a RightPaneContent,
+    view_ref: &'a ViewData,
+    right_content_ref: &'a RightPaneContent,
 }
 
 impl<'a> UblxActionContext<'a> {
-    fn selected_content_anchor(&self, state: &UblxState) -> Option<String> {
-        self.right_content.viewer_path.clone().or_else(|| {
-            state
-                .panels
-                .content_state
-                .selected()
-                .and_then(|i| self.view.row_at(i, None).map(|(path, _, _)| path.clone()))
+    fn selected_content_anchor(&self, state_ref: &UblxState) -> Option<String> {
+        self.right_content_ref.viewer_path.clone().or_else(|| {
+            state_ref.panels.content_state.selected().and_then(|i| {
+                self.view_ref
+                    .row_at(i, None)
+                    .map(|(path, _, _)| path.clone())
+            })
         })
     }
 
     #[must_use]
-    pub fn new(view: &'a ViewData, right_content: &'a RightPaneContent) -> Self {
+    pub fn new(view_ref: &'a ViewData, right_content_ref: &'a RightPaneContent) -> Self {
         Self {
-            view,
-            right_content,
+            view_ref,
+            right_content_ref,
         }
     }
 
@@ -124,94 +127,101 @@ impl<'a> UblxActionContext<'a> {
     /// `has_duplicates` / `has_lenses` are used for `MainModeToggle` and tab keys (cycle / switch only when tab exists).
     pub fn apply_action_to_state(
         &self,
-        state: &mut UblxState,
+        state_mut: &mut UblxState,
         action: UblxAction,
         has_duplicates: bool,
         has_lenses: bool,
     ) -> bool {
         if let UblxAction::Quit = action {
-            return apply_quit(state);
+            return apply_quit(state_mut);
         }
         match action {
-            UblxAction::Help | UblxAction::TakeSnapshot => apply_misc(state, action),
+            UblxAction::Help | UblxAction::TakeSnapshot => apply_misc(state_mut, action),
             UblxAction::MainModeSnapshot
             | UblxAction::MainModeDelta
+            | UblxAction::MainModeSettings
             | UblxAction::MainModeDuplicates
             | UblxAction::MainModeLenses
             | UblxAction::MainModeToggle
             | UblxAction::LoadDuplicates => {
-                apply_mode_switch(state, action, has_duplicates, has_lenses);
+                apply_mode_switch(state_mut, action, has_duplicates, has_lenses);
             }
-            UblxAction::SearchStart => state.search.active = true,
+            UblxAction::SearchStart => state_mut.search.active = true,
             UblxAction::CycleRightPane
             | UblxAction::RightPaneViewer
             | UblxAction::ViewerFullscreenToggle
             | UblxAction::RightPaneTemplates
             | UblxAction::RightPaneMetadata
-            | UblxAction::RightPaneWriting => self.apply_right_pane(state, action),
+            | UblxAction::RightPaneWriting => self.apply_right_pane(state_mut, action),
             UblxAction::ScrollPreviewUp
             | UblxAction::ScrollPreviewDown
             | UblxAction::PreviewTop
             | UblxAction::PreviewBottom => {
-                if pdf_page_nav_applies(state, self.right_content) {
-                    apply_pdf_page_scroll(state, action);
+                if pdf_page_nav_applies(state_mut, self.right_content_ref) {
+                    apply_pdf_page_scroll(state_mut, action);
                 } else {
-                    apply_preview_scroll(state, action);
+                    apply_preview_scroll(state_mut, action);
                 }
             }
             UblxAction::CycleContentSort => {
-                state.panels.sort_anchor_path = self.selected_content_anchor(state);
-                state.panels.content_sort =
-                    state.panels.content_sort.cycle_for_mode(state.main_mode);
+                state_mut.panels.sort_anchor_path = self.selected_content_anchor(state_mut);
+                state_mut.panels.content_sort = state_mut
+                    .panels
+                    .content_sort
+                    .cycle_for_mode(state_mut.main_mode);
             }
             UblxAction::ListTop
             | UblxAction::ListBottom
             | UblxAction::MoveUp
             | UblxAction::MoveDown
+            | UblxAction::MoveUpFast
+            | UblxAction::MoveDownFast
             | UblxAction::FocusCategories
             | UblxAction::FocusContents
-            | UblxAction::Tab => self.apply_navigation(state, action),
+            | UblxAction::Tab => self.apply_navigation(state_mut, action),
             _ => {}
         }
         false
     }
 
-    fn apply_right_pane(&self, state: &mut UblxState, action: UblxAction) {
+    fn apply_right_pane(&self, state_mut: &mut UblxState, action: UblxAction) {
         match action {
-            UblxAction::CycleRightPane => self.apply_cycle_right_pane(state),
-            UblxAction::RightPaneViewer => state.right_pane_mode = RightPaneMode::Viewer,
+            UblxAction::CycleRightPane => self.apply_cycle_right_pane(state_mut),
+            UblxAction::RightPaneViewer => state_mut.right_pane_mode = RightPaneMode::Viewer,
             UblxAction::ViewerFullscreenToggle => {
-                state.chrome.viewer_fullscreen = !state.chrome.viewer_fullscreen;
+                state_mut.chrome.viewer_fullscreen = !state_mut.chrome.viewer_fullscreen;
             }
             UblxAction::RightPaneTemplates => {
-                if !self.right_content.templates.is_empty() {
-                    state.right_pane_mode = RightPaneMode::Templates;
+                if !self.right_content_ref.templates.is_empty() {
+                    state_mut.right_pane_mode = RightPaneMode::Templates;
                 }
             }
             UblxAction::RightPaneMetadata => {
-                if self.right_content.metadata.is_some() {
-                    state.right_pane_mode = RightPaneMode::Metadata;
+                if self.right_content_ref.metadata.is_some() {
+                    state_mut.right_pane_mode = RightPaneMode::Metadata;
                 }
             }
             UblxAction::RightPaneWriting => {
-                if self.right_content.writing.is_some() {
-                    state.right_pane_mode = RightPaneMode::Writing;
+                if self.right_content_ref.writing.is_some() {
+                    state_mut.right_pane_mode = RightPaneMode::Writing;
                 }
             }
             _ => {}
         }
     }
 
-    fn apply_navigation(&self, state: &mut UblxState, action: UblxAction) {
+    fn apply_navigation(&self, state_mut: &mut UblxState, action: UblxAction) {
         match action {
-            UblxAction::ListTop => self.apply_list_top(state),
-            UblxAction::ListBottom => self.apply_list_bottom(state),
-            UblxAction::MoveUp => self.apply_move_up(state),
-            UblxAction::MoveDown => self.apply_move_down(state),
-            UblxAction::FocusCategories => state.panels.focus = PanelFocus::Categories,
-            UblxAction::FocusContents => state.panels.focus = PanelFocus::Contents,
+            UblxAction::ListTop => self.apply_list_top(state_mut),
+            UblxAction::ListBottom => self.apply_list_bottom(state_mut),
+            UblxAction::MoveUp => self.apply_move_up(state_mut),
+            UblxAction::MoveDown => self.apply_move_down(state_mut),
+            UblxAction::MoveUpFast => self.apply_move_up_by(state_mut, LIST_FAST_STEP_ROWS),
+            UblxAction::MoveDownFast => self.apply_move_down_by(state_mut, LIST_FAST_STEP_ROWS),
+            UblxAction::FocusCategories => state_mut.panels.focus = PanelFocus::Categories,
+            UblxAction::FocusContents => state_mut.panels.focus = PanelFocus::Contents,
             UblxAction::Tab => {
-                state.panels.focus = match state.panels.focus {
+                state_mut.panels.focus = match state_mut.panels.focus {
                     PanelFocus::Categories => PanelFocus::Contents,
                     PanelFocus::Contents => PanelFocus::Categories,
                 };
@@ -220,7 +230,7 @@ impl<'a> UblxActionContext<'a> {
         }
     }
 
-    fn apply_cycle_right_pane(&self, state: &mut UblxState) {
+    fn apply_cycle_right_pane(&self, state_mut: &mut UblxState) {
         let available: Vec<RightPaneMode> = [
             RightPaneMode::Viewer,
             RightPaneMode::Templates,
@@ -230,95 +240,106 @@ impl<'a> UblxActionContext<'a> {
         .into_iter()
         .filter(|m| match m {
             RightPaneMode::Viewer => true,
-            RightPaneMode::Templates => !self.right_content.templates.is_empty(),
-            RightPaneMode::Metadata => self.right_content.metadata.is_some(),
-            RightPaneMode::Writing => self.right_content.writing.is_some(),
+            RightPaneMode::Templates => !self.right_content_ref.templates.is_empty(),
+            RightPaneMode::Metadata => self.right_content_ref.metadata.is_some(),
+            RightPaneMode::Writing => self.right_content_ref.writing.is_some(),
         })
         .collect();
         if !available.is_empty() {
             let idx = available
                 .iter()
-                .position(|m| *m == state.right_pane_mode)
+                .position(|m| *m == state_mut.right_pane_mode)
                 .unwrap_or(0);
             let next = (idx + 1) % available.len();
-            state.right_pane_mode = available[next];
+            state_mut.right_pane_mode = available[next];
         }
     }
 
-    fn apply_list_top(&self, state: &mut UblxState) {
-        match state.panels.focus {
+    fn apply_list_top(&self, state_mut: &mut UblxState) {
+        match state_mut.panels.focus {
             PanelFocus::Categories => {
-                if self.view.category_list_len > 0 {
-                    state.panels.category_state.select(Some(0));
+                if self.view_ref.category_list_len > 0 {
+                    state_mut.panels.category_state.select(Some(0));
                 }
             }
             PanelFocus::Contents => {
-                if self.view.content_len > 0 {
-                    state.panels.content_state.select(Some(0));
+                if self.view_ref.content_len > 0 {
+                    state_mut.panels.content_state.select(Some(0));
                 }
             }
         }
     }
 
-    fn apply_list_bottom(&self, state: &mut UblxState) {
-        match state.panels.focus {
+    fn apply_list_bottom(&self, state_mut: &mut UblxState) {
+        match state_mut.panels.focus {
             PanelFocus::Categories => {
-                if self.view.category_list_len > 0 {
+                if self.view_ref.category_list_len > 0 {
+                    let last = clamp_selection(
+                        self.view_ref.category_list_len,
+                        self.view_ref.category_list_len,
+                    );
+                    state_mut.panels.category_state.select(Some(last));
+                }
+            }
+            PanelFocus::Contents => {
+                if self.view_ref.content_len > 0 {
                     let last =
-                        clamp_selection(self.view.category_list_len, self.view.category_list_len);
-                    state.panels.category_state.select(Some(last));
-                }
-            }
-            PanelFocus::Contents => {
-                if self.view.content_len > 0 {
-                    let last = clamp_selection(self.view.content_len, self.view.content_len);
-                    state.panels.content_state.select(Some(last));
+                        clamp_selection(self.view_ref.content_len, self.view_ref.content_len);
+                    state_mut.panels.content_state.select(Some(last));
                 }
             }
         }
     }
 
-    fn apply_move_up(&self, state: &mut UblxState) {
-        match state.panels.focus {
+    fn apply_move_up(&self, state_mut: &mut UblxState) {
+        self.apply_move_up_by(state_mut, 1);
+    }
+
+    fn apply_move_up_by(&self, state_mut: &mut UblxState, step: usize) {
+        match state_mut.panels.focus {
             PanelFocus::Categories => {
-                if self.view.category_list_len > 0 {
-                    let i = state.panels.category_state.selected().unwrap_or(0);
-                    state.panels.category_state.select(Some(clamp_selection(
-                        i.saturating_sub(1),
-                        self.view.category_list_len,
+                if self.view_ref.category_list_len > 0 {
+                    let i = state_mut.panels.category_state.selected().unwrap_or(0);
+                    state_mut.panels.category_state.select(Some(clamp_selection(
+                        i.saturating_sub(step),
+                        self.view_ref.category_list_len,
                     )));
                 }
             }
             PanelFocus::Contents => {
-                if self.view.content_len > 0 {
-                    let i = state.panels.content_state.selected().unwrap_or(0);
-                    state.panels.content_state.select(Some(clamp_selection(
-                        i.saturating_sub(1),
-                        self.view.content_len,
+                if self.view_ref.content_len > 0 {
+                    let i = state_mut.panels.content_state.selected().unwrap_or(0);
+                    state_mut.panels.content_state.select(Some(clamp_selection(
+                        i.saturating_sub(step),
+                        self.view_ref.content_len,
                     )));
                 }
             }
         }
     }
 
-    fn apply_move_down(&self, state: &mut UblxState) {
-        match state.panels.focus {
+    fn apply_move_down(&self, state_mut: &mut UblxState) {
+        self.apply_move_down_by(state_mut, 1);
+    }
+
+    fn apply_move_down_by(&self, state_mut: &mut UblxState, step: usize) {
+        match state_mut.panels.focus {
             PanelFocus::Categories => {
-                if self.view.category_list_len > 0 {
-                    let i = state.panels.category_state.selected().unwrap_or(0);
-                    state
-                        .panels
-                        .category_state
-                        .select(Some(clamp_selection(i + 1, self.view.category_list_len)));
+                if self.view_ref.category_list_len > 0 {
+                    let i = state_mut.panels.category_state.selected().unwrap_or(0);
+                    state_mut.panels.category_state.select(Some(clamp_selection(
+                        i.saturating_add(step),
+                        self.view_ref.category_list_len,
+                    )));
                 }
             }
             PanelFocus::Contents => {
-                if self.view.content_len > 0 {
-                    let i = state.panels.content_state.selected().unwrap_or(0);
-                    state
-                        .panels
-                        .content_state
-                        .select(Some(clamp_selection(i + 1, self.view.content_len)));
+                if self.view_ref.content_len > 0 {
+                    let i = state_mut.panels.content_state.selected().unwrap_or(0);
+                    state_mut.panels.content_state.select(Some(clamp_selection(
+                        i.saturating_add(step),
+                        self.view_ref.content_len,
+                    )));
                 }
             }
         }

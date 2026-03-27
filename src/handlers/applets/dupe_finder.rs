@@ -5,7 +5,7 @@ use crate::config::OPERATION_NAME;
 use crate::engine::db_ops;
 use crate::layout::setup;
 use crate::ui::consts::UI_STRINGS;
-use crate::utils::notifications;
+use crate::utils;
 
 /// Called when the background duplicate load returns. Empty → toast "No duplicates found"; non-empty → set groups and switch to Duplicates mode.
 pub fn on_groups_received(
@@ -17,7 +17,7 @@ pub fn on_groups_received(
         let op = OPERATION_NAME.op("dupe-finder");
         if let Some(b) = params.bumper {
             b.push_with_operation(log::Level::Info, UI_STRINGS.toasts.no_duplicates, Some(&op));
-            notifications::show_toast_slot(
+            utils::show_toast_slot(
                 &mut state.toasts.slots,
                 b,
                 Some(op.as_str()),

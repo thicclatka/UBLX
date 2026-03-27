@@ -2,7 +2,7 @@
 
 use ratatui::style::Color;
 
-use crate::utils::format::Epsilon;
+use crate::utils::Epsilon;
 
 use super::Appearance;
 

@@ -18,7 +18,7 @@ use crate::config::profile;
 use crate::integrations::{
     NefaxDriveType, NefaxOpts, ZahirOutputMode, ZahirRuntimeConfig, pre_opts_for_nefaxer,
 };
-use crate::utils::notifications::BumperBuffer;
+use crate::utils::BumperBuffer;
 
 /// Parameters for config validation and optional bumper when loading opts in [`UblxOpts::for_dir`].
 pub struct ForDirConfig<'a> {
@@ -83,14 +83,14 @@ pub struct UblxOpts {
     pub config_source: Option<String>,
     /// Theme name (e.g. "default"). From config overlay; used by `themes::get`.
     pub theme: Option<String>,
-    /// When true, skip painting app background so terminal default/transparency shows.
-    pub transparent: bool,
     /// Left/middle/right pane percentages (0–100). From config [layout]. Hot-reloadable.
     pub layout: profile::LayoutOverlay,
     /// Editor for Open (Terminal). When None, use $EDITOR.
     pub editor_path: Option<String>,
     /// When true, run full `ZahirScan` on indexed files; when false, path-only category + space-menu enhance.
     pub enable_enhance_all: bool,
+    /// When true (default), show the first-run enhance prompt for a new empty root. Set `ask_enhance_on_new_root = false` in global `ublx.toml` to skip and use `enable_enhance_all` from config instead.
+    pub ask_enhance_on_new_root: bool,
     /// `enable_enhance_all` from the config cache **before** [`Self::for_dir`] applied the current overlay and called [`Self::save_overlay_to_cache`]. Used by snapshot `force_full` Zahir when flipping the flag to `true`.
     pub enable_enhance_all_cache_before_apply: Option<bool>,
     /// Effective `[[enhance_policy]]` entries (merged global + local). Used only for index-time batch Zahir.
@@ -129,7 +129,7 @@ impl UblxOpts {
         self.apply_hot_reload_overlay(overlay);
     }
 
-    /// Apply only hot-reloadable fields: theme, transparent, layout, hash, `show_hidden_files`. Used when reloading config without restart.
+    /// Apply only hot-reloadable fields: theme, layout, hash, `show_hidden_files`. Used when reloading config without restart.
     /// On invalid config from disk, caller should fall back to [`Self::load_overlay_from_cache`] and pass that overlay here.
     pub fn apply_hot_reload_overlay(&mut self, overlay: &profile::UblxOverlay) {
         let show_hidden = overlay.show_hidden_files.unwrap_or(false);
@@ -153,9 +153,6 @@ impl UblxOpts {
         if overlay.theme.is_some() {
             self.theme.clone_from(&overlay.theme);
         }
-        if overlay.transparent.is_some() {
-            self.transparent = overlay.transparent.unwrap_or(false);
-        }
         if overlay.layout.is_some() {
             self.layout = overlay.layout.clone().unwrap_or_default();
         }
@@ -164,6 +161,9 @@ impl UblxOpts {
         }
         if let Some(v) = overlay.enable_enhance_all {
             self.enable_enhance_all = v;
+        }
+        if let Some(v) = overlay.ask_enhance_on_new_root {
+            self.ask_enhance_on_new_root = v;
         }
         self.enhance_policy = overlay.enhance_policy.clone().unwrap_or_default();
     }
@@ -244,10 +244,10 @@ impl UblxOpts {
             streaming,
             config_source,
             theme: None,
-            transparent: false,
             layout: profile::LayoutOverlay::default(),
             editor_path: None,
             enable_enhance_all: false,
+            ask_enhance_on_new_root: true,
             enable_enhance_all_cache_before_apply,
             enhance_policy: Vec::new(),
         };
@@ -306,10 +306,10 @@ impl UblxOpts {
             streaming,
             config_source: None,
             theme: None,
-            transparent: false,
             layout: profile::LayoutOverlay::default(),
             editor_path: None,
             enable_enhance_all: true,
+            ask_enhance_on_new_root: true,
             enable_enhance_all_cache_before_apply: None,
             enhance_policy: Vec::new(),
         }

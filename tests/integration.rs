@@ -1,9 +1,32 @@
 //! Subprocess and full-frame smoke tests (binary + render pipeline without a real terminal).
 
+use std::path::Path;
 use std::process::Command;
+use ublx::config::{UblxPaths, last_applied_config_path};
 
 fn ublx_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ublx"))
+}
+
+fn remove_if_exists(path_ref: &Path) {
+    if path_ref.exists() {
+        let _ = std::fs::remove_file(path_ref);
+    }
+}
+
+/// Remove cache artifacts for the deterministic integration dir:
+/// per-root DB files and per-root cached applied config.
+fn cleanup_integration_test_cache(dir_ref: &Path) {
+    let paths = UblxPaths::new(dir_ref);
+    remove_if_exists(&paths.db());
+    remove_if_exists(&paths.wal());
+    remove_if_exists(&paths.shm());
+    remove_if_exists(&paths.tmp());
+    remove_if_exists(&paths.tmp_wal());
+    remove_if_exists(&paths.tmp_shm());
+    if let Some(cfg) = last_applied_config_path(dir_ref) {
+        remove_if_exists(&cfg);
+    }
 }
 
 #[test]
@@ -29,6 +52,7 @@ fn test_mode_in_empty_dir() {
         .join("target")
         .join("ublx_integration_test_dir");
     let _ = std::fs::create_dir_all(&tmp);
+    cleanup_integration_test_cache(&tmp);
     let out = ublx_bin().arg("--test").arg(&tmp).output().unwrap();
     assert!(
         out.status.success(),
@@ -38,6 +62,7 @@ fn test_mode_in_empty_dir() {
     );
     let db = tmp.join(".ublx");
     assert!(db.exists(), "expected .ublx after --test run");
+    cleanup_integration_test_cache(&tmp);
 }
 
 #[test]
@@ -66,7 +91,6 @@ fn draw_one_snapshot_frame_renders_main_chrome() {
         all_rows: None,
         dir_to_ublx: None,
         theme_name: None,
-        transparent: false,
         layout: &layout,
         latest_snapshot_ns: None,
         dev: false,

@@ -2,7 +2,6 @@
 
 use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
-use crate::handlers::applets::lens;
 use crate::handlers::{applets, leave_terminal_for_editor};
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
@@ -89,22 +88,24 @@ fn space_menu_item_count(kind: Option<&SpaceMenuKind>) -> usize {
             show_enhance_zahir,
             ..
         }) => {
-            2 + usize::from(*show_enhance_directory_policy) + usize::from(*show_enhance_zahir) + 1
+            3 + usize::from(*show_enhance_directory_policy) + usize::from(*show_enhance_zahir) + 1
         }
         Some(SpaceMenuKind::LensPanelActions { .. }) => 2,
         None => 0,
     }
 }
 
-/// Indices for file space-menu rows: Open, Reveal, optional policy, optional Zahir, Lens.
+/// Indices for file space-menu rows: Open, Reveal, Copy Path, optional policy, optional Zahir, Lens.
 fn file_space_menu_indices(
     show_enhance_directory_policy: bool,
     show_enhance_zahir: bool,
-) -> (usize, usize, Option<usize>, Option<usize>, usize) {
+) -> (usize, usize, usize, Option<usize>, Option<usize>, usize) {
     let mut i = 0usize;
     let open = i;
     i += 1;
     let reveal = i;
+    i += 1;
+    let copy_path = i;
     i += 1;
     let policy = show_enhance_directory_policy.then(|| {
         let j = i;
@@ -117,7 +118,7 @@ fn file_space_menu_indices(
         j
     });
     let lens = i;
-    (open, reveal, policy, zahir, lens)
+    (open, reveal, copy_path, policy, zahir, lens)
 }
 
 fn space_menu_enhance_zahir_if_disabled(
@@ -154,6 +155,33 @@ fn space_menu_enhance_zahir_if_disabled(
     }
 }
 
+/// Copy selected relative path as an absolute path using cached clipboard command;
+/// emits a success/failure operation toast.
+fn copy_selected_path_to_clipboard(state: &mut UblxState, params: &RunUblxParams<'_>, path: &str) {
+    let full = params.dir_to_ublx.join(path);
+    let copied = state
+        .clipboard_copy
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("no clipboard command detected"))
+        .and_then(|cmd| cmd.copy_utf8(&full.to_string_lossy()));
+    match copied {
+        Ok(()) => show_operation_toast(
+            state,
+            params,
+            "Copied path to clipboard",
+            "space",
+            log::Level::Info,
+        ),
+        Err(e) => show_operation_toast(
+            state,
+            params,
+            format!("Copy path failed: {e}"),
+            "space",
+            log::Level::Warn,
+        ),
+    }
+}
+
 fn space_menu_file_actions_submit(
     state: &mut UblxState,
     view: &ViewData,
@@ -169,7 +197,7 @@ fn space_menu_file_actions_submit(
         idx,
     } = op;
 
-    let (open_i, reveal_i, policy_i, zahir_i, lens_i) =
+    let (open_i, reveal_i, copy_path_i, policy_i, zahir_i, lens_i) =
         file_space_menu_indices(show_enhance_directory_policy, show_enhance_zahir);
 
     if idx == open_i {
@@ -181,6 +209,10 @@ fn space_menu_file_actions_submit(
         if let Err(e) = applets::opener::reveal_in_file_manager(&full) {
             log::warn!("Show in folder: {e}");
         }
+        return;
+    }
+    if idx == copy_path_i {
+        copy_selected_path_to_clipboard(state, params, &path);
         return;
     }
     if policy_i == Some(idx) {
@@ -206,7 +238,7 @@ fn space_menu_file_actions_submit(
     else {
         return;
     };
-    if lens::remove_path_from_lens(params.db_path, lens_name, &path).is_ok() {
+    if applets::lens::remove_path_from_lens(params.db_path, lens_name, &path).is_ok() {
         show_operation_toast(
             state,
             params,
@@ -299,68 +331,72 @@ fn space_menu_open_blocked(state: &UblxState) -> bool {
         || state.lens_menu.name_input.is_some()
 }
 
-fn try_open_file_space_menu(state: &mut UblxState, right_content: &RightPaneContent) -> bool {
-    let Some(path) = right_content.viewer_path.as_ref() else {
+fn try_open_file_space_menu(
+    state_mut: &mut UblxState,
+    right_content_ref: &RightPaneContent,
+) -> bool {
+    let Some(path) = right_content_ref.viewer_path.as_ref() else {
         return false;
     };
-    state.open_space_menu(SpaceMenuKind::FileActions {
+    state_mut.open_space_menu(SpaceMenuKind::FileActions {
         path: path.clone(),
-        can_open_in_terminal: right_content.viewer_can_open,
-        show_enhance_directory_policy: right_content.viewer_offer_enhance_directory_policy,
-        show_enhance_zahir: right_content.viewer_offer_enhance_zahir,
+        can_open_in_terminal: right_content_ref.viewer_can_open,
+        show_enhance_directory_policy: right_content_ref.viewer_offer_enhance_directory_policy,
+        show_enhance_zahir: right_content_ref.viewer_offer_enhance_zahir,
     });
     true
 }
 
-fn try_open_lens_panel_space_menu(state: &mut UblxState, view: &ViewData) -> bool {
-    if state.main_mode != MainMode::Lenses || view.filtered_categories.is_empty() {
+fn try_open_lens_panel_space_menu(state_mut: &mut UblxState, view_ref: &ViewData) -> bool {
+    if state_mut.main_mode != MainMode::Lenses || view_ref.filtered_categories.is_empty() {
         return false;
     }
-    let Some(lens_name) = view
+    let Some(lens_name) = view_ref
         .filtered_categories
-        .get(state.panels.category_state.selected().unwrap_or(0))
+        .get(state_mut.panels.category_state.selected().unwrap_or(0))
         .cloned()
     else {
         return false;
     };
-    state.open_space_menu(SpaceMenuKind::LensPanelActions { lens_name });
+    state_mut.open_space_menu(SpaceMenuKind::LensPanelActions { lens_name });
     true
 }
 
 /// If action is `SpaceMenu` and context allows, open the space menu. Returns true if opened.
 pub fn try_open_space_menu(
-    state: &mut UblxState,
-    view: &ViewData,
-    right_content: &RightPaneContent,
+    state_mut: &mut UblxState,
+    view_ref: &ViewData,
+    right_content_ref: &RightPaneContent,
     action: UblxAction,
 ) -> bool {
     if !matches!(action, UblxAction::SpaceMenu) {
         return false;
     }
-    if space_menu_open_blocked(state) {
+    if space_menu_open_blocked(state_mut) {
         return false;
     }
-    if state.panels.focus == PanelFocus::Contents {
-        return try_open_file_space_menu(state, right_content);
+    if state_mut.panels.focus == PanelFocus::Contents {
+        return try_open_file_space_menu(state_mut, right_content_ref);
     }
-    try_open_lens_panel_space_menu(state, view)
+    try_open_lens_panel_space_menu(state_mut, view_ref)
 }
 
 /// If action is `EnhanceWithZahir` and selection offers it, run one-shot enhance immediately.
 pub fn try_enhance_with_zahir(
-    state: &mut UblxState,
-    right_content: &RightPaneContent,
-    params: &mut RunUblxParams<'_>,
-    ublx_opts: &UblxOpts,
+    state_mut: &mut UblxState,
+    right_content_ref: &RightPaneContent,
+    params_mut: &mut RunUblxParams<'_>,
+    ublx_opts_ref: &UblxOpts,
     action: UblxAction,
 ) -> bool {
-    if !matches!(action, UblxAction::EnhanceWithZahir) || !right_content.viewer_offer_enhance_zahir
+    if !matches!(action, UblxAction::EnhanceWithZahir)
+        || !right_content_ref.viewer_offer_enhance_zahir
     {
         return false;
     }
-    let Some(path) = right_content.viewer_path.as_deref() else {
+    let Some(path) = right_content_ref.viewer_path.as_deref() else {
         return false;
     };
-    space_menu_enhance_zahir_if_disabled(state, params, path, ublx_opts);
+    space_menu_enhance_zahir_if_disabled(state_mut, params_mut, path, ublx_opts_ref);
     true
 }

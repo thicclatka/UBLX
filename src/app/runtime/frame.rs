@@ -52,7 +52,6 @@ fn build_draw_args<'a>(
         all_rows: rows_for_draw,
         dir_to_ublx: Some(params.dir_to_ublx),
         theme_name,
-        transparent: params.display.transparent,
         layout: &params.layout,
         latest_snapshot_ns,
         dev: params.display.dev,

@@ -3,10 +3,10 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::config::UblxPaths;
-
-fn ublx_paths_from_db_path(db_path: &Path) -> Option<UblxPaths> {
-    db_path.parent().map(UblxPaths::new)
+fn tmp_from_db_path(db_path: &Path) -> Option<PathBuf> {
+    let parent = db_path.parent()?;
+    let file_name = db_path.file_name()?.to_str()?;
+    Some(parent.join(format!("{file_name}_tmp")))
 }
 
 /// Which file to prefer when both exist: final `.ublx` or in-progress `.ublx_tmp`.
@@ -24,9 +24,8 @@ pub fn snapshot_reader_path_with(
     db_path: &Path,
     preference: SnapshotReaderPreference,
 ) -> Option<PathBuf> {
-    let paths = ublx_paths_from_db_path(db_path)?;
-    let db = paths.db();
-    let tmp = paths.tmp();
+    let db = db_path.to_path_buf();
+    let tmp = tmp_from_db_path(db_path)?;
     let (first, second) = match preference {
         SnapshotReaderPreference::PreferUblx => (db, tmp),
         SnapshotReaderPreference::PreferTmp => (tmp, db),

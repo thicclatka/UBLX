@@ -93,6 +93,14 @@ pub fn build_view_and_right_content<'a>(
         apply_sort_anchor_selection(state, &view, None);
         let right_content = setup::RightPaneContent::empty();
         (view, right_content, Some(d), None)
+    } else if state.main_mode == setup::MainMode::Settings {
+        let view = setup::ViewData {
+            filtered_categories: vec![],
+            contents: setup::ViewContents::SnapshotIndices(vec![]),
+            category_list_len: 1,
+            content_len: 0,
+        };
+        (view, setup::RightPaneContent::empty(), None, None)
     } else {
         let db_path_for_read =
             db_ops::snapshot_read_path_for_tui(params.db_path, !state.snapshot_bg.done_received);

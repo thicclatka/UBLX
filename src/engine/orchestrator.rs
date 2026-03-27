@@ -9,14 +9,12 @@ use rayon::prelude::*;
 use crate::config::{PARALLEL, RunMode, UblxOpts, UblxPaths};
 use crate::engine::db_ops;
 use crate::integrations;
-use crate::utils::{
-    canonicalize_dir_to_ublx, error_writer, exit_error, path_to_slash_string, rel_path_is_directory,
-};
+use crate::utils;
 
 type PreRunSetup = (PathBuf, HashMap<String, String>, HashMap<String, String>);
 
 fn pre_run_setup(dir_to_ublx: &Path) -> PreRunSetup {
-    let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
+    let dir_to_ublx_abs = utils::canonicalize_dir_to_ublx(dir_to_ublx);
     let db_path = UblxPaths::new(dir_to_ublx).db();
     let prior_zahir_json = db_ops::load_snapshot_zahir_json_map(&db_path).unwrap_or_default();
     let prior_category = db_ops::load_snapshot_category_map(&db_path).unwrap_or_default();
@@ -38,9 +36,9 @@ fn snapshot_prior_ctx<'a>(
 
 /// Log nefax error and exit. Use in both sequential and stream error paths.
 fn on_nefax_error(dir_to_ublx: &Path, e: &impl std::fmt::Display) -> ! {
-    let _ = error_writer::write_nefax_error_to_log(dir_to_ublx, e);
-    error!("{}", error_writer::NefaxZahirErrors::nefax_failed(e));
-    exit_error();
+    let _ = utils::write_nefax_error_to_log(dir_to_ublx, e);
+    error!("{}", utils::NefaxZahirErrors::nefax_failed(e));
+    utils::exit_error();
 }
 
 /// Run nefaxer; on success return `(nefax, diff)`, on error log and exit. Use when no cleanup is needed (e.g. sequential).
@@ -93,11 +91,11 @@ fn entry_should_batch_zahir(
     if size == 0 {
         return false;
     }
-    let rel_str = path_to_slash_string(path);
+    let rel_str = utils::path_to_slash_string(path);
     if !ctx.ublx_opts.batch_zahir_for_path(&rel_str) {
         return false;
     }
-    if rel_path_is_directory(ctx.dir_to_ublx_abs, path) {
+    if utils::rel_path_is_directory(ctx.dir_to_ublx_abs, path) {
         return false;
     }
     path_needs_zahir_extract(
@@ -164,8 +162,8 @@ pub fn run(
     prior_nefax: Option<&integrations::NefaxResult>,
 ) -> io::Result<(usize, usize, usize)> {
     let db_path = UblxPaths::new(dir_to_ublx).db();
-    // No snapshot rows yet but a leftover `.nefaxer` lets nefax match disk → empty diff (0/0/0) and a stuck first-run TUI.
-    if !db_ops::snapshot_has_any_row(&db_path) {
+    // No real indexed paths yet but a leftover `.nefaxer` lets nefax match disk → empty diff (0/0/0) and a stuck first-run TUI.
+    if !db_ops::snapshot_has_indexed_paths(&db_path) {
         let _ = db_ops::UblxCleanup::delete_nefaxer_files(dir_to_ublx);
     }
     let mode = RunMode::from_opts(ublx_opts);
@@ -218,14 +216,11 @@ pub fn run_sequential(
     let zahir_result = match integrations::run_zahir_batch(&path_list, ublx_opts) {
         Ok(r) => r,
         Err(e) => {
-            error!(
-                "{}",
-                error_writer::NefaxZahirErrors::zahir_sequential_failed(&e)
-            );
-            exit_error();
+            error!("{}", utils::NefaxZahirErrors::zahir_sequential_failed(&e));
+            utils::exit_error();
         }
     };
-    error_writer::write_zahir_failures_to_log_error(dir_to_ublx, &zahir_result);
+    utils::write_zahir_failures_to_log_error(dir_to_ublx, &zahir_result);
     let prior_ctx = snapshot_prior_ctx(&prior_zahir_json, &prior_category, ublx_opts);
     if let Err(e) = db_ops::write_snapshot_to_db(
         dir_to_ublx,
@@ -236,7 +231,7 @@ pub fn run_sequential(
         &prior_ctx,
     ) {
         error!("failed to write snapshot: {e}");
-        exit_error();
+        utils::exit_error();
     }
     Ok((diff.added.len(), diff.modified.len(), diff.removed.len()))
 }
@@ -297,23 +292,20 @@ pub fn run_stream(
         &prior_ctx,
     ) {
         error!("failed to write snapshot: {e}");
-        exit_error();
+        utils::exit_error();
     }
 
     match zahir_handle.join() {
         Ok(Ok(r)) => {
-            error_writer::write_zahir_failures_to_log_error(dir_to_ublx, &r);
+            utils::write_zahir_failures_to_log_error(dir_to_ublx, &r);
         }
         Ok(Err(e)) => {
-            error!(
-                "{}",
-                error_writer::NefaxZahirErrors::zahir_stream_failed(&e)
-            );
-            exit_error();
+            error!("{}", utils::NefaxZahirErrors::zahir_stream_failed(&e));
+            utils::exit_error();
         }
         Err(_) => {
-            error!("{}", error_writer::NefaxZahirErrors::ZAHIR_THREAD_PANICKED);
-            exit_error();
+            error!("{}", utils::NefaxZahirErrors::ZAHIR_THREAD_PANICKED);
+            utils::exit_error();
         }
     }
     Ok((diff.added.len(), diff.modified.len(), diff.removed.len()))

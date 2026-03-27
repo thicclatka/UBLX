@@ -76,8 +76,8 @@ macro_rules! define_path_ext_predicate {
         }
     ) => {
         $(#[$meta])*
-        $vis fn $name($path: &str) -> bool {
-            $crate::utils::path::path_has_extension($path, &[$($ext),+])
+        $vis fn $name(path: &str) -> bool {
+            $crate::utils::path_has_extension(path, &[$($ext),+])
         }
     };
 }

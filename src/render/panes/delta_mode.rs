@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 
 use crate::layout::{setup, style};
 use crate::ui::UI_STRINGS;
-use crate::utils::format::StringObjTraits;
+use crate::utils::StringObjTraits;
 
 /// Draw placeholder when delta data is missing. `chunks` must have at least 3 elements: [left, middle, right].
 pub fn draw_delta_placeholder(f: &mut Frame, chunks: &[Rect]) {

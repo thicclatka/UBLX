@@ -10,10 +10,11 @@ use super::overlays;
 use super::panes;
 
 use crate::config::{LayoutOverlay, TOAST_CONFIG};
+use crate::engine::db_ops::DuplicateGroup;
 use crate::layout;
 use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
-use crate::utils::{format_timestamp_ns, notifications};
+use crate::utils::{format_timestamp_ns, toast_content_line_count};
 
 /// Arguments for [`draw_ublx_frame`] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
@@ -24,8 +25,6 @@ pub struct DrawFrameArgs<'a> {
     pub dir_to_ublx: Option<&'a std::path::Path>,
     /// Theme name (from opts); style functions use [`crate::themes::current`].
     pub theme_name: Option<&'a str>,
-    /// When true, skip painting app background so terminal default/transparency shows.
-    pub transparent: bool,
     /// Left/middle/right pane percentages (0–100). Hot-reloadable from config [layout].
     pub layout: &'a LayoutOverlay,
     /// Latest snapshot timestamp from `delta_log` (for categories panel footer). Set in Snapshot mode.
@@ -33,7 +32,7 @@ pub struct DrawFrameArgs<'a> {
     /// When true, show dev-mode toast notifications.
     pub dev: bool,
     /// When non-empty, Duplicates tab is shown and this slice is the duplicate groups.
-    pub duplicate_groups: Option<&'a [crate::engine::db_ops::DuplicateGroup]>,
+    pub duplicate_groups: Option<&'a [DuplicateGroup]>,
     /// When non-empty, Lenses tab is shown.
     pub lens_names: Option<&'a [String]>,
 }
@@ -64,8 +63,21 @@ pub fn draw_ublx_frame(
         overlays::render_theme_selector(f, state.theme.selector_index);
     }
     draw_popups(f, state, &body, args);
-    if let Some(ref prompt) = state.initial_prompt {
-        overlays::popup::render_initial_prompt(f, prompt.selected_index);
+    if let Some(ref sp) = state.startup_prompt {
+        match &sp.phase {
+            layout::setup::StartupPromptPhase::RootChoice {
+                selected_index,
+                roots,
+            } => {
+                let current = args
+                    .dir_to_ublx
+                    .unwrap_or_else(|| std::path::Path::new("."));
+                overlays::popup::render_startup_root_choice(f, *selected_index, current, roots);
+            }
+            layout::setup::StartupPromptPhase::Enhance { selected_index } => {
+                overlays::popup::render_initial_prompt(f, *selected_index);
+            }
+        }
     }
 }
 
@@ -141,10 +153,7 @@ fn draw_popups(
     }
 }
 
-fn draw_background(f: &mut Frame, area: Rect, args: &DrawFrameArgs<'_>) {
-    if args.transparent {
-        return;
-    }
+fn draw_background(f: &mut Frame, area: Rect, _args: &DrawFrameArgs<'_>) {
     let bg = themes::current().background;
     f.render_widget(Block::default().style(Style::default().bg(bg)), area);
 }
@@ -269,6 +278,11 @@ fn draw_main_content(
             args.lens_names.is_some_and(|n| !n.is_empty()),
             panes::draw_lenses_panes,
         ),
+        layout::setup::MainMode::Settings => {
+            if let Some(dir) = args.dir_to_ublx {
+                panes::settings_mode::draw_settings_pane(f, body.main_area, state, dir);
+            }
+        }
     }
     if state.lens_menu.name_input.is_some() {
         let middle = body.chunks[1];
@@ -310,7 +324,7 @@ fn draw_toast_if_visible(
     let gap = TOAST_CONFIG.toast_stack_gap;
     let mut bottom = area.y + area.height.saturating_sub(TOAST_CONFIG.vt_padding);
     for slot in state.toasts.slots.iter().rev() {
-        let content_lines = notifications::toast_content_line_count(slot);
+        let content_lines = toast_content_line_count(slot);
         let max_h = TOAST_CONFIG.height_for(args.dev) as usize;
         let h = (TOAST_CONFIG.toast_height_offset as usize + content_lines)
             .clamp(TOAST_CONFIG.toast_height_min as usize, max_h) as u16;
@@ -345,6 +359,10 @@ fn draw_main_tabs(
     .chain(layout::style::tab_node_segment(
         UI_STRINGS.main_tabs.delta,
         state.main_mode == layout::setup::MainMode::Delta,
+    ))
+    .chain(layout::style::tab_node_segment(
+        UI_STRINGS.main_tabs.settings,
+        state.main_mode == layout::setup::MainMode::Settings,
     ))
     .collect();
     if has_lenses {

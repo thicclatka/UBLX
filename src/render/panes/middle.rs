@@ -76,7 +76,7 @@ pub fn sort_node_text(main_mode: setup::MainMode, sort: setup::ContentSort) -> O
             Some(format!("{key} {}", arrow(sort.snapshot_dir)))
         }
         setup::MainMode::Delta => Some(format!("Time {}", arrow(sort.delta_dir))),
-        setup::MainMode::Lenses => None,
+        setup::MainMode::Lenses | setup::MainMode::Settings => None,
     }
 }
 

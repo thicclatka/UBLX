@@ -31,6 +31,13 @@ pub enum Appearance {
 /// Default theme (Oblivion Ink). Used when opts theme is unset or "default".
 pub const DEFAULT_THEME: &Palette = &OBLIVION_INK;
 
+/// Display name written to new global/local default `ublx.toml` files ([`DEFAULT_THEME`]).
+#[inline]
+#[must_use]
+pub fn default_theme_for_new_config_file() -> &'static str {
+    DEFAULT_THEME.name
+}
+
 /// Named set of colors for the TUI. Extend with more fields as styles are themed.
 #[derive(Clone, Debug)]
 pub struct Palette {
