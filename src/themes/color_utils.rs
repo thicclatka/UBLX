@@ -102,3 +102,18 @@ fn hsl_to_rgb_u8(hue: f32, sat: f32, light: f32) -> (u8, u8, u8) {
             .clamp(0.0, RGB_MAX) as u8,
     )
 }
+
+/// Squared Euclidean distance in sRGB 0–255. [`None`] if either color is not [`Color::Rgb`].
+#[must_use]
+pub fn rgb_euclidean_sq(a: Color, b: Color) -> Option<u32> {
+    let Color::Rgb(ar, ag, ab) = a else {
+        return None;
+    };
+    let Color::Rgb(br, bg, bb) = b else {
+        return None;
+    };
+    let dr = i32::from(ar) - i32::from(br);
+    let dg = i32::from(ag) - i32::from(bg);
+    let db = i32::from(ab) - i32::from(bb);
+    Some((dr * dr + dg * dg + db * db) as u32)
+}

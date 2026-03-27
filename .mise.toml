@@ -3,5 +3,5 @@ rust = "1.93"
 
 
 [tasks.tublx]
-description = "Run ublx in test mode (no GUI, checking db consistency)"
-run = "cargo run -- --test"
+description = "Run ublx headless (--snapshot-only, no TUI)"
+run = "cargo run -- --snapshot-only"

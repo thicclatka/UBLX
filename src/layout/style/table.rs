@@ -30,11 +30,14 @@ pub fn table_row_style(index: usize) -> Style {
     Style::default().fg(t.text).bg(bg)
 }
 
-/// Style for a section title line in tables (e.g. "General", "Sheet Stats")
+/// Style for a section title line in tables (e.g. "General", "Sheet Stats"). Always **bold**; fg from
+/// [`themes::table_section_title_fg`] when tab label color would blend into the page.
 #[must_use]
 pub fn table_section_title_style() -> Style {
     let t = CurrentTheme::palette();
-    Style::default().fg(t.tab_active_fg)
+    Style::default()
+        .fg(themes::table_section_title_fg(t))
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Style for a sub-section title (e.g. "departments · Columns" under "departments") so it reads as belonging to the previous section.

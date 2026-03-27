@@ -5,7 +5,7 @@ use crossterm::event::KeyCode;
 use crate::app::RunUblxParams;
 use crate::handlers::applets::lens as lens_applet;
 use crate::layout::setup::{RightPaneContent, UblxState};
-use crate::ui::{keymap::UblxAction, show_operation_toast};
+use crate::ui::{keymap::UblxAction, show_operation_toast, UI_STRINGS};
 
 /// Handle key when user is typing a new lens name (Create New Lens). Returns true if key was consumed.
 pub fn handle_lens_name_input(
@@ -33,9 +33,15 @@ pub fn handle_lens_name_input(
                         params.lens_names.push(name_trimmed.clone());
                     }
                     let msg = if created {
-                        format!("Created lens \"{name_trimmed}\" and added file")
+                        UI_STRINGS
+                            .lens
+                            .toast_created_and_added_file
+                            .replace("{LENS}", &name_trimmed)
                     } else {
-                        format!("Added to lens \"{name_trimmed}\"")
+                        UI_STRINGS
+                            .lens
+                            .toast_added_to_lens
+                            .replace("{LENS}", &name_trimmed)
                     };
                     show_operation_toast(state, params, msg, "lens", log::Level::Info);
                 }
@@ -77,7 +83,10 @@ pub fn handle_lens_rename_input(
                 show_operation_toast(
                     state,
                     params,
-                    format!("Renamed lens to \"{new_name}\""),
+                    UI_STRINGS
+                        .lens
+                        .toast_renamed_to
+                        .replace("{LENS}", &new_name),
                     "lens",
                     log::Level::Info,
                 );
@@ -119,7 +128,7 @@ pub fn handle_lens_delete_confirm(
                 show_operation_toast(
                     state,
                     params,
-                    format!("Deleted lens \"{name}\""),
+                    UI_STRINGS.lens.toast_deleted_lens.replace("{LENS}", &name),
                     "lens",
                     log::Level::Info,
                 );
@@ -159,7 +168,10 @@ pub fn handle_lens_menu(
                         show_operation_toast(
                             state,
                             params,
-                            format!("Added to lens \"{lens_name}\""),
+                            UI_STRINGS
+                                .lens
+                                .toast_added_to_lens
+                                .replace("{LENS}", lens_name),
                             "lens",
                             log::Level::Info,
                         );

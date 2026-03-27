@@ -49,9 +49,25 @@ impl NefaxZahirErrors {
 /// Exit code for error/failure. Used when validation fails, index fails, or a fatal error is logged. Shared so scripting and callers get consistent values.
 pub const EXIT_ERROR: i32 = 1;
 
+/// Exit code for invalid CLI usage (wrong flag combinations).
+pub const EXIT_CLI_USAGE: i32 = 2;
+
 /// Exits the process with [`EXIT_ERROR`]. Use after logging a fatal error instead of calling `std::process::exit` directly.
 pub fn exit_error() -> ! {
     std::process::exit(EXIT_ERROR)
+}
+
+/// Exits the process with [`EXIT_CLI_USAGE`].
+pub fn exit_cli_usage() -> ! {
+    std::process::exit(EXIT_CLI_USAGE)
+}
+
+/// `--enhance-all` only applies with `--snapshot-only` or `--full-snapshot`; otherwise print and exit.
+pub fn exit_if_enhance_all_without_headless(enhance_all: bool, headless: bool) {
+    if enhance_all && !headless {
+        eprintln!("ublx: --enhance-all requires --snapshot-only or --full-snapshot");
+        exit_cli_usage();
+    }
 }
 
 /// Extension trait so we can call `.iter_failures()` / `.failures()` on [`ZahirResult`]

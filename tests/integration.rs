@@ -24,6 +24,8 @@ fn cleanup_integration_test_cache(dir_ref: &Path) {
     remove_if_exists(&paths.tmp());
     remove_if_exists(&paths.tmp_wal());
     remove_if_exists(&paths.tmp_shm());
+    remove_if_exists(&paths.hidden_toml());
+    remove_if_exists(&paths.visible_toml());
     if let Some(cfg) = last_applied_config_path(dir_ref) {
         remove_if_exists(&cfg);
     }
@@ -46,22 +48,35 @@ fn help_exits_zero() {
 }
 
 #[test]
-fn test_mode_in_empty_dir() {
+fn snapshot_only_writes_db_and_hidden_toml() {
     let tmp = std::env::current_dir()
         .unwrap()
         .join("target")
         .join("ublx_integration_test_dir");
     let _ = std::fs::create_dir_all(&tmp);
     cleanup_integration_test_cache(&tmp);
-    let out = ublx_bin().arg("--test").arg(&tmp).output().unwrap();
+    let paths = UblxPaths::new(&tmp);
+    let out = ublx_bin()
+        .arg("--snapshot-only")
+        .arg(&tmp)
+        .output()
+        .unwrap();
     assert!(
         out.status.success(),
         "exit: {:?}, stderr: {}",
         out.status.code(),
         String::from_utf8_lossy(&out.stderr)
     );
-    let db = tmp.join(".ublx");
-    assert!(db.exists(), "expected .ublx after --test run");
+    assert!(paths.db().exists(), "expected ubli db after --snapshot-only");
+    assert!(
+        paths.hidden_toml().exists(),
+        "expected .ublx.toml after --snapshot-only in fresh dir"
+    );
+    let toml = std::fs::read_to_string(paths.hidden_toml()).unwrap();
+    assert!(
+        toml.contains("enable_enhance_all = false"),
+        "expected enable_enhance_all = false, got: {toml}"
+    );
     cleanup_integration_test_cache(&tmp);
 }
 

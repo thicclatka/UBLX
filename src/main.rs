@@ -5,8 +5,8 @@ use clap::Parser;
 use log::debug;
 
 use ublx::config::{
-    TOAST_CONFIG, UblxOpts, UblxPaths, has_any_cached_ublx_db, has_recents_entry_for_dir,
-    should_show_initial_prompt,
+    TOAST_CONFIG, UblxOpts, UblxPaths, has_any_cached_ublx_db, should_show_initial_prompt,
+    write_local_enhance_only_toml,
 };
 use ublx::engine::db_ops;
 use ublx::fatal;
@@ -15,15 +15,28 @@ use ublx::integrations::load_prior_nefax_or_exit;
 use ublx::themes;
 use ublx::utils;
 
+/// Headless indexing flags (kept in one struct so the top-level [`Args`] stays under clippy’s bool limit).
+#[derive(Parser)]
+struct HeadlessCli {
+    /// Headless snapshot then exit (no TUI). Writes `.ublx.toml` when this dir has no local config yet.
+    #[arg(long = "snapshot-only", short = 's')]
+    snapshot_only: bool,
+    /// With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run. Incompatible with `--full-snapshot`.
+    #[arg(long = "enhance-all", short = 'e', conflicts_with = "full_snapshot")]
+    enhance_all: bool,
+    /// Same as `--snapshot-only --enhance-all`.
+    #[arg(long = "full-snapshot", short = 'f')]
+    full_snapshot: bool,
+}
+
 #[derive(Parser)]
 #[command(name = "ublx")]
 struct Args {
     /// Directory to index (default: current directory)
     #[arg(value_name = "DIR", default_value = ".")]
     dir_to_ublx: PathBuf,
-    /// Do a test run, no TUI, write snapshot to .ublx
-    #[arg(short = 't', long = "test")]
-    test: bool,
+    #[command(flatten)]
+    headless: HeadlessCli,
     /// Dev mode: tui-logger drain + `move_events` + trace-level default filter
     #[arg(long = "dev")]
     dev: bool,
@@ -51,11 +64,16 @@ fn main() {
         print_available_themes();
         return;
     }
-    let start_time = args.test.then(Instant::now);
 
-    let test_mode = args.test;
-    let bumper = if test_mode {
-        utils::build_logger_test_mode_no_tui();
+    let h = &args.headless;
+    let headless = h.snapshot_only || h.full_snapshot;
+    utils::exit_if_enhance_all_without_headless(h.enhance_all, headless);
+    let local_enhance_all = h.full_snapshot || h.enhance_all;
+
+    let start_time = headless.then(Instant::now);
+
+    let bumper = if headless {
+        utils::build_logger_snapshot_only_no_tui();
         None
     } else {
         let b = utils::BumperBuffer::new(TOAST_CONFIG.bumper_cap_for(args.dev));
@@ -69,7 +87,6 @@ fn main() {
 
     let paths = UblxPaths::new(&dir_to_ublx);
     let had_ubli_db = paths.db().exists();
-    let had_recents = has_recents_entry_for_dir(&dir_to_ublx);
 
     let db_path = fatal!(
         db_ops::ensure_ublx_and_db(&dir_to_ublx),
@@ -77,10 +94,8 @@ fn main() {
     );
     debug!("db: {}", db_path.display());
 
-    let initial_prompt = should_show_initial_prompt(test_mode, had_recents, had_ubli_db);
-    debug!(
-        "initial_prompt={initial_prompt} (had_recents={had_recents}, had_ubli_db={had_ubli_db})"
-    );
+    let initial_prompt = should_show_initial_prompt(headless, had_ubli_db);
+    debug!("initial_prompt={initial_prompt} (had_ubli_db={had_ubli_db})");
     debug!("cached ublx roots seen before startup: {had_any_cached_db_before_this_root}");
 
     // Load prior Nefax from DB or exit if error
@@ -108,10 +123,13 @@ fn main() {
         cached_settings.as_ref(),
         &for_dir_config,
     );
+    if headless && paths.toml_path().is_none() {
+        ublx_opts.enable_enhance_all = local_enhance_all;
+    }
     debug!("UBLX CONFIG: {ublx_opts:#?}");
 
     let mut run_params = handlers::RunAppParams {
-        test_mode,
+        snapshot_only: headless,
         dir_to_ublx: &dir_to_ublx,
         db_path: &db_path,
         ublx_opts: &mut ublx_opts,
@@ -122,4 +140,11 @@ fn main() {
         initial_prompt,
     };
     fatal!(handlers::run_app(&mut run_params), "{}");
+
+    if headless && paths.toml_path().is_none() {
+        fatal!(
+            write_local_enhance_only_toml(&paths, local_enhance_all),
+            "failed to write local config: {}"
+        );
+    }
 }

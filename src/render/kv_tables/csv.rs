@@ -104,6 +104,7 @@ impl MetadataArrayKeySliceExt for [MetadataArrayKey] {
 /// Display label for a column key (overrides for brevity in tables).
 fn csv_column_label(key: &str) -> String {
     match key {
+        k if k == MetadataArrayKey::ColumnNames.as_str() => "Column".to_string(),
         k if k == MetadataArrayKey::UniqueCounts.as_str() => "Unique #".to_string(),
         k if k == MetadataArrayKey::NullPercentages.as_str() => "Null %".to_string(),
         k if k == BOOLEAN_STATS_TRUE_PCT => "True %".to_string(),

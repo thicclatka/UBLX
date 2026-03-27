@@ -197,7 +197,7 @@ pub struct ViewerChrome {
     pub viewer_fullscreen: bool,
 }
 
-/// First-run flow when the index is empty and there is no local `ublx.toml`: pick root, optional path to an existing index, then enhance-all.
+/// First-run flow when the per-root DB was new: pick root, optional prior roots, then prior-settings or enhance-all.
 #[derive(Debug, Clone)]
 pub struct StartupPromptState {
     pub phase: StartupPromptPhase,
@@ -205,12 +205,15 @@ pub struct StartupPromptState {
 
 #[derive(Debug, Clone)]
 pub enum StartupPromptPhase {
-    /// Single-screen first-run choice: current dir first, then optional recent prior roots.
+    /// Welcome + root picker: current dir first, then optional recent roots. See [`crate::render::overlays::popup::render_startup_welcome_root_choice`].
     RootChoice {
         selected_index: usize,
         roots: Vec<PathBuf>,
     },
-    /// 0 = Yes (full Zahir on index), 1 = No.
+    /// Prior settings for this folder: local `ublx.toml` / cache vs start clean. See [`crate::render::overlays::popup::render_startup_previous_settings_prompt`].
+    /// 0 = use saved (copy cache → local when there is no local file), 1 = start fresh.
+    PreviousSettings { selected_index: usize },
+    /// Enable full-directory `ZahirScan` (`enable_enhance_all`). See [`crate::render::overlays::popup::render_startup_enhance_all_prompt`]. 0 = Yes, 1 = No.
     Enhance { selected_index: usize },
 }
 
@@ -381,7 +384,7 @@ pub struct UblxState {
     pub session: SessionFlow,
     /// CLI to pipe UTF-8 into for clipboard (see [`ClipboardCopyCommand::detect`]); None if nothing found.
     pub clipboard_copy: Option<ClipboardCopyCommand>,
-    /// Shown once when the indexed dir had an empty snapshot and no local config file.
+    /// Shown when the per-root DB file under `ubli/` was new this run ([`crate::config::paths::should_show_initial_prompt`]).
     pub startup_prompt: Option<StartupPromptState>,
     pub settings: SettingsPaneState,
 }

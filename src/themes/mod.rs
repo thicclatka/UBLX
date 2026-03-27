@@ -5,7 +5,7 @@
 mod color_utils;
 mod palettes;
 
-pub use color_utils::{adjust_surface_rgb, darken_rgb, lighten_rgb};
+pub use color_utils::{adjust_surface_rgb, darken_rgb, lighten_rgb, rgb_euclidean_sq};
 
 use ratatui::style::Color;
 use std::cell::RefCell;
@@ -30,6 +30,20 @@ pub enum Appearance {
 
 /// Default theme (Oblivion Ink). Used when opts theme is unset or "default".
 pub const DEFAULT_THEME: &Palette = &OBLIVION_INK;
+
+/// When squared RGB distance between page [`Palette::background`] and [`Palette::tab_active_fg`] is at
+/// most this, KV section titles (e.g. "General") use [`Palette::tab_active_bg`] as foreground — tab label
+/// fg targets the pill, not the body background.
+pub const TABLE_SECTION_TITLE_TAB_FG_BG_MAX_DIST_SQ: u32 = 2200;
+
+/// Foreground for metadata / writing table section titles; see [`TABLE_SECTION_TITLE_TAB_FG_BG_MAX_DIST_SQ`].
+#[must_use]
+pub fn table_section_title_fg(palette: &Palette) -> Color {
+    match color_utils::rgb_euclidean_sq(palette.background, palette.tab_active_fg) {
+        Some(d) if d <= TABLE_SECTION_TITLE_TAB_FG_BG_MAX_DIST_SQ => palette.tab_active_bg,
+        _ => palette.text,
+    }
+}
 
 /// Display name written to new global/local default `ublx.toml` files ([`DEFAULT_THEME`]).
 #[inline]

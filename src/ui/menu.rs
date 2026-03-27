@@ -6,7 +6,7 @@ use crate::handlers::{applets, leave_terminal_for_editor};
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
 };
-use crate::ui::{keymap::UblxAction, show_operation_toast};
+use crate::ui::{keymap::UblxAction, show_operation_toast, UI_STRINGS};
 
 fn open_menu_on_submit(
     state: &mut UblxState,
@@ -137,7 +137,7 @@ fn space_menu_enhance_zahir_if_disabled(
             show_operation_toast(
                 state,
                 params,
-                "Enhanced with ZahirScan",
+                UI_STRINGS.toasts.enhanced_with_zahirscan,
                 "enhance",
                 log::Level::Info,
             );
@@ -147,7 +147,7 @@ fn space_menu_enhance_zahir_if_disabled(
             show_operation_toast(
                 state,
                 params,
-                format!("Enhance failed: {e}"),
+                format!("{}{e}", UI_STRINGS.toasts.enhance_failed_prefix),
                 "enhance",
                 log::Level::Info,
             );
@@ -168,14 +168,14 @@ fn copy_selected_path_to_clipboard(state: &mut UblxState, params: &RunUblxParams
         Ok(()) => show_operation_toast(
             state,
             params,
-            "Copied path to clipboard",
+            UI_STRINGS.toasts.copied_path_to_clipboard,
             "space",
             log::Level::Info,
         ),
         Err(e) => show_operation_toast(
             state,
             params,
-            format!("Copy path failed: {e}"),
+            format!("{}{e}", UI_STRINGS.toasts.copy_path_failed_prefix),
             "space",
             log::Level::Warn,
         ),
@@ -242,7 +242,10 @@ fn space_menu_file_actions_submit(
         show_operation_toast(
             state,
             params,
-            format!("Removed from lens \"{lens_name}\""),
+            UI_STRINGS
+                .toasts
+                .removed_from_lens
+                .replace("{LENS}", lens_name),
             "lens",
             log::Level::Info,
         );

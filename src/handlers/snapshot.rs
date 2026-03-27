@@ -10,13 +10,13 @@ use crate::integrations::NefaxResult;
 use crate::themes;
 use crate::utils::BumperBuffer;
 
-/// Run snapshot pipeline in test mode (no TUI).
+/// Run snapshot pipeline headlessly (no TUI), e.g. `--snapshot-only`.
 /// Returns `Err` on failure.
 ///
 /// # Errors
 ///
 /// Returns [`anyhow::Error`] when the orchestrator or follow-up steps fail.
-pub fn run_test_mode(
+pub fn run_snapshot_only(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
     prior_nefax: Option<&NefaxResult>,
@@ -32,11 +32,11 @@ pub fn run_test_mode(
     );
     if let Some(t) = start_time {
         debug!(
-            "UBLX test completed in {:.4?} seconds",
+            "UBLX snapshot-only completed in {:.4?} seconds",
             t.elapsed().as_secs_f64()
         );
     } else {
-        debug!("UBLX test completed");
+        debug!("UBLX snapshot-only completed");
     }
     Ok(())
 }

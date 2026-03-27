@@ -185,23 +185,15 @@ pub fn has_recents_entry_for_dir(dir: &Path) -> bool {
 
 /// Whether to show the first-run welcome UI for this indexed root.
 ///
-/// **Product rule:** when not in test mode, show if this root has **never** been registered for the
-/// welcome flow: either there is no recents cache entry (`cache_dir()/recents/<path_hash>.txt`), or
-/// the per-root `SQLite` file under [`UblxPaths::db`] does not exist yet.
+/// **Product rule:** when not in headless snapshot mode, show if the per-root `SQLite` file under [`UblxPaths::db`]
+/// (in `cache_dir()/ubli/`) did **not** exist yet **before** [`crate::engine::db_ops::ensure_ublx_and_db`].
+/// Recents and local `ublx.toml` are **not** part of this gate.
 ///
-/// Local `ublx.toml` / `.ublx.toml` is **not** part of this gate — Settings may create it before the
-/// first index.
-///
-/// Callers should compute `had_recents_entry` with [`has_recents_entry_for_dir`] and
-/// `had_ubli_db_file` with `UblxPaths::new(dir).db().exists()` **before** [`crate::engine::db_ops::ensure_ublx_and_db`]
-/// (same order as [`crate::main`]).
+/// Callers should compute `had_ubli_db_file` with `UblxPaths::new(dir).db().exists()` **before**
+/// `ensure_ublx_and_db` (same order as [`crate::main`]).
 #[must_use]
-pub fn should_show_initial_prompt(
-    test_mode: bool,
-    had_recents_entry: bool,
-    had_ubli_db_file: bool,
-) -> bool {
-    !test_mode && (!had_recents_entry || !had_ubli_db_file)
+pub fn should_show_initial_prompt(snapshot_only: bool, had_ubli_db_file: bool) -> bool {
+    !snapshot_only && !had_ubli_db_file
 }
 
 /// True when the shared `ubli` directory contains at least one DB file.

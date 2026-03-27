@@ -1,4 +1,5 @@
 //! Context and list popups (`menus`) and modal dialogs (`dialogs`).
+//! Startup first-run overlays live in `dialogs` (`render_startup_*`).
 
 mod dialogs;
 mod menus;

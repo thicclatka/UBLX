@@ -8,17 +8,15 @@ use ublx::render::path_lines::wrap_path_string_segments;
 // --- `config::paths` / `should_show_initial_prompt` ------------------------------------------------
 
 #[test]
-fn never_in_test_mode() {
-    assert!(!should_show_initial_prompt(true, false, false));
-    assert!(!should_show_initial_prompt(true, true, true));
+fn never_in_snapshot_only_mode() {
+    assert!(!should_show_initial_prompt(true, false));
+    assert!(!should_show_initial_prompt(true, true));
 }
 
 #[test]
-fn when_not_test_mode_requires_both_recents_and_ubli_db_to_skip() {
-    assert!(should_show_initial_prompt(false, false, false));
-    assert!(should_show_initial_prompt(false, false, true));
-    assert!(should_show_initial_prompt(false, true, false));
-    assert!(!should_show_initial_prompt(false, true, true));
+fn initial_prompt_only_if_no_ubli_db_when_not_snapshot_only() {
+    assert!(should_show_initial_prompt(false, false));
+    assert!(!should_show_initial_prompt(false, true));
 }
 
 // --- `render::path_lines` / `wrap_path_string_segments` --------------------------------------------

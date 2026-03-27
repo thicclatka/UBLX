@@ -13,7 +13,7 @@ use super::raster_policy;
 use crate::integrations::ZahirFileType as FileType;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
 use crate::render::viewers::{pdf_preview, video_preview};
-use crate::ui::UI_GLYPHS;
+use crate::ui::{UI_GLYPHS, UI_STRINGS};
 use crate::utils::HALF_MIB_BYTES;
 
 /// Decode + downscale off the UI thread when the file is at least this large (keeps dev/`opt-level=1` snappy too).
@@ -65,10 +65,7 @@ pub fn pdf_page_footer_text(right: &RightPaneContent, viewer: &ViewerImageState)
         return None;
     }
     let p = viewer.pdf.page.max(1);
-    match viewer.pdf.page_count {
-        Some(n) => Some(format!("Page {p} / {n}")),
-        None => Some(format!("Page {p}")),
-    }
+    Some(UI_STRINGS.viewer_pdf_page_footer(p, viewer.pdf.page_count))
 }
 
 /// Like [`label_body`], but prefixes the body with the markdown image glyph — **only** for failed
@@ -280,7 +277,7 @@ fn poll_decode_rx_if_same_selection(state: &mut UblxState, selection_key: &str) 
             }
             Ok(Err(e)) => {
                 state.viewer_image.decode_rx = None;
-                state.viewer_image.err = Some(format!("Could not load preview: {e}"));
+                state.viewer_image.err = Some(UI_STRINGS.viewer_err_load_preview(e));
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
@@ -334,7 +331,7 @@ fn spawn_or_decode_raster_preview(
             {
                 Ok(img) => finish_protocol_from_image(state, img),
                 Err(e) => {
-                    state.viewer_image.err = Some(format!("Could not decode cover: {e}"));
+                    state.viewer_image.err = Some(UI_STRINGS.viewer_err_decode_cover(e));
                 }
             }
         }
@@ -361,7 +358,7 @@ fn spawn_or_decode_raster_preview(
                 finish_protocol_from_image(state, raster_policy::downscale_with_max(img, max_dim));
             }
             Err(e) => {
-                state.viewer_image.err = Some(format!("Could not open image: {e}"));
+                state.viewer_image.err = Some(UI_STRINGS.viewer_err_open_image(e));
             }
         }
     }

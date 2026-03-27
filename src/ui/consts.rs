@@ -97,11 +97,26 @@ pub struct UiStringsDialogs {
     pub help_action: &'static str,
 }
 
+/// Image / PDF / raster preview chrome and error prefixes (detail after `: ` from `format!`).
+pub struct UiStringsViewerRaster {
+    /// PDF footer: `format!("{} {p} / {n}", self.page_label, ...)`.
+    pub page_label: &'static str,
+    pub could_not_load_preview: &'static str,
+    pub could_not_decode_cover: &'static str,
+    pub could_not_open_image: &'static str,
+}
+
 pub struct UiStringsToasts {
     pub config_reloaded: &'static str,
     pub no_duplicates: &'static str,
     /// Index-time full Zahir after enabling `enable_enhance_all` (background snapshot).
     pub force_full_enhance_background: &'static str,
+    pub enhanced_with_zahirscan: &'static str,
+    pub enhance_failed_prefix: &'static str,
+    pub copied_path_to_clipboard: &'static str,
+    pub copy_path_failed_prefix: &'static str,
+    /// Placeholder `{LENS}` replaced with the lens name.
+    pub removed_from_lens: &'static str,
 }
 
 pub struct UiStringsLens {
@@ -111,23 +126,28 @@ pub struct UiStringsLens {
     pub delete_confirm_title: &'static str,
     pub delete_yes: &'static str,
     pub delete_no: &'static str,
+    /// Replace `{LENS}` with the lens name (same pattern as other lens toasts).
+    pub toast_created_and_added_file: &'static str,
+    pub toast_added_to_lens: &'static str,
+    pub toast_renamed_to: &'static str,
+    pub toast_deleted_lens: &'static str,
 }
 
 /// First launch: no local `ublx.toml` yet.
 pub struct UiStringsFirstRun {
     pub welcome_title: &'static str,
-    pub root_choice_title: &'static str,
     pub root_choice_footer: &'static str,
+    pub ublx_here: &'static str,
     pub recent_heading: &'static str,
-    pub index_this_dir: &'static str,
-    pub open_prior_ublx: &'static str,
-    pub prior_pick_title: &'static str,
-    pub path_prompt_footer: &'static str,
     pub enhance_prompt_title: &'static str,
     /// Shown below Yes/No (hint style). `ublx.toml` / `.ublx.toml`: `enable_enhance_all`.
     pub enhance_prompt_footnote: &'static str,
     pub enhance_yes: &'static str,
     pub enhance_no: &'static str,
+    pub previous_settings_title: &'static str,
+    pub previous_settings_footnote: &'static str,
+    pub previous_settings_use: &'static str,
+    pub previous_settings_fresh: &'static str,
 }
 
 pub struct UiStringsSpaceMenu {
@@ -160,6 +180,7 @@ pub struct UiStrings {
     pub brand: UiStringsBrand,
     pub tables: UiStringsTables,
     pub dialogs: UiStringsDialogs,
+    pub viewer_raster: UiStringsViewerRaster,
     pub toasts: UiStringsToasts,
     pub lens: UiStringsLens,
     pub space: UiStringsSpaceMenu,
@@ -283,11 +304,25 @@ impl UiStrings {
         }
     }
 
+    const fn viewer_raster() -> UiStringsViewerRaster {
+        UiStringsViewerRaster {
+            page_label: "Page",
+            could_not_load_preview: "Could not load preview",
+            could_not_decode_cover: "Could not decode cover",
+            could_not_open_image: "Could not open image",
+        }
+    }
+
     const fn toasts() -> UiStringsToasts {
         UiStringsToasts {
             config_reloaded: "Config reloaded",
             no_duplicates: "No duplicates found",
             force_full_enhance_background: "Getting metadata for all files.",
+            enhanced_with_zahirscan: "Enhanced with ZahirScan",
+            enhance_failed_prefix: "Enhance failed: ",
+            copied_path_to_clipboard: "Copied path to clipboard",
+            copy_path_failed_prefix: "Copy path failed: ",
+            removed_from_lens: r#"Removed from lens "{LENS}""#,
         }
     }
 
@@ -299,6 +334,10 @@ impl UiStrings {
             delete_confirm_title: "Delete lens ",
             delete_yes: "Yes",
             delete_no: "No",
+            toast_created_and_added_file: r#"Created lens "{LENS}" and added file"#,
+            toast_added_to_lens: r#"Added to lens "{LENS}""#,
+            toast_renamed_to: r#"Renamed lens to "{LENS}""#,
+            toast_deleted_lens: r#"Deleted lens "{LENS}""#,
         }
     }
 
@@ -321,17 +360,17 @@ impl UiStrings {
     const fn first_run() -> UiStringsFirstRun {
         UiStringsFirstRun {
             welcome_title: "Welcome to UBLX",
-            root_choice_title: "Choose where to start:",
             root_choice_footer: "Enter — confirm   Esc / q — quit",
+            ublx_here: "New UBLX here: ",
             recent_heading: "Recent UBLX",
-            index_this_dir: "Index this directory",
-            open_prior_ublx: "Open prior ublx",
-            prior_pick_title: "Pick a prior ublx root",
-            path_prompt_footer: "Enter — open   Esc — back",
             enhance_prompt_title: "Index with full ZahirScan for all files automatically?",
-            enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in `ublx.toml` (`enable_enhance_all`).\nTo turn off this prompt: `ask_enhance_on_new_root = false` in Global Settings (CONFIG_DIR/ublx.toml).\nDefault is off unless you set `enable_enhance_all = true`.",
+            enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in Settings (`enable_enhance_all`).\nTo turn off this prompt: `ask_enhance_on_new_root = false` in Settings (Global).\nDefault is off unless you set `enable_enhance_all = true`.",
             enhance_yes: "Yes",
             enhance_no: "No",
+            previous_settings_title: "Previous settings found",
+            previous_settings_footnote: "Use saved: keep or restore `ublx.toml` from the last run.\nStart fresh: remove local and cached config, then continue setup.\nGlobal config remains unchanged.",
+            previous_settings_use: "Use saved settings",
+            previous_settings_fresh: "Start from scratch",
         }
     }
 
@@ -349,6 +388,7 @@ impl UiStrings {
             brand: Self::brand(),
             tables: Self::tables(),
             dialogs: Self::dialogs(),
+            viewer_raster: Self::viewer_raster(),
             toasts: Self::toasts(),
             lens: Self::lens(),
             space: Self::space(),
@@ -356,11 +396,11 @@ impl UiStrings {
         }
     }
 
-    /// Toast when config is reloaded by file watcher (save).
-    #[must_use]
-    pub fn config_reload_triggered_by_save(&self) -> String {
-        format!("{} (triggered by save)", self.toasts.config_reloaded)
-    }
+    // /// Toast when config is reloaded by file watcher (save).
+    // #[must_use]
+    // pub fn config_reload_triggered_by_save(&self) -> String {
+    //     format!("{} (triggered by save)", self.toasts.config_reloaded)
+    // }
 
     /// Padded label width so **Dark** / **Light** section lines share the same total width.
     pub const THEME_SELECTOR_SECTION_LABEL_WIDTH: usize = 5;
@@ -401,6 +441,31 @@ impl UiStrings {
             + 1
             + Self::THEME_SELECTOR_SECTION_LABEL_WIDTH
             + 1
+    }
+
+    /// PDF page footer (`Page 2 / 10` or `Page 2` when total unknown).
+    #[must_use]
+    pub fn viewer_pdf_page_footer(&self, page: u32, page_count: Option<u32>) -> String {
+        let p = page.max(1);
+        match page_count {
+            Some(n) => format!("{} {p} / {n}", self.viewer_raster.page_label),
+            None => format!("{} {p}", self.viewer_raster.page_label),
+        }
+    }
+
+    #[must_use]
+    pub fn viewer_err_load_preview(&self, e: impl std::fmt::Display) -> String {
+        format!("{}: {}", self.viewer_raster.could_not_load_preview, e)
+    }
+
+    #[must_use]
+    pub fn viewer_err_decode_cover(&self, e: impl std::fmt::Display) -> String {
+        format!("{}: {}", self.viewer_raster.could_not_decode_cover, e)
+    }
+
+    #[must_use]
+    pub fn viewer_err_open_image(&self, e: impl std::fmt::Display) -> String {
+        format!("{}: {}", self.viewer_raster.could_not_open_image, e)
     }
 }
 

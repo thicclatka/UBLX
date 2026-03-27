@@ -200,7 +200,7 @@ fn push_layout_edit_section(
     }
 }
 
-/// FFmpeg + PDF raster backends (same binaries as video / PDF preview).
+/// `FFmpeg` + PDF raster backends (same binaries as video / PDF preview).
 fn push_external_apps_section(left_lines: &mut Vec<Line>) {
     left_lines.push(Line::from(""));
     left_lines.push(Line::from(Span::styled(

@@ -72,10 +72,13 @@ pub fn draw_ublx_frame(
                 let current = args
                     .dir_to_ublx
                     .unwrap_or_else(|| std::path::Path::new("."));
-                overlays::popup::render_startup_root_choice(f, *selected_index, current, roots);
+                overlays::popup::render_startup_welcome_root_choice(f, *selected_index, current, roots);
+            }
+            layout::setup::StartupPromptPhase::PreviousSettings { selected_index } => {
+                overlays::popup::render_startup_previous_settings_prompt(f, *selected_index);
             }
             layout::setup::StartupPromptPhase::Enhance { selected_index } => {
-                overlays::popup::render_initial_prompt(f, *selected_index);
+                overlays::popup::render_startup_enhance_all_prompt(f, *selected_index);
             }
         }
     }

@@ -21,7 +21,7 @@ Or clone the repo and run `cargo build --release`; the binary is in `target/rele
 
 - **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes `DIR/.ublx` (SQLite: snapshot, settings, delta_log, lenses). Config: `ublx.toml` or `.ublx.toml`.
 - **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), context menus (Space, Shift+L), stacked toasts. Viewer has fullscreen (F). `q` / Esc quit.
-- **Test run** — `ublx --test [DIR]` runs index + enrich only, no TUI.
+- **Snapshot-only** — `ublx --snapshot-only [DIR]` (`-s`) indexes headlessly, no TUI. Writes `.ublx.toml` with `enable_enhance_all = false` when the directory has no local config yet. Use `--enhance-all` (`-e`) or `--full-snapshot` (`-f`) for full index-time Zahir.
 
 ## Modes (tabs)
 
@@ -70,7 +70,7 @@ Config is optional. If present, **global** config is applied first, then **local
 | macOS / Linux | `~/.config/ublx/ublx.toml` | `~/.local/share/ublx/configs/` |
 | Windows       | `%APPDATA%\ublx\ublx.toml` | `%LOCALAPPDATA%\ublx\configs\` |
 
-**Local** config (same on all platforms): `.ublx.toml` or `ublx.toml` in the directory you index. Only keys present in each file override defaults. Choosing a theme in the theme selector (Ctrl+t) and pressing Enter saves it to the local config.
+**Local** config (same on all platforms): `.ublx.toml` (preferred when creating new files) or `ublx.toml` in the directory you index; if both exist, `.ublx.toml` wins. Only keys present in each file override defaults. Choosing a theme in the theme selector (Ctrl+t) and pressing Enter saves it to the local config.
 
 **Configurable keys** (in `ublx.toml` / `.ublx.toml`):
 
@@ -100,9 +100,11 @@ The **longest** `path` prefix that matches a file wins. If no row matches, **`en
 ## Usage
 
 ```bash
-ublx [DIR]              # index DIR (default: .), then TUI
-ublx --test [DIR]       # index + enrich only; logs duration
-ublx --dev [DIR]        # dev mode: in-app log viewer, trace-level default; RUST_LOG overrides
+ublx [DIR]                    # index DIR (default: .), then TUI
+ublx -s [DIR]                 # headless index (`--snapshot-only`); writes `.ublx.toml` if missing
+ublx -s -e [DIR]              # snapshot-only + full index-time Zahir (`--enhance-all`)
+ublx -f [DIR]                 # same as `-s -e` (`--full-snapshot`)
+ublx --dev [DIR]              # dev mode: in-app log viewer, trace-level default; RUST_LOG overrides
 ```
 
 ## License

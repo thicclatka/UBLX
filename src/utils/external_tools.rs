@@ -1,4 +1,4 @@
-//! Cached PATH probes for optional preview binaries (FFmpeg, Poppler `pdftoppm`, MuPDF `mutool`).
+//! Cached PATH probes for optional preview binaries (`FFmpeg`, Poppler `pdftoppm`, `MuPDF` `mutool`).
 //! Probed once per process via [`std::sync::OnceLock`] so the Settings UI does not spawn every frame.
 
 use std::process::Command;
@@ -32,7 +32,7 @@ pub fn poppler_pdftoppm_available() -> bool {
     cached().poppler_pdftoppm
 }
 
-/// MuPDF [`mutool`] on `PATH`.
+/// `MuPDF` [`mutool`] on `PATH`.
 #[must_use]
 pub fn mutool_available() -> bool {
     cached().mutool

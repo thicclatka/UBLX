@@ -64,9 +64,9 @@ pub fn ensure_global_config_file_with_defaults(
 
 /// Ensure the local config file used for the indexed dir exists (visible `ublx.toml` preferred when creating).
 /// Call when opening the Settings tab so first-run (no local file) still gets an on-disk template without breaking
-/// the welcome gate [`crate::config::paths::should_show_initial_prompt`] (local config presence is not part of that gate).
+/// the welcome gate [`crate::config::paths::should_show_initial_prompt`] (only the `ubli/` DB file gates that flow).
 pub fn ensure_local_config_file_with_defaults(paths: &UblxPaths, default_theme_display_name: &str) {
-    let path = paths.toml_path().unwrap_or_else(|| paths.visible_toml());
+    let path = paths.toml_path().unwrap_or_else(|| paths.hidden_toml());
     if path.exists() {
         return;
     }
@@ -183,13 +183,14 @@ pub fn write_local_theme(paths: &UblxPaths, theme_display_name: &str) {
     }
 }
 
-/// Write `ublx.toml` in the indexed directory with only [`UblxOverlay::enable_enhance_all`] set (first-run prompt).
+/// Write `.ublx.toml` in the indexed directory with only [`UblxOverlay::enable_enhance_all`] set
+/// (first-run prompt, `--snapshot-only`, etc.). Visible `ublx.toml` is still read when present.
 ///
 /// # Errors
 ///
-/// Returns [`std::io::Error`] if TOML serialization fails or if writing [`UblxPaths::visible_toml`] fails
+/// Returns [`std::io::Error`] if TOML serialization fails or if writing [`UblxPaths::hidden_toml`] fails
 /// (e.g. missing parent directory, permission denied, or disk full).
-pub fn write_visible_enhance_only_toml(
+pub fn write_local_enhance_only_toml(
     ublx_paths: &UblxPaths,
     enable_enhance_all: bool,
 ) -> std::io::Result<()> {
@@ -198,7 +199,13 @@ pub fn write_visible_enhance_only_toml(
         ..Default::default()
     };
     let s = toml::to_string(&overlay).map_err(std::io::Error::other)?;
-    fs::write(ublx_paths.visible_toml(), s)
+    let path = ublx_paths.hidden_toml();
+    if !ensure_parent_dir(&path, "config dir") {
+        return Err(std::io::Error::other(
+            "could not create parent directory for local config",
+        ));
+    }
+    fs::write(path, s)
 }
 
 /// Merge `[[enhance_policy]]` for `rel_path` into local config (`.ublx.toml` or `ublx.toml`). Preserves other keys.

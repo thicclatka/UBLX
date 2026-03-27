@@ -177,8 +177,8 @@ fn path_colored(target: &str) -> String {
     }
 }
 
-/// Build a logger for test mode without the TUI.
-pub fn build_logger_test_mode_no_tui() {
+/// Build a logger for `--snapshot-only` without the TUI.
+pub fn build_logger_snapshot_only_no_tui() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .format(|buf, record| {
@@ -188,7 +188,7 @@ pub fn build_logger_test_mode_no_tui() {
             writeln!(buf, "[{} {} {}] {}", ublx, level, path, record.args())
         })
         .init();
-    debug!("UBLX test mode logger enabled");
+    debug!("UBLX snapshot-only logger enabled");
 }
 
 /// Format byte count as "B", "KB", "MB", "GB" etc. (uses [`KIB`], [`MIB`], [`GIB`]).

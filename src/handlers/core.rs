@@ -1,4 +1,4 @@
-//! Top-level run dispatch: test mode (no TUI) or TUI with background snapshot pipeline.
+//! Top-level run dispatch: headless snapshot (`--snapshot-only`) or TUI with background snapshot pipeline.
 //! TUI setup/teardown (terminal, raw mode) lives here; the main loop lives in [`crate::app::main_loop`].
 
 use std::io;
@@ -33,7 +33,7 @@ use crate::utils::{BumperBuffer, flush_bumper_to_stderr};
 
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
-    pub test_mode: bool,
+    pub snapshot_only: bool,
     pub dir_to_ublx: &'a Path,
     pub db_path: &'a Path,
     pub ublx_opts: &'a mut UblxOpts,
@@ -41,18 +41,18 @@ pub struct RunAppParams<'a> {
     pub bumper: Option<&'a BumperBuffer>,
     pub dev: bool,
     pub start_time: Option<Instant>,
-    /// Show first-run welcome when [`crate::config::paths::should_show_initial_prompt`] is true (see its doc).
+    /// Show first-run welcome when [`crate::config::paths::should_show_initial_prompt`] is true (no `ubli/` DB yet).
     pub initial_prompt: bool,
 }
 
-/// Run the app in the selected mode: test (snapshot only, exit) or TUI with background pipeline.
+/// Run the app in the selected mode: `--snapshot-only` (index then exit) or TUI with background pipeline.
 ///
 /// # Errors
 ///
-/// Returns [`io::Error`] from test mode, TUI setup, or the main run loop (terminal I/O).
+/// Returns [`io::Error`] from headless snapshot mode, TUI setup, or the main run loop (terminal I/O).
 pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
-    if params.test_mode {
-        run_test_mode(
+    if params.snapshot_only {
+        run_snapshot_only(
             params.dir_to_ublx,
             params.ublx_opts,
             params.prior_nefax,
@@ -71,13 +71,13 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
     }
 }
 
-fn run_test_mode(
+fn run_snapshot_only(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
     prior_nefax: Option<&NefaxResult>,
     start_time: Option<Instant>,
 ) -> std::io::Result<()> {
-    snapshot::run_test_mode(dir_to_ublx, ublx_opts, prior_nefax, start_time)
+    snapshot::run_snapshot_only(dir_to_ublx, ublx_opts, prior_nefax, start_time)
         .map_err(|e| std::io::Error::other(e.to_string()))
 }
 

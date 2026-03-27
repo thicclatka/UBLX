@@ -45,7 +45,7 @@ fn draw_section_title(
         } else {
             style::table_section_title_style()
         };
-        let line = ratatui::text::Line::from(title).style(title_style);
+        let line = ratatui::text::Line::from(title.to_uppercase()).style(title_style);
         let ry = table_area.y + section_start.saturating_sub(visible_start);
         f.render_widget(
             ratatui::widgets::Paragraph::new(line),

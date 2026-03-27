@@ -50,12 +50,12 @@ pub fn on_config_reload(
     if from_external_save {
         state_mut.theme.override_name = None;
     }
-    let reload_msg = if from_external_save {
-        Some(UI_STRINGS.config_reload_triggered_by_save())
-    } else {
-        None
-    };
-    apply_config_reload(params_mut, ublx_opts_mut, state_mut, reload_msg);
+    apply_config_reload(
+        params_mut,
+        ublx_opts_mut,
+        state_mut,
+        Some(UI_STRINGS.toasts.config_reloaded),
+    );
 }
 
 /// Reloads hot-reloadable config from paths and syncs theme/layout into params. Validates before applying; on validation failure shows a toast with variable-specific errors. If applied and `message` is `Some`, shows success toast (use `None` when the change was caused by us, e.g. theme selector write).
