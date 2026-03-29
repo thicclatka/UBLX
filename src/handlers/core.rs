@@ -115,6 +115,7 @@ fn run_tui_mode(
     if !initial_prompt {
         let _ = record_ublx_session_open(dir_to_ublx);
     }
+    let (right_pane_tx, right_pane_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut params = app::RunUblxParams {
         db_path,
         dir_to_ublx,
@@ -132,8 +133,9 @@ fn run_tui_mode(
             defer_first_snapshot: initial_prompt,
             pending_force_full_enhance_toast,
         },
+        right_pane_async_tx: Some(right_pane_tx),
     };
-    run_ublx(&mut params, ublx_opts)?;
+    run_tui_session(&mut params, ublx_opts, Some(right_pane_rx))?;
     if let Some(b) = bumper
         && dev
     {
@@ -173,16 +175,22 @@ pub fn reapply_terminal_after_editor() -> io::Result<()> {
     Ok(())
 }
 
-/// Setup terminal, run [`crate::app::main_loop`], then teardown. Called by [`run_tui_mode`].
+/// Enter TUI terminal state, run [`crate::app::main_loop`], then restore the shell. Called by [`run_tui_mode`]
+/// after channels and params are wired; use [`run_app`] for the headless vs TUI dispatch.
 /// A panic hook restores the terminal on panic so the shell stays usable.
 ///
 /// # Errors
 ///
 /// Returns [`io::Error`] from terminal setup, the main loop, or teardown (raw mode, alternate screen, draw).
-pub fn run_ublx(params: &mut app::RunUblxParams<'_>, ublx_opts: &mut UblxOpts) -> io::Result<()> {
+pub fn run_tui_session(
+    params: &mut app::RunUblxParams<'_>,
+    ublx_opts: &mut UblxOpts,
+    right_pane_async_rx: Option<tokio::sync::mpsc::UnboundedReceiver<setup::RightPaneAsyncReady>>,
+) -> io::Result<()> {
     let (mut categories, mut all_rows) =
         app::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
+    state.right_pane_async.rx = right_pane_async_rx;
     {
         let paths = UblxPaths::new(params.dir_to_ublx);
         if let Some(g) = paths.global_config() {

@@ -19,7 +19,7 @@ mod frame;
 mod tick;
 mod view_build;
 
-/// Runs until the user quits. Call from [`crate::handlers::core::run_ublx`] after terminal setup.
+/// Runs until the user quits. Call from [`crate::handlers::core::run_tui_session`] after terminal setup.
 ///
 /// Per tick: see [`tick::run_tick`].
 ///

@@ -1,6 +1,6 @@
 # App (TUI loop)
 
-Main TUI loop and view-data construction. The loop runs in [`main_loop`](runtime/mod.rs); setup/teardown live in [`handlers::core::run_ublx`](../handlers/core.rs).
+Main TUI loop and view-data construction. The loop runs in [`main_loop`](runtime/mod.rs); setup/teardown live in [`handlers::core::run_tui_session`](../handlers/core.rs).
 
 ## Modules
 

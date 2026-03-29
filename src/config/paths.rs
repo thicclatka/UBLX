@@ -192,8 +192,8 @@ pub fn has_recents_entry_for_dir(dir: &Path) -> bool {
 /// Callers should compute `had_ubli_db_file` with `UblxPaths::new(dir).db().exists()` **before**
 /// `ensure_ublx_and_db` (same order as [`crate::main`]).
 #[must_use]
-pub fn should_show_initial_prompt(snapshot_only: bool, had_ubli_db_file: bool) -> bool {
-    !snapshot_only && !had_ubli_db_file
+pub fn should_show_initial_prompt(snapshot_only: bool, had_index_db_before_ensure: bool) -> bool {
+    !snapshot_only && !had_index_db_before_ensure
 }
 
 /// True when the shared `ubli` directory contains at least one DB file.

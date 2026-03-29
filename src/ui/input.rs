@@ -78,7 +78,7 @@ fn dispatch_modal_handlers(
             state_mut,
             params_mut,
             ublx_opts_mut,
-            theme_ctx_ref.clone(),
+            theme_ctx_ref,
             action,
         );
         return true;

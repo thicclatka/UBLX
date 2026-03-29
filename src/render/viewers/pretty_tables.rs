@@ -417,8 +417,8 @@ pub fn prepare_multiline_grid(
         h_len.max(b_len)
     };
 
-    let use_par_maxlens = col_count >= PARALLEL.pretty_tables_prep_maxlens_min_cols
-        && body.len() >= PARALLEL.pretty_tables_prep_maxlens_min_body_rows;
+    let use_par_maxlens = col_count >= PARALLEL.pretty_tables_prep.maxlens_min_cols
+        && body.len() >= PARALLEL.pretty_tables_prep.maxlens_min_body_rows;
     let max_lens: Vec<usize> = if use_par_maxlens {
         (0..col_count).into_par_iter().map(max_lens_at).collect()
     } else {
@@ -451,7 +451,7 @@ pub fn prepare_multiline_grid(
         pad_row_cells(wrapped, row_h)
     };
 
-    let comfy_body: Vec<Vec<String>> = if body.len() >= PARALLEL.pretty_tables_prep_body_rows {
+    let comfy_body: Vec<Vec<String>> = if body.len() >= PARALLEL.pretty_tables_prep.body_rows {
         body.par_iter().map(process_body_row).collect()
     } else {
         body.iter().map(process_body_row).collect()

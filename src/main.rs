@@ -86,7 +86,7 @@ fn main() {
     let had_any_cached_db_before_this_root = has_any_cached_ublx_db();
 
     let paths = UblxPaths::new(&dir_to_ublx);
-    let had_ubli_db = paths.db().exists();
+    let had_index_db_before_ensure = paths.db().exists();
 
     let db_path = fatal!(
         db_ops::ensure_ublx_and_db(&dir_to_ublx),
@@ -94,8 +94,10 @@ fn main() {
     );
     debug!("db: {}", db_path.display());
 
-    let initial_prompt = should_show_initial_prompt(headless, had_ubli_db);
-    debug!("initial_prompt={initial_prompt} (had_ubli_db={had_ubli_db})");
+    let initial_prompt = should_show_initial_prompt(headless, had_index_db_before_ensure);
+    debug!(
+        "initial_prompt={initial_prompt} (had_index_db_before_ensure={had_index_db_before_ensure})"
+    );
     debug!("cached ublx roots seen before startup: {had_any_cached_db_before_this_root}");
 
     // Load prior Nefax from DB or exit if error
@@ -110,7 +112,7 @@ fn main() {
         .iter()
         .map(|t| t.name)
         .collect();
-    let for_dir_config = ublx::config::ForDirConfig {
+    let for_dir_config = ublx::config::UblxOptsForDirExtras {
         valid_theme_names: &valid_themes,
         bumper: bumper.as_ref(),
     };

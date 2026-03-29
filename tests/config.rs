@@ -52,6 +52,7 @@ fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> Ublx
         nefax_workers_override: None,
         zahir_workers_override: None,
         ublx_workers_override: None,
+        tokio_runtime_workers: 2,
         streaming: false,
         config_source: None,
         theme: None,

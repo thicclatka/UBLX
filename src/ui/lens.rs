@@ -5,7 +5,7 @@ use crossterm::event::KeyCode;
 use crate::app::RunUblxParams;
 use crate::handlers::applets::lens as lens_applet;
 use crate::layout::setup::{RightPaneContent, UblxState};
-use crate::ui::{keymap::UblxAction, show_operation_toast, UI_STRINGS};
+use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
 
 /// Handle key when user is typing a new lens name (Create New Lens). Returns true if key was consumed.
 pub fn handle_lens_name_input(

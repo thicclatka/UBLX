@@ -10,8 +10,8 @@ use super::utils::{ListPopupParams, render_list_popup};
 
 use crate::layout::style;
 use crate::themes;
-use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::themes::Palette;
+use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::StringObjTraits;
 
 // --- First-run startup overlays (see [`crate::layout::setup::StartupPromptPhase`]) --------------
@@ -186,11 +186,7 @@ pub fn render_startup_welcome_root_choice(
         .max(recent_heading.chars().count())
         .max(roots_max_w)
         .max(footnote_line_lens.max().unwrap_or(0));
-    let recent_block_h = if roots.is_empty() {
-        0
-    } else {
-        2 + roots.len()
-    };
+    let recent_block_h = if roots.is_empty() { 0 } else { 2 + roots.len() };
     // current row + optional recent block (gap, heading, roots) + gap before footnote + footnote lines
     let content_h = 1 + recent_block_h + 1 + footnote_h;
     let theme = themes::current();

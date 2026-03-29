@@ -50,7 +50,7 @@ pub fn handle_key(
     state_mut: &mut UblxState,
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
-    ctx: ThemeContext,
+    theme_ctx_ref: &ThemeContext,
     action: UblxAction,
 ) {
     let opts = themes::theme_ordered_list();
@@ -69,7 +69,10 @@ pub fn handle_key(
         }
         UblxAction::SearchSubmit => {
             let display_name = opts[state_mut.theme.selector_index].name;
-            write_local_theme(&UblxPaths::new(ctx.project_dir.as_path()), display_name);
+            write_local_theme(
+                &UblxPaths::new(theme_ctx_ref.project_dir.as_path()),
+                display_name,
+            );
             state_mut.config_written_by_us_at = Some(std::time::Instant::now());
             settings::apply_config_reload(params_mut, ublx_opts_mut, state_mut, None::<&str>);
             let theme_msg = format!("Changed theme to {display_name}");

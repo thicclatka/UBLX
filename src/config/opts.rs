@@ -3,6 +3,7 @@
 //! Worker pool: [`UblxOpts::max_workers_available`] is derived from nefax tuning (drive-type aware).
 //! When >= [`STREAMING_THRESHOLD`], workers are split by ratio (or overrides) across nefax, zahir, and ublx.
 //! When below threshold, sequential mode: run phases one after another, each using all available workers.
+//! Tokio (async TUI / right-pane resolve) uses [`TOKIO_RUNTIME_WORKERS`] via [`UblxOpts::effective_tokio_runtime_workers`] — not TOML.
 //! For zahir-only (e.g. single file, no nefax), use [`UblxOpts::for_zahir_only`] with a chosen max (e.g. from tuning).
 //!
 //! Config overlay: global `~/.config/ublx/ublx.toml` (if present) is applied first, then local (`.ublx.toml` or `ublx.toml` in the indexed dir). Only keys present in each file override defaults.
@@ -21,7 +22,7 @@ use crate::integrations::{
 use crate::utils::BumperBuffer;
 
 /// Parameters for config validation and optional bumper when loading opts in [`UblxOpts::for_dir`].
-pub struct ForDirConfig<'a> {
+pub struct UblxOptsForDirExtras<'a> {
     pub valid_theme_names: &'a [&'a str],
     pub bumper: Option<&'a BumperBuffer>,
 }
@@ -59,6 +60,9 @@ fn drive_type_to_string(d: NefaxDriveType) -> &'static str {
 /// At or above this many workers we set [`UblxOpts::streaming`] to true (callback path for nefax).
 pub const STREAMING_THRESHOLD: usize = 6;
 
+/// Tokio multi-thread runtime worker count for async TUI work (e.g. right-pane file resolve). Source of truth; not overlay/TOML.
+pub const TOKIO_RUNTIME_WORKERS: usize = 2;
+
 const HIDDEN_EXCLUDE_PATTERN: &str = ".*";
 
 /// Options for ublx. Extends [`NefaxOpts`] and [`RuntimeConfig`]; owns worker-pool sizing and streaming.
@@ -75,6 +79,7 @@ pub struct UblxOpts {
     /// Override workers for zahirscan. When unset and >= threshold, uses share from ratio.
     pub zahir_workers_override: Option<usize>,
     /// Override workers for ublx (main process / other work). When unset and >= threshold, remainder from ratio.
+    pub tokio_runtime_workers: usize,
     #[allow(dead_code)]
     pub ublx_workers_override: Option<usize>,
     /// Use streaming (callback) path for nefax when true.
@@ -224,7 +229,7 @@ impl UblxOpts {
         zahir_workers_override: Option<usize>,
         ublx_workers_override: Option<usize>,
         cached_settings: Option<&UblxSettings>,
-        config: &ForDirConfig<'_>,
+        config: &UblxOptsForDirExtras<'_>,
     ) -> Self {
         let exclude = ublx_paths.exclude();
         let nefax = pre_opts_for_nefaxer(dir_to_ublx, &exclude, cached_settings);
@@ -241,6 +246,7 @@ impl UblxOpts {
             nefax_workers_override,
             zahir_workers_override,
             ublx_workers_override,
+            tokio_runtime_workers: TOKIO_RUNTIME_WORKERS,
             streaming,
             config_source,
             theme: None,
@@ -303,6 +309,7 @@ impl UblxOpts {
             nefax_workers_override: Some(0),
             zahir_workers_override: Some(max_workers_available),
             ublx_workers_override: Some(0),
+            tokio_runtime_workers: TOKIO_RUNTIME_WORKERS,
             streaming,
             config_source: None,
             theme: None,

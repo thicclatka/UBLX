@@ -43,9 +43,10 @@ fn discard_project_local_and_overlay_cache(paths: &UblxPaths) {
         }
     }
     if let Some(cache) = paths.last_applied_config_path()
-        && cache.exists() {
-            let _ = fs::remove_file(&cache);
-        }
+        && cache.exists()
+    {
+        let _ = fs::remove_file(&cache);
+    }
 }
 
 fn first_run_reload_and_maybe_snapshot(
@@ -239,7 +240,7 @@ fn finish_enhance_flow(
     first_run_reload_and_maybe_snapshot(state_mut, params_mut, ublx_opts_mut);
 }
 
-/// Called from [`crate::handlers::core::run_ublx`] when this root’s DB file under `ubli/` was new this run.
+/// Called from [`crate::handlers::core::run_tui_session`] when this root’s DB file under `ubli/` was new this run.
 pub fn init_prompt_state(state_mut: &mut UblxState, current_ref: &std::path::Path) {
     let roots = prior_indexed_roots_recent(current_ref, 5);
     state_mut.startup_prompt = Some(StartupPromptState {

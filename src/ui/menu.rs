@@ -6,7 +6,7 @@ use crate::handlers::{applets, leave_terminal_for_editor};
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
 };
-use crate::ui::{keymap::UblxAction, show_operation_toast, UI_STRINGS};
+use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
 
 fn open_menu_on_submit(
     state: &mut UblxState,

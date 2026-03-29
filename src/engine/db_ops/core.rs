@@ -128,9 +128,8 @@ pub fn write_snapshot_to_db(
     apply_wal_for_snapshot_tmp(&conn)?;
 
     in_transaction(&mut conn, |tx| {
-        let mut stmt = tx.prepare(UblxDbStatements::INSERT_SNAPSHOT)?;
         db_ops_utils::insert_results_into_snapshot(
-            &mut stmt,
+            tx,
             nefax,
             dir_to_ublx,
             Some(&ublx_paths),

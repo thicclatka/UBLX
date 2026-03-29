@@ -318,7 +318,7 @@ fn spawn_or_decode_raster_preview(
         if bytes.len() as u64 >= ASYNC_DECODE_MIN_BYTES {
             let (tx, rx) = mpsc::channel();
             state.viewer_image.decode_rx = Some(rx);
-            let bytes = bytes.to_vec();
+            let bytes = bytes.clone();
             std::thread::spawn(move || {
                 let res = image::load_from_memory(&bytes)
                     .map(|img| raster_policy::downscale_with_max(img, max_dim))

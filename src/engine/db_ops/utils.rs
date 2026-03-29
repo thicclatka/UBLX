@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use log::{debug, warn};
 use rayon::prelude::*;
-use rusqlite::{Connection, Statement};
+use rusqlite::types::Value;
+use rusqlite::{Connection, Statement, Transaction, params_from_iter};
 
 use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
 
@@ -113,22 +114,75 @@ pub fn prepare_results_for_snapshot_insertion(
 /// Hash is owned so the vec can be built in parallel (Send).
 type SnapshotInsertRow = (String, String, String, i64, i64, Option<Vec<u8>>);
 
-/// Insert all nefax rows into the prepared snapshot `INSERT` statement.
+/// Rows per multi-value `INSERT` for sequential snapshot writes (6 bind params per row; stay under SQLite’s default 999 variable cap).
+const SNAPSHOT_INSERT_BATCH_ROWS: usize = 150;
+
+fn snapshot_batch_insert_sql(n_rows: usize) -> String {
+    debug_assert!(n_rows > 0 && n_rows * 6 <= 999);
+    let mut parts = Vec::with_capacity(n_rows);
+    for i in 0..n_rows {
+        let b = i * 6 + 1;
+        parts.push(format!(
+            "(?{b},?{},?{},?{},?{},?{})",
+            b + 1,
+            b + 2,
+            b + 3,
+            b + 4,
+            b + 5
+        ));
+    }
+    format!(
+        "INSERT OR REPLACE INTO snapshot (path, mtime_ns, size, hash, category, zahir_json) VALUES {}",
+        parts.join(",")
+    )
+}
+
+fn execute_batched_snapshot_inserts(
+    tx: &Transaction<'_>,
+    mut prepared: Vec<SnapshotInsertRow>,
+) -> Result<(), anyhow::Error> {
+    let total = prepared.len() as u64;
+    let mut done = 0u64;
+    while !prepared.is_empty() {
+        let n = prepared.len().min(SNAPSHOT_INSERT_BATCH_ROWS);
+        let batch: Vec<SnapshotInsertRow> = prepared.drain(0..n).collect();
+        let batch_len = batch.len();
+        let sql = snapshot_batch_insert_sql(batch_len);
+        let mut values: Vec<Value> = Vec::with_capacity(batch_len * 6);
+        for (path_str, category, zahir_json, mtime_ns, size, hash_opt) in batch {
+            values.push(Value::Text(path_str));
+            values.push(Value::Integer(mtime_ns));
+            values.push(Value::Integer(size));
+            values.push(match hash_opt {
+                None => Value::Null,
+                Some(h) => Value::Blob(h),
+            });
+            values.push(Value::Text(category));
+            values.push(Value::Text(zahir_json));
+        }
+        tx.execute(&sql, params_from_iter(values.iter()))?;
+        done += batch_len as u64;
+        debug_snapshot_write_progress("snapshot rows insert (Nefax)", done, Some(total));
+    }
+    Ok(())
+}
+
+/// Insert all nefax rows into the snapshot table (sequential snapshot path). Uses batched multi-row `INSERT`s inside the caller’s transaction.
 ///
 /// # Errors
 ///
 /// Returns [`anyhow::Error`] on `SQLite` execute errors.
 pub fn insert_results_into_snapshot(
-    stmt: &mut Statement,
+    tx: &Transaction<'_>,
     nefax: &NefaxResult,
     dir_to_ublx: &Path,
     ublx_paths: Option<&UblxPaths>,
     zahir_output_by_path: &HashMap<String, &ZahirOutput>,
     prior: &SnapshotPriorContext<'_>,
 ) -> Result<(), anyhow::Error> {
-    if nefax.len() >= PARALLEL.snapshot_insert_prep {
+    let prepared: Vec<SnapshotInsertRow> = if nefax.len() >= PARALLEL.snapshot_insert_prep {
         let entries: Vec<_> = nefax.iter().collect();
-        let prepared: Vec<SnapshotInsertRow> = entries
+        entries
             .par_iter()
             .map(|(path, meta)| {
                 let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
@@ -150,52 +204,33 @@ pub fn insert_results_into_snapshot(
                     hash,
                 )
             })
-            .collect();
-        let total = prepared.len() as u64;
-        for (i, (path_str, category, zahir_json, mtime_ns, size, hash)) in
-            prepared.into_iter().enumerate()
-        {
-            stmt.execute(rusqlite::params![
-                path_str,
-                mtime_ns,
-                size,
-                hash.as_deref(),
-                category,
-                zahir_json,
-            ])?;
-            debug_snapshot_write_progress(
-                "snapshot rows insert (Nefax)",
-                i as u64 + 1,
-                Some(total),
-            );
-        }
+            .collect()
     } else {
-        let total = nefax.len() as u64;
-        for (i, (path, meta)) in nefax.iter().enumerate() {
-            let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
-                dir_to_ublx,
-                path,
-                ublx_paths,
-                zahir_output_by_path,
-                prior.prior_zahir_json,
-                prior.prior_category,
-                prior.ublx_opts,
-            );
-            stmt.execute(rusqlite::params![
-                path_str,
-                meta.mtime_ns,
-                meta.size.cast_signed(),
-                meta.hash.as_ref().map(<[u8; 32]>::as_slice),
-                category,
-                zahir_json,
-            ])?;
-            debug_snapshot_write_progress(
-                "snapshot rows insert (Nefax)",
-                i as u64 + 1,
-                Some(total),
-            );
-        }
-    }
+        nefax
+            .iter()
+            .map(|(path, meta)| {
+                let (path_str, category, zahir_json) = prepare_results_for_snapshot_insertion(
+                    dir_to_ublx,
+                    path,
+                    ublx_paths,
+                    zahir_output_by_path,
+                    prior.prior_zahir_json,
+                    prior.prior_category,
+                    prior.ublx_opts,
+                );
+                let hash = meta.hash.as_ref().map(|h| h.as_slice().to_vec());
+                (
+                    path_str,
+                    category,
+                    zahir_json,
+                    meta.mtime_ns,
+                    meta.size.cast_signed(),
+                    hash,
+                )
+            })
+            .collect()
+    };
+    execute_batched_snapshot_inserts(tx, prepared)?;
     Ok(())
 }
 

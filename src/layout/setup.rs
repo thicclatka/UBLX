@@ -1,6 +1,6 @@
 //! 3-panel TUI: categories (left), contents (middle), preview (right).
 //!
-//! `run_ublx` is split into four phases per tick (see classification below).
+//! [`crate::handlers::core::run_tui_session`] drives the loop; work per tick is split into four phases (see classification below).
 //! Action application (key → state changes) lives in [`crate::handlers::state_transitions`].
 
 use std::collections::{HashMap, VecDeque};
@@ -355,6 +355,37 @@ impl ViewerImageState {
     }
 }
 
+/// Avoids re-reading the selected file every UI tick when path, category, size, and mtime match.
+#[derive(Debug, Clone)]
+pub struct ViewerDiskContentCache {
+    pub rel_path: String,
+    /// Snapshot category (drives file-type handling in the viewer).
+    pub category: String,
+    pub file_len: u64,
+    pub modified: Option<std::time::SystemTime>,
+    pub viewer_str: Option<String>,
+    pub embedded_cover_raster: Option<Vec<u8>>,
+    pub viewer_can_open: bool,
+}
+
+impl ViewerDiskContentCache {
+    #[must_use]
+    pub fn matches(&self, path: &str, category: &str, meta: &std::fs::Metadata) -> bool {
+        self.rel_path == path
+            && self.category == category
+            && self.file_len == meta.len()
+            && self.modified == meta.modified().ok()
+    }
+}
+
+#[derive(Default)]
+pub struct RightPaneAsync {
+    pub generation: u64,
+    pub last_spawn_path: String,
+    pub displayed: RightPaneContent,
+    pub rx: Option<tokio::sync::mpsc::UnboundedReceiver<RightPaneAsyncReady>>,
+}
+
 /// Top-level TUI state. Menu and UI sub-states are grouped into nested structs.
 pub struct UblxState {
     pub main_mode: MainMode,
@@ -370,6 +401,8 @@ pub struct UblxState {
     pub lens_confirm: LensConfirmState,
     pub chrome: ViewerChrome,
     pub cached_tree: Option<(String, String)>,
+    /// Same file row as last tick: reuse viewer text / cover bytes without disk reads.
+    pub viewer_disk_cache: Option<ViewerDiskContentCache>,
     /// Viewer: large markdown only — cached styled [`Text`] + viewport slice on scroll.
     pub viewer_text_cache: Option<cache::ViewerTextCacheEntry>,
     /// Viewer: up to [`crate::render::cache::CSV_VIEWER_TEXT_LRU_CAP`] delimiter-table `Text` bodies by path/width/theme/revision.
@@ -387,6 +420,7 @@ pub struct UblxState {
     /// Shown when the per-root DB file under `ubli/` was new this run ([`crate::config::paths::should_show_initial_prompt`]).
     pub startup_prompt: Option<StartupPromptState>,
     pub settings: SettingsPaneState,
+    pub right_pane_async: RightPaneAsync,
 }
 
 impl Default for UblxState {
@@ -412,6 +446,7 @@ impl UblxState {
             lens_confirm: LensConfirmState::default(),
             chrome: ViewerChrome::default(),
             cached_tree: None,
+            viewer_disk_cache: None,
             viewer_text_cache: None,
             csv_table_text_lru: cache::LruCache::default(),
             viewer_image: ViewerImageState::default(),
@@ -423,6 +458,7 @@ impl UblxState {
             clipboard_copy: ClipboardCopyCommand::detect(),
             startup_prompt: None,
             settings: SettingsPaneState::default(),
+            right_pane_async: RightPaneAsync::default(),
         }
     }
 
@@ -658,8 +694,17 @@ impl DeltaViewData {
     }
 }
 
+/// Result from background right-pane resolve.
+#[derive(Debug)]
+pub struct RightPaneAsyncReady {
+    pub generation: u64,
+    pub path: String,
+    pub content: RightPaneContent,
+    pub disk_cache: Option<ViewerDiskContentCache>,
+}
+
 /// Text to show in the right pane for the current selection.
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct RightPaneContent {
     pub templates: String,
     pub metadata: Option<String>,

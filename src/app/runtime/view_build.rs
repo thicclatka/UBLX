@@ -7,8 +7,9 @@ use crate::app::{
     view_data::{build_view_data, clamp_two_pane_selection},
 };
 use crate::engine::db_ops;
-use crate::handlers::viewing;
+use crate::handlers::viewing::async_ops;
 use crate::layout::setup;
+use crate::utils::PerfGuard;
 
 fn apply_sort_anchor_selection(
     state: &mut setup::UblxState,
@@ -36,8 +37,9 @@ fn build_view_and_right_for_user_selected_mode(
 ) -> (setup::ViewData, setup::RightPaneContent) {
     clamp_two_pane_selection(state, &view);
     apply_sort_anchor_selection(state, &view, None);
-    let right_content = viewing::resolve_right_pane_content(
+    let right_content = async_ops::drive_right_pane_async(
         state,
+        params.right_pane_async_tx.as_ref(),
         params.dir_to_ublx,
         db_path_for_read,
         &view,
@@ -75,6 +77,7 @@ pub fn build_view_and_right_content<'a>(
     Option<setup::DeltaViewData>,
     Option<&'a [setup::TuiRow]>,
 ) {
+    let _perf = PerfGuard::new("view_build.build_view_and_right_content");
     // If Duplicates/Lenses has no data, switch to Snapshot to avoid empty or hanging loading screen.
     if state.main_mode == setup::MainMode::Duplicates
         && params.duplicate_groups.is_empty()
@@ -131,8 +134,9 @@ pub fn build_view_and_right_content<'a>(
         } else {
             let view = build_view_data(state, categories, all_rows, snapshot_mtimes.as_ref());
             apply_sort_anchor_selection(state, &view, Some(all_rows));
-            let right_content = viewing::resolve_right_pane_content(
+            let right_content = async_ops::drive_right_pane_async(
                 state,
+                params.right_pane_async_tx.as_ref(),
                 params.dir_to_ublx,
                 &db_path_for_read,
                 &view,

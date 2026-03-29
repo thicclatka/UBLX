@@ -3,8 +3,11 @@
 use std::path::Path;
 use std::sync::mpsc;
 
+use tokio::sync::mpsc::UnboundedSender;
+
 use crate::config::LayoutOverlay;
 use crate::engine::db_ops::DuplicateGroup;
+use crate::layout::setup::RightPaneAsyncReady;
 use crate::utils;
 
 /// Dev logging (from CLI / config).
@@ -22,7 +25,7 @@ pub struct RunUblxStartupFlow {
     pub pending_force_full_enhance_toast: bool,
 }
 
-/// Parameters for the TUI event loop. Passed from [`crate::handlers::core::run_ublx`] into [`super::main_loop`].
+/// Parameters for the TUI event loop. Passed from [`crate::handlers::core::run_tui_session`] into [`super::main_loop`].
 pub struct RunUblxParams<'a> {
     pub db_path: &'a Path,
     pub dir_to_ublx: &'a Path,
@@ -42,4 +45,6 @@ pub struct RunUblxParams<'a> {
     /// When some, a file watcher sends () on global/local config save; main loop triggers hot reload.
     pub config_reload_rx: Option<mpsc::Receiver<()>>,
     pub startup: RunUblxStartupFlow,
+    /// When set, file-row right-pane content is resolved on a background worker.
+    pub right_pane_async_tx: Option<UnboundedSender<RightPaneAsyncReady>>,
 }

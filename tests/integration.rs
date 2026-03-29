@@ -67,7 +67,10 @@ fn snapshot_only_writes_db_and_hidden_toml() {
         out.status.code(),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(paths.db().exists(), "expected ubli db after --snapshot-only");
+    assert!(
+        paths.db().exists(),
+        "expected ubli db after --snapshot-only"
+    );
     assert!(
         paths.hidden_toml().exists(),
         "expected .ublx.toml after --snapshot-only in fresh dir"

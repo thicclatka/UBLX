@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths};
+use crate::config::{OPERATION_NAME, UblxOpts, UblxOptsForDirExtras, UblxPaths};
 use crate::engine::{db_ops, orchestrator};
 use crate::fatal;
 use crate::integrations::NefaxResult;
@@ -96,7 +96,7 @@ pub fn run_snapshot_pipeline_from_dir_db(
         .iter()
         .map(|t| t.name)
         .collect();
-    let for_dir_config = crate::config::ForDirConfig {
+    let for_dir_config = UblxOptsForDirExtras {
         valid_theme_names: &valid_themes,
         bumper,
     };
