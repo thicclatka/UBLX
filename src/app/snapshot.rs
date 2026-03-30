@@ -5,20 +5,9 @@ use std::path::Path;
 use crate::engine::db_ops;
 use crate::layout::setup;
 
-/// Legacy snapshot category for `ublx.toml` before it was excluded from indexing; hidden from the TUI.
-const LEGACY_UBLX_SETTINGS_CATEGORY: &str = "UBLX Settings";
-
 fn sort_categories_and_rows(categories: &mut [String], all_rows: &mut [setup::TuiRow]) {
     categories.sort();
     all_rows.sort_by(|a, b| a.0.cmp(&b.0));
-}
-
-fn drop_legacy_ublx_settings_category(
-    categories: &mut Vec<String>,
-    all_rows: &mut Vec<setup::TuiRow>,
-) {
-    categories.retain(|c| c != LEGACY_UBLX_SETTINGS_CATEGORY);
-    all_rows.retain(|(_, cat, _)| cat != LEGACY_UBLX_SETTINGS_CATEGORY);
 }
 
 /// Load snapshot categories and rows for the TUI, sorted. Path is chosen by `preference` (e.g. prefer `.ublx` at startup, prefer `.ublx_tmp` when polling).
@@ -32,7 +21,6 @@ pub fn load_snapshot_for_tui(
     };
     let mut categories = db_ops::load_snapshot_categories(&path).unwrap_or_default();
     let mut all_rows = db_ops::load_snapshot_rows_for_tui(&path, None).unwrap_or_default();
-    drop_legacy_ublx_settings_category(&mut categories, &mut all_rows);
     sort_categories_and_rows(&mut categories, &mut all_rows);
     (categories, all_rows)
 }

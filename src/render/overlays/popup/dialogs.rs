@@ -126,6 +126,30 @@ pub fn render_delete_confirm(
     );
 }
 
+/// Delete file or folder under the indexed root (relative path in title).
+pub fn render_file_delete_confirm(
+    f: &mut Frame,
+    rel_path: &str,
+    selected_index: usize,
+    anchor_area: Rect,
+    anchor_row_index: usize,
+) {
+    let title = format!("{}{}'? ", UI_STRINGS.file.delete_confirm_title, rel_path);
+    let items = [UI_STRINGS.lens.delete_yes, UI_STRINGS.lens.delete_no];
+    render_list_popup(
+        f,
+        &ListPopupParams {
+            title: &title,
+            items: &items,
+            selected_index,
+            anchor_area,
+            anchor_row_index,
+            max_width: 36,
+            max_items: None,
+        },
+    );
+}
+
 /// Full-directory `ZahirScan` prompt: whether to turn on `enable_enhance_all` for this root.
 ///
 /// Shown in the startup flow as [`crate::layout::setup::StartupPromptPhase::Enhance`]. `selected_index`:

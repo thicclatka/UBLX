@@ -5,7 +5,7 @@ use crossterm::event::KeyCode;
 use crate::app::RunUblxParams;
 use crate::handlers::applets::lens as lens_applet;
 use crate::layout::setup::{RightPaneContent, UblxState};
-use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
+use crate::ui::{UI_STRINGS, file_ops::modal_open, keymap::UblxAction, show_operation_toast};
 
 /// Handle key when user is typing a new lens name (Create New Lens). Returns true if key was consumed.
 pub fn handle_lens_name_input(
@@ -194,7 +194,10 @@ pub fn try_open_lens_menu(
     if !matches!(action, UblxAction::LensMenu) {
         return false;
     }
-    if let Some(path) = right_content.viewer_path.clone() {
+    if modal_open(state) {
+        return false;
+    }
+    if let Some(path) = right_content.snap_meta.path.clone() {
         state.open_lens_menu(path);
         return true;
     }

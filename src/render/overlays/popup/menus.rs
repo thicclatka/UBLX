@@ -21,19 +21,16 @@ pub fn render_context_menu(
     anchor_area: Rect,
     anchor_row_index: usize,
 ) {
-    // File actions are shown in this order: Open, Show in folder, Copy Path,
-    // optional enhance actions, then lens action.
+    // File actions: Open, Show in folder, [optional enhance], Add/Remove lens, Copy Path, Copy Templates,
+    // Rename, Delete.
     let (title, items): (&str, Vec<&str>) = match kind {
         SpaceMenuKind::FileActions {
             show_enhance_directory_policy,
             show_enhance_zahir,
+            show_copy_zahir_json,
             ..
         } => {
-            let mut items = vec![
-                UI_STRINGS.space.open,
-                UI_STRINGS.space.show_in_folder,
-                UI_STRINGS.space.copy_path,
-            ];
+            let mut items = vec![UI_STRINGS.space.open, UI_STRINGS.space.show_in_folder];
             if *show_enhance_directory_policy {
                 items.push(UI_STRINGS.space.enhance_policy);
             }
@@ -45,6 +42,12 @@ pub fn render_context_menu(
             } else {
                 items.push(UI_STRINGS.space.add_to_lens);
             }
+            items.push(UI_STRINGS.space.copy_path);
+            if *show_copy_zahir_json {
+                items.push(UI_STRINGS.space.copy_zahir_json);
+            }
+            items.push(UI_STRINGS.space.rename);
+            items.push(UI_STRINGS.space.delete);
             (" Actions ", items)
         }
         SpaceMenuKind::LensPanelActions { .. } => (
@@ -151,6 +154,23 @@ pub fn render_lens_rename_prompt(f: &mut Frame, area: Rect, input: &str) {
         Span::styled(input, style::search_text()),
     ]);
     f.render_widget(Paragraph::new(line), area);
+}
+
+/// File rename: same centered text-input pattern as [`render_lens_name_popup`].
+pub fn render_file_rename_popup(
+    f: &mut Frame,
+    middle_area: Rect,
+    content_selected_index: usize,
+    input: &str,
+) {
+    render_text_input_popup(
+        f,
+        UI_STRINGS.file.rename_prompt.trim(),
+        input,
+        middle_area,
+        content_selected_index,
+        40,
+    );
 }
 
 /// Subtree `[[enhance_policy]]` chooser; line labels come from `UI_STRINGS.space` (auto vs manual batch Zahir).

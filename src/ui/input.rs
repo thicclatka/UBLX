@@ -9,7 +9,7 @@ use crate::layout::setup::{MainMode, RightPaneContent, UblxState, ViewData};
 use crate::ui::{
     MainTabFlags,
     consts::{UI_CONSTANTS, UI_STRINGS},
-    keymap, lens, menu, mouse,
+    file_ops, keymap, lens, menu, mouse,
 };
 
 #[derive(Clone)]
@@ -48,6 +48,12 @@ fn dispatch_modal_handlers(
     let ModalInput { e, action } = input;
     // Table-style: each line is (guard / handler returns true) → we handled the event.
     if applets::first_run::handle_startup_prompt(state_mut, params_mut, ublx_opts_mut, action) {
+        return true;
+    }
+    if file_ops::handle_file_delete_confirm(state_mut, params_mut, action) {
+        return true;
+    }
+    if file_ops::handle_file_rename_input(state_mut, params_mut, e) {
         return true;
     }
     if lens::handle_lens_name_input(state_mut, params_mut, e) {

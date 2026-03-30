@@ -101,9 +101,18 @@ impl UblxDbStatements {
     pub const UPDATE_SNAPSHOT_ZAHIR_JSON_ONLY: &'static str =
         "UPDATE snapshot SET zahir_json = ?1 WHERE path = ?2";
 
+    /// User rename on disk: repoint PK and refresh metadata without a full index (`hash` cleared until next full run).
+    pub const UPDATE_SNAPSHOT_RENAME_IN_PLACE: &'static str = "UPDATE snapshot SET path = ?1, mtime_ns = ?2, size = ?3, hash = ?4, category = ?5, zahir_json = ?6 WHERE path = ?7";
+
+    pub const DELETE_SNAPSHOT_ROW: &'static str = "DELETE FROM snapshot WHERE path = ?1";
+
     pub const INSERT_SETTINGS: &'static str = "INSERT OR REPLACE INTO settings (id, num_threads, drive_type, parallel_walk, config_source) VALUES (1, ?1, ?2, ?3, ?4)";
 
     pub const INSERT_DELTA_LOG: &'static str = "INSERT INTO delta_log (created_ns, path, mtime_ns, size, hash, delta_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+
+    /// After a user rename on disk: keep historical `delta_log` rows aligned with the new path before appending removed/added rows.
+    pub const UPDATE_DELTA_LOG_PATH: &'static str =
+        "UPDATE delta_log SET path = ?1 WHERE path = ?2";
 
     pub const COPY_PREVIOUS_DELTA_LOG: &'static str = "INSERT INTO main.delta_log (created_ns, path, mtime_ns, size, hash, delta_type) SELECT created_ns, path, mtime_ns, size, hash, delta_type FROM old.delta_log";
 
@@ -178,6 +187,12 @@ impl UblxDbStatements {
 
     /// Insert path, return id (use INSERT OR IGNORE then SELECT id).
     pub const INSERT_PATH: &'static str = "INSERT OR IGNORE INTO path (path) VALUES (?1)";
+
+    /// Rename a normalized path string (lens `path` table); `lens_path` rows follow `path_id`.
+    pub const UPDATE_PATH_STRING: &'static str = "UPDATE path SET path = ?1 WHERE path = ?2";
+
+    /// Remove a path row (`lens_path` rows CASCADE). Call after deleting/moving the file on disk.
+    pub const DELETE_PATH_ROW: &'static str = "DELETE FROM path WHERE path = ?1";
 
     pub const INSERT_LENS: &'static str = "INSERT INTO lens (name) VALUES (?1)";
 
@@ -307,12 +322,15 @@ impl UblxDbCategory {
         // if Self::is_hidden_path(path_ref) {
         //     return UblxDbCategory::Hidden.as_str().to_string();
         // }
-        // Get zahir file type or fallback
-        Self::get_zahir_file_type_or_fallback(zahir_file_type, path_ref)
+        // Directories before path-hint (extension/linguist can misclassify e.g. `Vol.1`).
+        if Self::is_directory_path(path_ref) {
+            return UblxDbCategory::Directory.as_str().to_string();
+        }
+        Self::get_zahir_file_type_or_fallback(zahir_file_type)
     }
 
-    fn get_zahir_file_type_or_fallback(zahir_file_type: Option<&str>, path_ref: &Path) -> String {
-        let fallback = Self::determine_fallback_category(path_ref);
+    fn get_zahir_file_type_or_fallback(zahir_file_type: Option<&str>) -> String {
+        let fallback = UblxDbCategory::File.as_str().to_string();
         let s = match zahir_file_type {
             None => return fallback,
             Some(s) => s.trim(),
@@ -344,15 +362,5 @@ impl UblxDbCategory {
     #[inline]
     fn is_directory_path(path_ref: &Path) -> bool {
         fs::metadata(path_ref).map(|m| m.is_dir()).unwrap_or(false)
-    }
-
-    #[inline]
-    fn determine_fallback_category(path_ref: &Path) -> String {
-        let is_dir = Self::is_directory_path(path_ref);
-        if is_dir {
-            UblxDbCategory::Directory.as_str().to_string()
-        } else {
-            UblxDbCategory::File.as_str().to_string()
-        }
     }
 }

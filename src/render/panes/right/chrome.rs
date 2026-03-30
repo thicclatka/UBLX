@@ -45,15 +45,15 @@ pub fn right_pane_footer_line(
     viewer_image::sync_pdf_selection_state(state, right_content);
     let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
-        && (right_content.viewer_byte_size.is_some()
-            || right_content.viewer_mtime_ns.is_some()
+        && (right_content.snap_meta.size.is_some()
+            || right_content.snap_meta.mtime_ns.is_some()
             || pdf_footer.is_some());
-    let size_str = right_content.viewer_byte_size.map(format_bytes);
+    let size_str = right_content.snap_meta.size.map(format_bytes);
     show_footer
         .then(|| {
             style::viewer_footer_line(
                 size_str.as_deref(),
-                right_content.viewer_mtime_ns,
+                right_content.snap_meta.mtime_ns,
                 pdf_footer.as_deref(),
             )
         })

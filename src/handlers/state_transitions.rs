@@ -69,8 +69,8 @@ fn apply_preview_scroll(state_mut: &mut UblxState, action: UblxAction) {
 /// Check if PDF page navigation applies
 fn pdf_page_nav_applies(state_ref: &UblxState, right_content_ref: &RightPaneContent) -> bool {
     state_ref.right_pane_mode == RightPaneMode::Viewer
-        && right_content_ref.viewer_zahir_type == Some(FileType::Pdf)
-        && right_content_ref.viewer_abs_path.is_some()
+        && right_content_ref.zahir_file_type() == Some(FileType::Pdf)
+        && right_content_ref.derived.abs_path.is_some()
 }
 
 /// Apply PDF page scroll actions to state
@@ -105,7 +105,7 @@ pub struct UblxActionContext<'a> {
 
 impl<'a> UblxActionContext<'a> {
     fn selected_content_anchor(&self, state_ref: &UblxState) -> Option<String> {
-        self.right_content_ref.viewer_path.clone().or_else(|| {
+        self.right_content_ref.snap_meta.path.clone().or_else(|| {
             state_ref.panels.content_state.selected().and_then(|i| {
                 self.view_ref
                     .row_at(i, None)

@@ -13,8 +13,8 @@ pub struct ViewportCellRasterBudget {
 impl ViewportCellRasterBudget {
     #[must_use]
     pub fn max_edge_for_cells(self, width_cells: u16, height_cells: u16) -> u32 {
-        let w = width_cells as u32;
-        let h = height_cells as u32;
+        let w = u32::from(width_cells);
+        let h = u32::from(height_cells);
         let by_w = w.saturating_mul(self.px_per_cell_w);
         let by_h = h.saturating_mul(self.px_per_cell_h);
         by_w.max(by_h).max(self.min_longest_edge)

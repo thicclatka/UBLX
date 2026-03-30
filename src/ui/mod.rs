@@ -1,4 +1,5 @@
 pub mod consts;
+pub mod file_ops;
 pub mod input;
 pub mod keymap;
 pub mod lens;

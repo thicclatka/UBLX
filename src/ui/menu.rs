@@ -2,11 +2,12 @@
 
 use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
+use crate::engine::db_ops;
 use crate::handlers::{applets, leave_terminal_for_editor};
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
 };
-use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
+use crate::ui::{UI_STRINGS, file_ops::modal_open, keymap::UblxAction, show_operation_toast};
 
 fn open_menu_on_submit(
     state: &mut UblxState,
@@ -64,20 +65,14 @@ pub fn try_open_open_menu(
     if !matches!(action, UblxAction::OpenMenu) {
         return false;
     }
-    if let Some(path) = right_content.viewer_path.clone() {
-        state.open_open_menu(path, right_content.viewer_can_open);
+    if modal_open(state) {
+        return false;
+    }
+    if let Some(path) = right_content.snap_meta.path.clone() {
+        state.open_open_menu(path, right_content.derived.can_open);
         return true;
     }
     false
-}
-
-/// [`SpaceMenuKind::FileActions`] + selected row (for submit handling).
-struct SpaceMenuFileActionsOp {
-    path: String,
-    can_open_in_terminal: bool,
-    show_enhance_directory_policy: bool,
-    show_enhance_zahir: bool,
-    idx: usize,
 }
 
 #[must_use]
@@ -86,26 +81,44 @@ fn space_menu_item_count(kind: Option<&SpaceMenuKind>) -> usize {
         Some(SpaceMenuKind::FileActions {
             show_enhance_directory_policy,
             show_enhance_zahir,
+            show_copy_zahir_json,
             ..
         }) => {
-            3 + usize::from(*show_enhance_directory_policy) + usize::from(*show_enhance_zahir) + 1
+            2 // Open, Show in folder
+                + usize::from(*show_enhance_directory_policy)
+                + usize::from(*show_enhance_zahir)
+                + 1 // Add / Remove lens
+                + 1 // Copy Path
+                + usize::from(*show_copy_zahir_json)
+                + 2 // Rename, Delete
         }
         Some(SpaceMenuKind::LensPanelActions { .. }) => 2,
         None => 0,
     }
 }
 
-/// Indices for file space-menu rows: Open, Reveal, Copy Path, optional policy, optional Zahir, Lens.
+/// Indices: Open, Reveal, optional policy, optional Zahir, Lens, Copy Path, optional Copy JSON, Rename, Delete.
+struct FileSpaceMenuIndices {
+    open: usize,
+    reveal: usize,
+    policy: Option<usize>,
+    zahir: Option<usize>,
+    lens: usize,
+    copy_path: usize,
+    copy_json: Option<usize>,
+    rename: usize,
+    delete: usize,
+}
+
 fn file_space_menu_indices(
     show_enhance_directory_policy: bool,
     show_enhance_zahir: bool,
-) -> (usize, usize, usize, Option<usize>, Option<usize>, usize) {
+    show_copy_zahir_json: bool,
+) -> FileSpaceMenuIndices {
     let mut i = 0usize;
     let open = i;
     i += 1;
     let reveal = i;
-    i += 1;
-    let copy_path = i;
     i += 1;
     let policy = show_enhance_directory_policy.then(|| {
         let j = i;
@@ -118,7 +131,28 @@ fn file_space_menu_indices(
         j
     });
     let lens = i;
-    (open, reveal, copy_path, policy, zahir, lens)
+    i += 1;
+    let copy_path = i;
+    i += 1;
+    let copy_json = show_copy_zahir_json.then(|| {
+        let j = i;
+        i += 1;
+        j
+    });
+    let rename = i;
+    i += 1;
+    let delete = i;
+    FileSpaceMenuIndices {
+        open,
+        reveal,
+        policy,
+        zahir,
+        lens,
+        copy_path,
+        copy_json,
+        rename,
+        delete,
+    }
 }
 
 fn space_menu_enhance_zahir_if_disabled(
@@ -157,6 +191,45 @@ fn space_menu_enhance_zahir_if_disabled(
 
 /// Copy selected relative path as an absolute path using cached clipboard command;
 /// emits a success/failure operation toast.
+fn copy_zahir_json_to_clipboard(state: &mut UblxState, params: &RunUblxParams<'_>, path: &str) {
+    let Some(json) = db_ops::load_zahir_json_for_path(params.db_path, path)
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty())
+    else {
+        show_operation_toast(
+            state,
+            params,
+            UI_STRINGS.toasts.copy_zahir_json_failed_prefix.to_string()
+                + "no Zahir JSON for this path",
+            "space",
+            log::Level::Warn,
+        );
+        return;
+    };
+    let copied = state
+        .clipboard_copy
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("no clipboard command detected"))
+        .and_then(|cmd| cmd.copy_utf8(&json));
+    match copied {
+        Ok(()) => show_operation_toast(
+            state,
+            params,
+            UI_STRINGS.toasts.copied_zahir_json_to_clipboard,
+            "space",
+            log::Level::Info,
+        ),
+        Err(e) => show_operation_toast(
+            state,
+            params,
+            format!("{}{e}", UI_STRINGS.toasts.copy_zahir_json_failed_prefix),
+            "space",
+            log::Level::Warn,
+        ),
+    }
+}
+
 fn copy_selected_path_to_clipboard(state: &mut UblxState, params: &RunUblxParams<'_>, path: &str) {
     let full = params.dir_to_ublx.join(path);
     let copied = state
@@ -187,68 +260,86 @@ fn space_menu_file_actions_submit(
     view: &ViewData,
     params: &mut RunUblxParams<'_>,
     ublx_opts: &UblxOpts,
-    op: SpaceMenuFileActionsOp,
+    kind: SpaceMenuKind,
+    idx: usize,
 ) {
-    let SpaceMenuFileActionsOp {
+    let SpaceMenuKind::FileActions {
         path,
         can_open_in_terminal,
         show_enhance_directory_policy,
         show_enhance_zahir,
-        idx,
-    } = op;
+        show_copy_zahir_json,
+    } = kind
+    else {
+        return;
+    };
 
-    let (open_i, reveal_i, copy_path_i, policy_i, zahir_i, lens_i) =
-        file_space_menu_indices(show_enhance_directory_policy, show_enhance_zahir);
+    let m = file_space_menu_indices(
+        show_enhance_directory_policy,
+        show_enhance_zahir,
+        show_copy_zahir_json,
+    );
 
-    if idx == open_i {
+    if idx == m.open {
         state.open_open_menu(path, can_open_in_terminal);
         return;
     }
-    if idx == reveal_i {
+    if idx == m.reveal {
         let full = params.dir_to_ublx.join(&path);
         if let Err(e) = applets::opener::reveal_in_file_manager(&full) {
             log::warn!("Show in folder: {e}");
         }
         return;
     }
-    if idx == copy_path_i {
-        copy_selected_path_to_clipboard(state, params, &path);
-        return;
-    }
-    if policy_i == Some(idx) {
+    if m.policy == Some(idx) {
         state.enhance_policy_menu.visible = true;
         state.enhance_policy_menu.path = Some(path);
         state.enhance_policy_menu.selected_index = 0;
         return;
     }
-    if zahir_i == Some(idx) {
+    if m.zahir == Some(idx) {
         space_menu_enhance_zahir_if_disabled(state, params, &path, ublx_opts);
         return;
     }
-    if idx != lens_i {
+    if idx == m.lens {
+        if state.main_mode == MainMode::Snapshot {
+            state.open_lens_menu(path);
+            return;
+        }
+        let Some(lens_name) = view
+            .filtered_categories
+            .get(state.panels.category_state.selected().unwrap_or(0))
+        else {
+            return;
+        };
+        if applets::lens::remove_path_from_lens(params.db_path, lens_name, &path).is_ok() {
+            show_operation_toast(
+                state,
+                params,
+                UI_STRINGS
+                    .toasts
+                    .removed_from_lens
+                    .replace("{LENS}", lens_name),
+                "lens",
+                log::Level::Info,
+            );
+        }
         return;
     }
-    if state.main_mode == MainMode::Snapshot {
-        state.open_lens_menu(path);
+    if idx == m.copy_path {
+        copy_selected_path_to_clipboard(state, params, &path);
         return;
     }
-    let Some(lens_name) = view
-        .filtered_categories
-        .get(state.panels.category_state.selected().unwrap_or(0))
-    else {
+    if m.copy_json == Some(idx) {
+        copy_zahir_json_to_clipboard(state, params, &path);
         return;
-    };
-    if applets::lens::remove_path_from_lens(params.db_path, lens_name, &path).is_ok() {
-        show_operation_toast(
-            state,
-            params,
-            UI_STRINGS
-                .toasts
-                .removed_from_lens
-                .replace("{LENS}", lens_name),
-            "lens",
-            log::Level::Info,
-        );
+    }
+    if idx == m.rename {
+        state.open_file_rename_input(path);
+        return;
+    }
+    if idx == m.delete {
+        state.open_file_delete_confirm(path);
     }
 }
 
@@ -261,24 +352,9 @@ fn space_menu_apply_submit(
     idx: usize,
 ) {
     match kind {
-        SpaceMenuKind::FileActions {
-            path,
-            can_open_in_terminal,
-            show_enhance_directory_policy,
-            show_enhance_zahir,
-        } => space_menu_file_actions_submit(
-            state,
-            view,
-            params,
-            ublx_opts,
-            SpaceMenuFileActionsOp {
-                path,
-                can_open_in_terminal,
-                show_enhance_directory_policy,
-                show_enhance_zahir,
-                idx,
-            },
-        ),
+        fa @ SpaceMenuKind::FileActions { .. } => {
+            space_menu_file_actions_submit(state, view, params, ublx_opts, fa, idx)
+        }
         SpaceMenuKind::LensPanelActions { lens_name } => match idx {
             0 => {
                 state.lens_confirm.rename_input = Some((lens_name.clone(), lens_name));
@@ -332,20 +408,22 @@ fn space_menu_open_blocked(state: &UblxState) -> bool {
         || state.open_menu.visible
         || state.lens_menu.visible
         || state.lens_menu.name_input.is_some()
+        || modal_open(state)
 }
 
 fn try_open_file_space_menu(
     state_mut: &mut UblxState,
     right_content_ref: &RightPaneContent,
 ) -> bool {
-    let Some(path) = right_content_ref.viewer_path.as_ref() else {
+    let Some(path) = right_content_ref.snap_meta.path.as_ref() else {
         return false;
     };
     state_mut.open_space_menu(SpaceMenuKind::FileActions {
         path: path.clone(),
-        can_open_in_terminal: right_content_ref.viewer_can_open,
-        show_enhance_directory_policy: right_content_ref.viewer_offer_enhance_directory_policy,
-        show_enhance_zahir: right_content_ref.viewer_offer_enhance_zahir,
+        can_open_in_terminal: right_content_ref.derived.can_open,
+        show_enhance_directory_policy: right_content_ref.derived.offer_enhance_directory_policy,
+        show_enhance_zahir: right_content_ref.derived.offer_enhance_zahir,
+        show_copy_zahir_json: right_content_ref.snap_meta.has_zahir_json,
     });
     true
 }
@@ -393,11 +471,11 @@ pub fn try_enhance_with_zahir(
     action: UblxAction,
 ) -> bool {
     if !matches!(action, UblxAction::EnhanceWithZahir)
-        || !right_content_ref.viewer_offer_enhance_zahir
+        || !right_content_ref.derived.offer_enhance_zahir
     {
         return false;
     }
-    let Some(path) = right_content_ref.viewer_path.as_deref() else {
+    let Some(path) = right_content_ref.snap_meta.path.as_ref() else {
         return false;
     };
     space_menu_enhance_zahir_if_disabled(state_mut, params_mut, path, ublx_opts_ref);

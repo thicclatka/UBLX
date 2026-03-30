@@ -105,7 +105,7 @@ fn recents_dir() -> Option<PathBuf> {
 fn now_ns() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
+        .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
         .unwrap_or(0)
 }
 
@@ -169,8 +169,8 @@ fn read_recents_file(path: &Path) -> Option<RecentsFileData> {
 /// Composite ordering: mostly `last_open_ns`, with a boost from `times_opened`.
 #[must_use]
 fn recents_composite_score(data: &RecentsFileData) -> u128 {
-    (data.last_open_ns as u128)
-        .saturating_add((data.times_opened as u128).saturating_mul(RECENTS_OPEN_WEIGHT_NS))
+    u128::from(data.last_open_ns)
+        .saturating_add(u128::from(data.times_opened).saturating_mul(RECENTS_OPEN_WEIGHT_NS))
 }
 
 /// True if `cache_dir()/recents/{path_hash(dir)}.txt` exists (this root was registered after the welcome flow).

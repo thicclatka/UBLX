@@ -153,3 +153,31 @@ pub fn delete_lens(db_path: &Path, lens_name: &str) -> Result<(), anyhow::Error>
     conn.execute(UblxDbStatements::DELETE_LENS, [lens_name])?;
     Ok(())
 }
+
+/// Update stored path strings when a file or folder is renamed on disk (lens membership).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` errors.
+pub fn rename_path_string(db_path: &Path, old: &str, new: &str) -> Result<(), anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(());
+    }
+    let conn = Connection::open(db_path)?;
+    conn.execute(UblxDbStatements::UPDATE_PATH_STRING, (new, old))?;
+    Ok(())
+}
+
+/// Remove `path` row after the entry was deleted or moved from disk.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` errors.
+pub fn delete_path_row(db_path: &Path, path: &str) -> Result<(), anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(());
+    }
+    let conn = Connection::open(db_path)?;
+    conn.execute(UblxDbStatements::DELETE_PATH_ROW, [path])?;
+    Ok(())
+}

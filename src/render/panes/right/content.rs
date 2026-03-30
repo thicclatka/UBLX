@@ -12,7 +12,7 @@ use crate::ui::UI_STRINGS;
 
 #[inline]
 fn viewer_is_csv(rc: &RightPaneContent) -> bool {
-    rc.viewer_zahir_type == Some(FileType::Csv)
+    rc.zahir_file_type() == Some(FileType::Csv)
 }
 
 #[inline]
@@ -23,14 +23,15 @@ fn viewer_show_delimited_table(rc: &RightPaneContent) -> bool {
     if viewer_is_csv(rc) {
         return true;
     }
-    rc.viewer_path
+    rc.snap_meta
+        .path
         .as_deref()
         .is_some_and(|p| delimiter_from_path_for_viewer(p).is_some())
 }
 
 #[inline]
 fn viewer_is_markdown(rc: &RightPaneContent) -> bool {
-    rc.viewer_zahir_type == Some(FileType::Markdown)
+    rc.zahir_file_type() == Some(FileType::Markdown)
 }
 
 fn try_build_csv_cache_entry(
@@ -88,7 +89,7 @@ pub fn ensure_viewer_text_cache(
         state.viewer_text_cache = None;
         return;
     }
-    let Some(path) = right_content.viewer_path.as_deref() else {
+    let Some(path) = right_content.snap_meta.path.as_deref() else {
         state.viewer_text_cache = None;
         return;
     };
@@ -106,8 +107,8 @@ pub fn ensure_viewer_text_cache(
             content_width,
             theme,
             raw,
-            right_content.viewer_mtime_ns,
-            right_content.viewer_byte_size,
+            right_content.snap_meta.mtime_ns,
+            right_content.snap_meta.size,
         );
         if state.csv_table_text_lru.get(&key).is_some() {
             return;
@@ -146,15 +147,15 @@ fn csv_cached_entry<'a>(
     content_width: u16,
     theme: &str,
 ) -> Option<&'a ViewerTextCacheEntry> {
-    let path = right_content.viewer_path.as_deref()?;
+    let path = right_content.snap_meta.path.as_deref()?;
     let raw = right_content.viewer.as_deref()?;
     let key = cache::viewer_table_cache_key(
         path,
         content_width,
         theme,
         raw,
-        right_content.viewer_mtime_ns,
-        right_content.viewer_byte_size,
+        right_content.snap_meta.mtime_ns,
+        right_content.snap_meta.size,
     );
     state.csv_table_text_lru.get(&key)
 }
@@ -164,7 +165,7 @@ pub fn viewer_text_cache_viewport_active(
     right_content: &RightPaneContent,
     content_width: u16,
 ) -> bool {
-    let Some(vp) = right_content.viewer_path.as_deref() else {
+    let Some(vp) = right_content.snap_meta.path.as_deref() else {
         return false;
     };
     let Some(raw) = right_content.viewer.as_deref() else {
@@ -199,7 +200,7 @@ pub fn viewer_total_lines(
                     return e.line_count;
                 }
             } else if let (Some(vp), Some(raw)) = (
-                right_content.viewer_path.as_deref(),
+                right_content.snap_meta.path.as_deref(),
                 right_content.viewer.as_deref(),
             ) && let Some(ref e) = state.viewer_text_cache
                 && e.matches(vp, content_width, theme, raw)
@@ -208,7 +209,7 @@ pub fn viewer_total_lines(
             }
             if viewer_show_delimited_table(right_content)
                 && let Some(raw) = right_content.viewer.as_deref()
-                && let Some(vp) = right_content.viewer_path.as_deref()
+                && let Some(vp) = right_content.snap_meta.path.as_deref()
                 && let Ok(rows) = csv_handler::parse_csv(raw, Some(vp))
                 && !rows.is_empty()
             {
@@ -262,7 +263,7 @@ fn viewer_uses_preformatted_layout(
     if state.right_pane_mode != RightPaneMode::Viewer {
         return false;
     }
-    if right_content.viewer_path.is_none() {
+    if right_content.snap_meta.path.is_none() {
         return false;
     }
     if viewer_is_markdown(right_content) {
@@ -283,7 +284,7 @@ fn viewer_uses_preformatted_layout(
     let Some(raw) = right_content.viewer.as_deref() else {
         return false;
     };
-    csv_handler::parse_csv(raw, right_content.viewer_path.as_deref())
+    csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
         .map(|r| !r.is_empty())
         .unwrap_or(false)
 }
@@ -317,7 +318,7 @@ fn viewer_display_text(
         .viewer
         .as_deref()
         .unwrap_or(UI_STRINGS.pane.viewer_placeholder);
-    if right_content.viewer_path.is_some() {
+    if right_content.snap_meta.path.is_some() {
         if viewer_show_delimited_table(right_content) {
             let theme = themes::current().name;
             if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
@@ -326,7 +327,7 @@ fn viewer_display_text(
                     None => e.text.clone(),
                 };
             }
-            if let Ok(rows) = csv_handler::parse_csv(raw, right_content.viewer_path.as_deref())
+            if let Ok(rows) = csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
                 && !rows.is_empty()
             {
                 return csv_handler::table_to_text(&rows, content_width);
@@ -334,7 +335,7 @@ fn viewer_display_text(
         } else if viewer_is_markdown(right_content) {
             let theme = themes::current().name;
             if raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES
-                && let Some(ref path) = right_content.viewer_path
+                && let Some(ref path) = right_content.snap_meta.path
                 && let Some(ref e) = state.viewer_text_cache
                 && e.matches(path.as_str(), content_width, theme, raw)
             {

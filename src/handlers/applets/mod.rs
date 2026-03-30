@@ -3,6 +3,7 @@
 pub mod dupe_finder;
 pub mod enhance;
 pub mod enhance_policy;
+pub mod file_ops;
 pub mod first_run;
 pub mod lens;
 pub mod opener;

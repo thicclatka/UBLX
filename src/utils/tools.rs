@@ -210,9 +210,9 @@ pub fn format_bytes(n: u64) -> String {
 pub fn unique_stamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
+        .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
         .unwrap_or(0)
-        ^ ((std::process::id() as u64) << 32)
+        ^ (u64::from(std::process::id()) << 32)
 }
 
 /// Current Unix timestamp in nanoseconds.

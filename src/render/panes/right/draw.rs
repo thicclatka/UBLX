@@ -62,7 +62,7 @@ fn draw_right_pane_scrollable_body(
     } else {
         let image_mode = state.right_pane_mode == RightPaneMode::Viewer
             && viewer_image::is_raster_preview_category(right_content)
-            && right_content.viewer_path.is_some()
+            && right_content.snap_meta.path.is_some()
             && state.viewer_image.protocol.is_some();
         if image_mode {
             if let Some(proto) = state.viewer_image.protocol.as_mut() {

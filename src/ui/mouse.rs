@@ -133,10 +133,10 @@ fn fullscreen_viewer_footer_width(
     {
         width = width.saturating_add(panes::node_display_width(&pdf));
     }
-    if let Some(size) = right_content_ref.viewer_byte_size {
+    if let Some(size) = right_content_ref.snap_meta.size {
         width = width.saturating_add(panes::node_display_width(&format_bytes(size)));
     }
-    if let Some(ns) = right_content_ref.viewer_mtime_ns {
+    if let Some(ns) = right_content_ref.snap_meta.mtime_ns {
         width = width.saturating_add(panes::node_display_width(&format_timestamp_ns(ns)));
     }
     width
@@ -189,7 +189,7 @@ fn cycle_sort_from_mouse(state_mut: &mut UblxState, right_content_ref: &RightPan
     state_mut
         .panels
         .sort_anchor_path
-        .clone_from(&right_content_ref.viewer_path);
+        .clone_from(&right_content_ref.snap_meta.path);
     state_mut.panels.content_sort = state_mut
         .panels
         .content_sort
@@ -384,6 +384,8 @@ pub fn handle_mouse_event(
         || state_mut.space_menu.visible
         || state_mut.enhance_policy_menu.visible
         || state_mut.lens_confirm.delete_visible
+        || state_mut.file_rename_input.is_some()
+        || state_mut.file_delete_confirm.visible
         || state_mut.startup_prompt.is_some()
     {
         return false;

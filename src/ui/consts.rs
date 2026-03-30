@@ -114,9 +114,15 @@ pub struct UiStringsToasts {
     pub enhanced_with_zahirscan: &'static str,
     pub enhance_failed_prefix: &'static str,
     pub copied_path_to_clipboard: &'static str,
+    pub copied_zahir_json_to_clipboard: &'static str,
     pub copy_path_failed_prefix: &'static str,
+    pub copy_zahir_json_failed_prefix: &'static str,
     /// Placeholder `{LENS}` replaced with the lens name.
     pub removed_from_lens: &'static str,
+    /// Replace `{PATH}` with the new relative path after rename.
+    pub file_renamed: &'static str,
+    pub file_deleted: &'static str,
+    pub file_ops_failed_prefix: &'static str,
 }
 
 pub struct UiStringsLens {
@@ -131,6 +137,12 @@ pub struct UiStringsLens {
     pub toast_added_to_lens: &'static str,
     pub toast_renamed_to: &'static str,
     pub toast_deleted_lens: &'static str,
+}
+
+/// Rename / delete entry under the indexed root (space menu file actions).
+pub struct UiStringsFile {
+    pub rename_prompt: &'static str,
+    pub delete_confirm_title: &'static str,
 }
 
 /// First launch: no local `ublx.toml` yet.
@@ -161,6 +173,8 @@ pub struct UiStringsSpaceMenu {
     pub enhance_policy_never: &'static str,
     /// Run full `ZahirScan` on this file when `enable_enhance_all` is false.
     pub enhance_with_zahirscan: &'static str,
+    /// Copy raw snapshot `zahir_json` for this entry to the clipboard (space menu; only when JSON exists).
+    pub copy_zahir_json: &'static str,
     pub add_to_lens: &'static str,
     pub remove_from_lens: &'static str,
     pub rename: &'static str,
@@ -184,6 +198,7 @@ pub struct UiStrings {
     pub toasts: UiStringsToasts,
     pub lens: UiStringsLens,
     pub space: UiStringsSpaceMenu,
+    pub file: UiStringsFile,
     pub first_run: UiStringsFirstRun,
 }
 
@@ -321,8 +336,20 @@ impl UiStrings {
             enhanced_with_zahirscan: "Enhanced with ZahirScan",
             enhance_failed_prefix: "Enhance failed: ",
             copied_path_to_clipboard: "Copied path to clipboard",
+            copied_zahir_json_to_clipboard: "Copied Zahir JSON to clipboard",
             copy_path_failed_prefix: "Copy path failed: ",
+            copy_zahir_json_failed_prefix: "Copy Zahir JSON failed: ",
             removed_from_lens: r#"Removed from lens "{LENS}""#,
+            file_renamed: r#"Renamed to "{PATH}""#,
+            file_deleted: "Deleted",
+            file_ops_failed_prefix: "Failed: ",
+        }
+    }
+
+    const fn file_strings() -> UiStringsFile {
+        UiStringsFile {
+            rename_prompt: "Rename to: ",
+            delete_confirm_title: "Delete ",
         }
     }
 
@@ -350,6 +377,7 @@ impl UiStrings {
             enhance_policy_always: "Always (automatic)",
             enhance_policy_never: "Per-file (manual)",
             enhance_with_zahirscan: "Enhance with ZahirScan",
+            copy_zahir_json: "Copy Templates",
             add_to_lens: "Add to Lens",
             remove_from_lens: "Remove from Lens",
             rename: "Rename",
@@ -392,6 +420,7 @@ impl UiStrings {
             toasts: Self::toasts(),
             lens: Self::lens(),
             space: Self::space(),
+            file: Self::file_strings(),
             first_run: Self::first_run(),
         }
     }

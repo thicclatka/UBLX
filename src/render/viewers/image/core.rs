@@ -23,18 +23,19 @@ pub const ASYNC_DECODE_MIN_BYTES: u64 = HALF_MIB_BYTES;
 #[inline]
 #[must_use]
 pub fn is_image_category(rc: &RightPaneContent) -> bool {
-    rc.viewer_zahir_type == Some(FileType::Image)
+    rc.zahir_file_type() == Some(FileType::Image)
 }
 
 /// True when the viewer should show a **raster** preview (image file, PDF page, video preview frame, or embedded audio/EPUB cover).
 #[inline]
 #[must_use]
 pub fn is_raster_preview_category(rc: &RightPaneContent) -> bool {
-    rc.viewer_embedded_cover_raster
+    rc.derived
+        .embedded_cover_raster
         .as_ref()
         .is_some_and(|b| !b.is_empty())
         || matches!(
-            rc.viewer_zahir_type,
+            rc.zahir_file_type(),
             Some(FileType::Image | FileType::Pdf | FileType::Video)
         )
 }
@@ -48,7 +49,7 @@ pub fn label_body(raw: &str) -> String {
 /// Label for image or PDF raster preview (uses snapshot category name).
 #[must_use]
 pub fn raster_preview_label_body(rc: &RightPaneContent, raw: &str) -> String {
-    let name = match rc.viewer_zahir_type {
+    let name = match rc.zahir_file_type() {
         Some(FileType::Pdf) => FileType::Pdf.as_metadata_name(),
         Some(FileType::Video) => FileType::Video.as_metadata_name(),
         Some(FileType::Audio) => FileType::Audio.as_metadata_name(),
@@ -61,7 +62,7 @@ pub fn raster_preview_label_body(rc: &RightPaneContent, raw: &str) -> String {
 /// Footer line for PDF page position (`Page 2 / 10`).
 #[must_use]
 pub fn pdf_page_footer_text(right: &RightPaneContent, viewer: &ViewerImageState) -> Option<String> {
-    if right.viewer_zahir_type != Some(FileType::Pdf) || right.viewer_abs_path.is_none() {
+    if right.zahir_file_type() != Some(FileType::Pdf) || right.derived.abs_path.is_none() {
         return None;
     }
     let p = viewer.pdf.page.max(1);
@@ -98,7 +99,7 @@ pub fn stateful_widget() -> StatefulImage<StatefulProtocol> {
 
 /// Reset PDF page state when switching files; poll [`ViewerImageState::pdf_page_count_rx`].
 pub fn sync_pdf_selection_state(state: &mut UblxState, right_content: &RightPaneContent) {
-    if right_content.viewer_zahir_type != Some(FileType::Pdf) {
+    if right_content.zahir_file_type() != Some(FileType::Pdf) {
         if state.viewer_image.pdf.for_path.take().is_some() {
             state
                 .viewer_image
@@ -113,7 +114,7 @@ pub fn sync_pdf_selection_state(state: &mut UblxState, right_content: &RightPane
         }
         return;
     }
-    let Some(abs) = right_content.viewer_abs_path.as_ref() else {
+    let Some(abs) = right_content.derived.abs_path.as_ref() else {
         return;
     };
     if state.viewer_image.pdf.for_path.as_ref() != Some(abs) {
@@ -298,7 +299,7 @@ fn spawn_or_decode_raster_preview(
 ) {
     let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
     let max_dim = raster_max_dimension_for_file_size(file_size, is_pdf, viewport_cells);
-    let is_video = right_content.viewer_zahir_type == Some(FileType::Video);
+    let is_video = right_content.zahir_file_type() == Some(FileType::Video);
 
     if is_pdf {
         let (tx, rx) = mpsc::channel();
@@ -311,7 +312,8 @@ fn spawn_or_decode_raster_preview(
             let _ = tx.send(res);
         });
     } else if let Some(bytes) = right_content
-        .viewer_embedded_cover_raster
+        .derived
+        .embedded_cover_raster
         .as_ref()
         .filter(|b| !b.is_empty())
     {
@@ -375,8 +377,8 @@ pub fn ensure_viewer_image(
 ) {
     sync_pdf_selection_state(state, right_content);
 
-    if right_content.viewer_zahir_type == Some(FileType::Pdf)
-        && let Some(abs) = right_content.viewer_abs_path.as_ref()
+    if right_content.zahir_file_type() == Some(FileType::Pdf)
+        && let Some(abs) = right_content.derived.abs_path.as_ref()
     {
         drain_pdf_prefetch_results(state, abs);
         maybe_spawn_pdf_prefetch(state, abs, viewport_cells);
@@ -389,15 +391,16 @@ pub fn ensure_viewer_image(
         state.viewer_image.clear();
         return;
     }
-    let Some(abs) = right_content.viewer_abs_path.as_ref() else {
+    let Some(abs) = right_content.derived.abs_path.as_ref() else {
         state.viewer_image.clear();
         state.viewer_image.err = Some("No absolute path for preview".to_string());
         return;
     };
 
-    let is_pdf = right_content.viewer_zahir_type == Some(FileType::Pdf);
+    let is_pdf = right_content.zahir_file_type() == Some(FileType::Pdf);
     let has_embedded_cover = right_content
-        .viewer_embedded_cover_raster
+        .derived
+        .embedded_cover_raster
         .as_ref()
         .is_some_and(|b| !b.is_empty());
     let path_str = abs.display().to_string();

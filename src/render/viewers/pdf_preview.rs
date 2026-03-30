@@ -33,7 +33,7 @@ impl PdfRasterMaxDimBoost {
     #[inline]
     #[must_use]
     pub fn apply(base: u32) -> u32 {
-        ((base as u64 * Self::NUMERATOR) / Self::DENOMINATOR).min(Self::CAP_PX) as u32
+        ((u64::from(base) * Self::NUMERATOR) / Self::DENOMINATOR).min(Self::CAP_PX) as u32
     }
 }
 

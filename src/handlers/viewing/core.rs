@@ -8,8 +8,8 @@ use std::process::Command;
 use crate::engine::db_ops;
 use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
 use crate::layout::setup::{
-    CATEGORY_DIRECTORY, RightPaneContent, SectionedPreview, TuiRow, UblxState, ViewData,
-    ViewerDiskContentCache,
+    CATEGORY_DIRECTORY, RightPaneContent, RightPaneContentDerived, SectionedPreview,
+    SnapshotEntryMeta, TuiRow, UblxState, ViewData, ViewerDiskContentCache,
 };
 use crate::utils;
 
@@ -49,21 +49,27 @@ fn tree_viewer(
     abs_path: PathBuf,
     offer_directory_policy: bool,
     mtime_ns: Option<i64>,
+    viewer_has_zahir_json: bool,
 ) -> RightPaneContent {
     RightPaneContent {
         templates: String::new(),
         metadata: None,
         writing: None,
         viewer: Some(tree_str),
-        viewer_path: Some(rel_path.to_string()),
-        viewer_abs_path: Some(abs_path),
-        viewer_zahir_type: None,
-        viewer_byte_size: None,
-        viewer_mtime_ns: mtime_ns,
-        viewer_can_open: false,
-        viewer_offer_enhance_zahir: false,
-        viewer_offer_enhance_directory_policy: offer_directory_policy,
-        viewer_embedded_cover_raster: None,
+        snap_meta: SnapshotEntryMeta {
+            path: Some(rel_path.to_string()),
+            category: Some(CATEGORY_DIRECTORY.to_string()),
+            size: Some(0),
+            mtime_ns,
+            has_zahir_json: viewer_has_zahir_json,
+        },
+        derived: RightPaneContentDerived {
+            abs_path: Some(abs_path),
+            can_open: false,
+            offer_enhance_zahir: false,
+            offer_enhance_directory_policy: offer_directory_policy,
+            embedded_cover_raster: None,
+        },
     }
 }
 
@@ -185,15 +191,20 @@ pub fn build_non_directory_right_pane_inner(
         metadata,
         writing,
         viewer: viewer_str,
-        viewer_path: Some(path.to_string()),
-        viewer_abs_path: Some(full_path.to_path_buf()),
-        viewer_zahir_type,
-        viewer_byte_size,
-        viewer_mtime_ns,
-        viewer_can_open,
-        viewer_offer_enhance_zahir,
-        viewer_offer_enhance_directory_policy: false,
-        viewer_embedded_cover_raster: embedded_cover.clone(),
+        snap_meta: SnapshotEntryMeta {
+            path: Some(path.to_string()),
+            category: Some(category.to_string()),
+            size: viewer_byte_size,
+            mtime_ns: viewer_mtime_ns,
+            has_zahir_json: !zahir_json.is_empty(),
+        },
+        derived: RightPaneContentDerived {
+            abs_path: Some(full_path.to_path_buf()),
+            can_open: viewer_can_open,
+            offer_enhance_zahir: viewer_offer_enhance_zahir,
+            offer_enhance_directory_policy: false,
+            embedded_cover_raster: embedded_cover.clone(),
+        },
     };
     (content, new_disk_cache)
 }
@@ -214,7 +225,11 @@ fn resolve_non_directory_right_pane(
     } = inputs;
     if full_path.is_dir() {
         let tree_str = tree_for_path(state_mut, path, &full_path);
-        return tree_viewer(tree_str, path, full_path, false, viewer_mtime_ns);
+        let has_zahir = db_ops::load_zahir_json_for_path(db_path_ref, path)
+            .ok()
+            .flatten()
+            .is_some_and(|s| !s.is_empty());
+        return tree_viewer(tree_str, path, full_path, false, viewer_mtime_ns, has_zahir);
     }
     state_mut.cached_tree = None;
     let hint = state_mut.viewer_disk_cache.as_ref();
@@ -260,7 +275,11 @@ pub fn resolve_right_pane_content(
             .flatten();
         if *category == CATEGORY_DIRECTORY {
             let tree_str = tree_for_path(state_mut, path, &full_path);
-            tree_viewer(tree_str, path, full_path, true, viewer_mtime_ns)
+            let has_zahir = db_ops::load_zahir_json_for_path(db_path_ref, path)
+                .ok()
+                .flatten()
+                .is_some_and(|s| !s.is_empty());
+            tree_viewer(tree_str, path, full_path, true, viewer_mtime_ns, has_zahir)
         } else {
             resolve_non_directory_right_pane(
                 state_mut,

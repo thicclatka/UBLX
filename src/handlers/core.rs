@@ -18,13 +18,8 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 
 use crate::app;
-use crate::config::{
-    UblxOpts, UblxPaths, ensure_global_config_file_with_defaults, record_ublx_session_open,
-};
-use crate::engine::{
-    db_ops::{SnapshotReaderPreference, load_lens_names},
-    orchestrator,
-};
+use crate::config;
+use crate::engine::{db_ops, orchestrator};
 use crate::handlers::{applets::first_run, snapshot};
 use crate::integrations::NefaxResult;
 use crate::layout::setup;
@@ -36,7 +31,7 @@ pub struct RunAppParams<'a> {
     pub snapshot_only: bool,
     pub dir_to_ublx: &'a Path,
     pub db_path: &'a Path,
-    pub ublx_opts: &'a mut UblxOpts,
+    pub ublx_opts: &'a mut config::UblxOpts,
     pub prior_nefax: Option<&'a NefaxResult>,
     pub bumper: Option<&'a BumperBuffer>,
     pub dev: bool,
@@ -73,7 +68,7 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
 
 fn run_snapshot_only(
     dir_to_ublx: &Path,
-    ublx_opts: &UblxOpts,
+    ublx_opts: &config::UblxOpts,
     prior_nefax: Option<&NefaxResult>,
     start_time: Option<Instant>,
 ) -> std::io::Result<()> {
@@ -84,7 +79,7 @@ fn run_snapshot_only(
 fn run_tui_mode(
     dir_to_ublx: &Path,
     db_path: &Path,
-    ublx_opts: &mut UblxOpts,
+    ublx_opts: &mut config::UblxOpts,
     prior_nefax: Option<&NefaxResult>,
     bumper: Option<&BumperBuffer>,
     dev: bool,
@@ -109,11 +104,11 @@ fn run_tui_mode(
 
     let config_reload_rx = Some(spawn_config_watcher(dir_to_ublx));
 
-    let lens_names = load_lens_names(db_path).unwrap_or_default();
+    let lens_names = db_ops::load_lens_names(db_path).unwrap_or_default();
     let pending_force_full_enhance_toast =
         !initial_prompt && orchestrator::should_force_full_zahir(ublx_opts);
     if !initial_prompt {
-        let _ = record_ublx_session_open(dir_to_ublx);
+        let _ = config::record_ublx_session_open(dir_to_ublx);
     }
     let (right_pane_tx, right_pane_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut params = app::RunUblxParams {
@@ -184,17 +179,20 @@ pub fn reapply_terminal_after_editor() -> io::Result<()> {
 /// Returns [`io::Error`] from terminal setup, the main loop, or teardown (raw mode, alternate screen, draw).
 pub fn run_tui_session(
     params: &mut app::RunUblxParams<'_>,
-    ublx_opts: &mut UblxOpts,
+    ublx_opts: &mut config::UblxOpts,
     right_pane_async_rx: Option<tokio::sync::mpsc::UnboundedReceiver<setup::RightPaneAsyncReady>>,
 ) -> io::Result<()> {
     let (mut categories, mut all_rows) =
-        app::load_snapshot_for_tui(params.db_path, SnapshotReaderPreference::PreferUblx);
+        app::load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
     let mut state = setup::UblxState::new();
     state.right_pane_async.rx = right_pane_async_rx;
     {
-        let paths = UblxPaths::new(params.dir_to_ublx);
+        let paths = config::UblxPaths::new(params.dir_to_ublx);
         if let Some(g) = paths.global_config() {
-            ensure_global_config_file_with_defaults(&g, default_theme_for_new_config_file());
+            config::ensure_global_config_file_with_defaults(
+                &g,
+                default_theme_for_new_config_file(),
+            );
         }
     }
     if params.startup.defer_first_snapshot {
@@ -249,14 +247,14 @@ const CONFIG_WATCHER_PARK_SECS: u64 = 86400;
 
 /// Spawns a thread that watches global and local config paths; sends `()` when a config file changes so the main loop can trigger hot reload. Debounced so one save yields one signal. If the watcher cannot be created, the thread exits silently (no reload signals).
 fn spawn_config_watcher(dir_to_ublx: &Path) -> mpsc::Receiver<()> {
-    let paths = UblxPaths::new(dir_to_ublx);
+    let paths = config::UblxPaths::new(dir_to_ublx);
     let global = paths.global_config();
     let dir = dir_to_ublx.to_path_buf();
     let (tx, rx) = mpsc::channel();
     let last_send_ms = Arc::new(AtomicU64::new(0));
 
     std::thread::spawn(move || {
-        let paths = UblxPaths::new(&dir);
+        let paths = config::UblxPaths::new(&dir);
         let global_clone = global.clone();
         let last_send = Arc::clone(&last_send_ms);
         let Ok(mut watcher) = notify::recommended_watcher(move |res: Result<notify::Event, _>| {

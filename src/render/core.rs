@@ -159,6 +159,18 @@ fn draw_popups(
             category_sel,
         );
     }
+    if state.file_delete_confirm.visible
+        && let Some(ref p) = state.file_delete_confirm.rel_path
+        && in_snapshot_or_lenses
+    {
+        overlays::popup::render_file_delete_confirm(
+            f,
+            p,
+            state.file_delete_confirm.selected_index,
+            middle,
+            content_sel,
+        );
+    }
 }
 
 fn draw_background(f: &mut Frame, area: Rect, _args: &DrawFrameArgs<'_>) {
@@ -301,6 +313,10 @@ fn draw_main_content(
             content_sel,
             state.lens_menu.name_input.as_deref().unwrap_or(""),
         );
+    } else if let Some((_, ref input)) = state.file_rename_input {
+        let middle = body.chunks[1];
+        let content_sel = state.panels.content_state.selected().unwrap_or(0);
+        overlays::popup::render_file_rename_popup(f, middle, content_sel, input);
     } else if let Some((_, ref input)) = state.lens_confirm.rename_input {
         overlays::popup::render_lens_rename_prompt(f, body.status_area, input);
     } else {

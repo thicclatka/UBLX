@@ -15,7 +15,7 @@ use ratatui::widgets::ListState;
 use super::style;
 
 use crate::engine::{cache, db_ops::DeltaType};
-use crate::integrations::ZahirFileType as FileType;
+use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
 use crate::render::viewers::pdf_preview::PDFPrefetch;
 use crate::utils::{ClipboardCopyCommand, ToastSlot};
 
@@ -188,6 +188,14 @@ pub struct LensConfirmState {
     pub delete_visible: bool,
     pub delete_lens_name: Option<String>,
     pub delete_selected: usize,
+}
+
+/// Confirm delete for a snapshot file or folder (Yes / No).
+#[derive(Default)]
+pub struct FileDeleteConfirmState {
+    pub visible: bool,
+    pub rel_path: Option<String>,
+    pub selected_index: usize,
 }
 
 /// Help overlay and fullscreen right-pane preview.
@@ -399,6 +407,9 @@ pub struct UblxState {
     pub space_menu: SpaceMenuState,
     pub enhance_policy_menu: EnhancePolicyMenuState,
     pub lens_confirm: LensConfirmState,
+    /// Rename entry: `(relative path, new basename being typed)`.
+    pub file_rename_input: Option<(String, String)>,
+    pub file_delete_confirm: FileDeleteConfirmState,
     pub chrome: ViewerChrome,
     pub cached_tree: Option<(String, String)>,
     /// Same file row as last tick: reuse viewer text / cover bytes without disk reads.
@@ -408,7 +419,7 @@ pub struct UblxState {
     /// Viewer: up to [`crate::render::cache::CSV_VIEWER_TEXT_LRU_CAP`] delimiter-table `Text` bodies by path/width/theme/revision.
     pub csv_table_text_lru:
         cache::LruCache<cache::ViewerTableCacheKey, cache::ViewerTextCacheEntry>,
-    /// Image category viewer ([`RightPaneContent::viewer_abs_path`] + [`crate::render::viewers::image`]).
+    /// Image category viewer ([`RightPaneContent::derived`] `abs_path` + [`crate::render::viewers::image`]).
     pub viewer_image: ViewerImageState,
     pub last_key_for_double: Option<char>,
     pub snapshot_bg: BackgroundSnapshot,
@@ -444,6 +455,8 @@ impl UblxState {
             space_menu: SpaceMenuState::default(),
             enhance_policy_menu: EnhancePolicyMenuState::default(),
             lens_confirm: LensConfirmState::default(),
+            file_rename_input: None,
+            file_delete_confirm: FileDeleteConfirmState::default(),
             chrome: ViewerChrome::default(),
             cached_tree: None,
             viewer_disk_cache: None,
@@ -524,6 +537,28 @@ impl UblxState {
         self.lens_confirm.delete_lens_name = Some(lens_name);
         self.lens_confirm.delete_selected = 0;
     }
+
+    /// Space menu → Rename: centered text input with current basename.
+    pub fn open_file_rename_input(&mut self, rel_path: String) {
+        let base = std::path::Path::new(&rel_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        self.file_rename_input = Some((rel_path, base));
+    }
+
+    pub fn close_file_delete_confirm(&mut self) {
+        self.file_delete_confirm.visible = false;
+        self.file_delete_confirm.rel_path = None;
+        self.file_delete_confirm.selected_index = 0;
+    }
+
+    pub fn open_file_delete_confirm(&mut self, rel_path: String) {
+        self.file_delete_confirm.visible = true;
+        self.file_delete_confirm.rel_path = Some(rel_path);
+        self.file_delete_confirm.selected_index = 0;
+    }
 }
 
 /// Which config file the Settings tab edits (`~/.config/ublx/ublx.toml` vs project `ublx.toml`).
@@ -601,9 +636,9 @@ pub enum PanelFocus {
 /// Which variant of the spacebar context menu is open (determines items and Enter behavior).
 #[derive(Clone, Debug)]
 pub enum SpaceMenuKind {
-    /// File actions for a selected file path (relative): Open, Show in folder, Copy Path,
-    /// optional enhance actions, and add/remove lens. `can_open_in_terminal`: when true,
-    /// Open shows Terminal+GUI; else GUI only.
+    /// File actions for a selected file path (relative): Open, Show in folder, optional enhance,
+    /// Add/Remove lens, Copy Path, optional Copy Templates, Rename, Delete.
+    /// `can_open_in_terminal`: when true, Open shows Terminal+GUI; else GUI only.
     FileActions {
         path: String,
         can_open_in_terminal: bool,
@@ -611,6 +646,8 @@ pub enum SpaceMenuKind {
         show_enhance_directory_policy: bool,
         /// Show "Enhance with `ZahirScan`" when [`crate::config::UblxOpts::enable_enhance_all`] is false and row has no `zahir_json`.
         show_enhance_zahir: bool,
+        /// Show "Copy Zahir JSON" when this row has non-empty `zahir_json` in the snapshot (copies raw JSON to clipboard).
+        show_copy_zahir_json: bool,
     },
     /// Lens panel actions: `lens_name` is the selected lens. Options: Rename, Delete.
     LensPanelActions { lens_name: String },
@@ -703,6 +740,24 @@ pub struct RightPaneAsyncReady {
     pub disk_cache: Option<ViewerDiskContentCache>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct SnapshotEntryMeta {
+    pub path: Option<String>,
+    pub category: Option<String>,
+    pub size: Option<u64>,
+    pub mtime_ns: Option<i64>,
+    pub has_zahir_json: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RightPaneContentDerived {
+    pub abs_path: Option<PathBuf>,
+    pub can_open: bool,
+    pub offer_enhance_zahir: bool,
+    pub offer_enhance_directory_policy: bool,
+    pub embedded_cover_raster: Option<Vec<u8>>,
+}
+
 /// Text to show in the right pane for the current selection.
 #[derive(Default, Clone, Debug)]
 pub struct RightPaneContent {
@@ -710,24 +765,8 @@ pub struct RightPaneContent {
     pub metadata: Option<String>,
     pub writing: Option<String>,
     pub viewer: Option<String>,
-    /// Path of the file being viewed (when viewer shows file content); used for CSV cache keys, etc.
-    pub viewer_path: Option<String>,
-    /// Absolute path on disk for the selected file (viewer). Used for image preview and open.
-    pub viewer_abs_path: Option<PathBuf>,
-    /// Parsed zahir [`FileType`] when snapshot `category` matches [`FileType::as_metadata_name`]; drives viewer mode.
-    pub viewer_zahir_type: Option<FileType>,
-    /// When viewer shows file content, size in bytes from snapshot (for footer display).
-    pub viewer_byte_size: Option<u64>,
-    /// When viewer shows file content, mtime in ns from snapshot (for footer last-modified).
-    pub viewer_mtime_ns: Option<i64>,
-    /// When true, the viewed file is non-binary and can be opened (Shift+O: Open Terminal / Open GUI).
-    pub viewer_can_open: bool,
-    /// Space menu: offer per-file `ZahirScan` when global enhance is off and this row has no enrichment yet.
-    pub viewer_offer_enhance_zahir: bool,
-    /// Space menu: offer `[[enhance_policy]]` for this path when the row is a Directory in the snapshot.
-    pub viewer_offer_enhance_directory_policy: bool,
-    /// Embedded cover image bytes (audio tags / EPUB) for raster preview; [`None`] uses normal text/binary viewer.
-    pub viewer_embedded_cover_raster: Option<Vec<u8>>,
+    pub snap_meta: SnapshotEntryMeta,
+    pub derived: RightPaneContentDerived,
 }
 
 impl RightPaneContent {
@@ -735,6 +774,12 @@ impl RightPaneContent {
     #[must_use]
     pub fn empty() -> Self {
         Self::default()
+    }
+
+    /// Zahir / viewer routing type from snapshot `category` (see [`crate::integrations::file_type_from_metadata_name`]).
+    #[must_use]
+    pub fn zahir_file_type(&self) -> Option<FileType> {
+        file_type_from_metadata_name(self.snap_meta.category.as_deref().unwrap_or(""))
     }
 }
 
