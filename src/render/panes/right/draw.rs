@@ -54,8 +54,7 @@ fn draw_right_pane_scrollable_body(
         bottom_pad,
     );
     let text_rect = layout.content_rect;
-    let find_active = (state.viewer_find.active || state.viewer_find.committed)
-        && !state.viewer_find.query.trim().is_empty();
+    let find_active = state.viewer_find.find_affects_view();
     if let Some(json) = use_kv_tables {
         let needle = find_active.then_some(state.viewer_find.query.as_str());
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y, needle, state);

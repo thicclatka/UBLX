@@ -12,6 +12,7 @@ use super::{
     format,
     sections::{ContentsSection, KvSection, SingleColumnListSection},
 };
+
 use crate::config::PARALLEL;
 use crate::handlers::applets::viewer_find;
 use crate::layout::style;
@@ -37,11 +38,18 @@ pub struct KvFindSync<'a> {
     pub row_skip: usize,
 }
 
+/// Shared column spacing and base text style for KV / Contents / single-column tables.
+#[inline]
+fn table_with_chrome(t: Table<'static>) -> Table<'static> {
+    t.column_spacing(COLUMN_SPACING as u16)
+        .style(style::text_style())
+}
+
 /// Owned cell text so [`Table`] rows are `'static` (find highlights are already owned [`Line`]s).
 #[inline]
 fn cell_for_str(s: &str, find_needle: Option<&str>) -> Cell<'static> {
-    if let Some(n) = find_needle.filter(|x| !x.trim().is_empty()) {
-        Cell::from(viewer_find::highlight_cell_line(s, n))
+    if viewer_find::option_needle_nonempty(find_needle) {
+        Cell::from(viewer_find::highlight_cell_line(s, find_needle.unwrap()))
     } else {
         Cell::from(Line::from(s.to_string()))
     }
@@ -98,7 +106,7 @@ pub fn section_to_table(
     section: &KvSection,
     row_offset: usize,
     find_needle: Option<&str>,
-    find_kv: Option<KvFindSync<'_>>,
+    find_kv: Option<&KvFindSync<'_>>,
 ) -> Table<'static> {
     let header = Row::new(vec![
         UI_STRINGS.tables.header_key,
@@ -111,7 +119,7 @@ pub fn section_to_table(
         .iter()
         .enumerate()
         .map(|(i, (k, v))| {
-            let (key_cell, value_cell) = if let Some(ref f) = find_kv {
+            let (key_cell, value_cell) = if let Some(f) = find_kv {
                 let li = f.first_data_line_idx + f.row_skip + i;
                 let key_off = f.line_starts.get(li).copied().unwrap_or(0);
                 let value_off = key_off.saturating_add(k.len()).saturating_add(1);
@@ -130,12 +138,12 @@ pub fn section_to_table(
                 (key_cell, value_cell)
             } else {
                 let key_cell = cell_for_str(k.as_str(), find_needle);
-                let value_cell = if find_needle.is_some_and(|n| !n.trim().is_empty()) {
+                let value_cell = if viewer_find::option_needle_nonempty(find_needle) {
                     cell_for_str(v.as_str(), find_needle)
                 } else {
                     match format::value_cell_style(v.as_str()) {
-                        Some(st) => Cell::from(Line::from(v.to_string()).style(st)),
-                        None => Cell::from(Line::from(v.to_string())),
+                        Some(st) => Cell::from(Line::from(v.clone()).style(st)),
+                        None => Cell::from(Line::from(v.clone())),
                     }
                 };
                 (key_cell, value_cell)
@@ -150,16 +158,16 @@ pub fn section_to_table(
         .max()
         .unwrap_or(KEY_WIDTH_FALLBACK)
         .min(KEY_WIDTH_MIN) as u16;
-    Table::new(
-        data_rows,
-        [
-            Constraint::Length(key_w),
-            Constraint::Min(VALUE_WIDTH_MIN as u16),
-        ],
+    table_with_chrome(
+        Table::new(
+            data_rows,
+            [
+                Constraint::Length(key_w),
+                Constraint::Min(VALUE_WIDTH_MIN as u16),
+            ],
+        )
+        .header(header),
     )
-    .header(header)
-    .column_spacing(1)
-    .style(style::text_style())
 }
 
 /// Build one display row; string values are truncated to fit column width (chars).
@@ -184,10 +192,39 @@ fn contents_row(
         .collect()
 }
 
+/// Max per-column character widths from `entries` into `natural` (in place).
+fn accumulate_natural_widths_from_entries<'a>(
+    natural: &mut [usize],
+    entries: impl Iterator<Item = &'a serde_json::Value>,
+    keys: &[String],
+) {
+    for v in entries {
+        let Some(obj) = v.as_object() else {
+            continue;
+        };
+        for (j, k) in keys.iter().enumerate() {
+            let len = entry_cell(obj, k).chars().count();
+            if let Some(nat) = natural.get_mut(j) {
+                *nat = (*nat).max(len);
+            }
+        }
+    }
+}
+
+/// Merge parallel chunk naturals into `acc` (per-column max).
+fn merge_max_natural_widths(acc: &mut [usize], chunk: &[usize]) {
+    for (j, &cn) in chunk.iter().enumerate() {
+        if let Some(nat_j) = acc.get_mut(j) {
+            *nat_j = (*nat_j).max(cn);
+        }
+    }
+}
+
 /// Natural width (chars) per column: max of header length and max cell length in visible window.
 /// Column names (headers) are always included so they are never squeezed.
 /// Uses parallel iteration when visible row count exceeds [`PARALLEL.contents_natural_widths`].
-fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) -> Vec<usize> {
+#[must_use]
+pub fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) -> Vec<usize> {
     let keys = &section.column_keys;
     let cols = &section.columns;
     if keys.is_empty() {
@@ -197,15 +234,11 @@ fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) 
     let entries_window = end.saturating_sub(start);
     if entries_window < PARALLEL.contents_natural_widths {
         let mut natural = header_natural;
-        for v in section.entries.iter().skip(start).take(entries_window) {
-            let Some(obj) = v.as_object() else { continue };
-            for (j, k) in keys.iter().enumerate() {
-                let len = entry_cell(obj, k).chars().count();
-                if let Some(nat) = natural.get_mut(j) {
-                    *nat = (*nat).max(len);
-                }
-            }
-        }
+        accumulate_natural_widths_from_entries(
+            &mut natural,
+            section.entries.iter().skip(start).take(entries_window),
+            keys,
+        );
         natural
     } else {
         let slice = &section.entries[start..end];
@@ -214,25 +247,13 @@ fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) 
             .par_chunks(chunk_size)
             .map(|chunk| {
                 let mut nat = header_natural.clone();
-                for v in chunk {
-                    let Some(obj) = v.as_object() else { continue };
-                    for (j, k) in keys.iter().enumerate() {
-                        let len = entry_cell(obj, k).chars().count();
-                        if let Some(nat_j) = nat.get_mut(j) {
-                            *nat_j = (*nat_j).max(len);
-                        }
-                    }
-                }
+                accumulate_natural_widths_from_entries(&mut nat, chunk.iter(), keys);
                 nat
             })
             .collect();
         let mut natural = header_natural;
         for chunk_nat in chunk_naturals {
-            for (j, &cn) in chunk_nat.iter().enumerate() {
-                if let Some(nat_j) = natural.get_mut(j) {
-                    *nat_j = (*nat_j).max(cn);
-                }
-            }
+            merge_max_natural_widths(&mut natural, &chunk_nat);
         }
         natural
     }
@@ -325,10 +346,7 @@ pub fn contents_to_table_window(
             .style(style::table_row_style(row_offset + start + idx))
         })
         .collect();
-    Table::new(data_rows, constraints)
-        .header(header)
-        .column_spacing(1)
-        .style(style::text_style())
+    table_with_chrome(Table::new(data_rows, constraints).header(header))
 }
 
 /// Build a single-column table with no header (e.g. `common_pivots` list). Only rows [start, end) are included.
@@ -351,7 +369,5 @@ pub fn single_column_list_to_table(
                 .style(style::table_row_style(row_offset + start + idx))
         })
         .collect();
-    Table::new(data_rows, [Constraint::Min(0)])
-        .column_spacing(1)
-        .style(style::text_style())
+    table_with_chrome(Table::new(data_rows, [Constraint::Min(0)]))
 }

@@ -32,6 +32,7 @@ pub fn right_pane_inner_content_width(area: Rect) -> u16 {
     Block::default().borders(Borders::ALL).inner(area).width
 }
 
+#[must_use]
 pub fn visible_tabs(right_content: &RightPaneContent) -> Vec<(RightPaneMode, &'static str)> {
     [
         (RightPaneMode::Viewer, UI_STRINGS.pane.tab_viewer),
@@ -76,7 +77,7 @@ pub fn right_pane_footer_line(
 /// One line only — full bordered popup height does not fit `title_bottom`.
 fn find_title_bottom_spans(state: &UblxState) -> Option<Vec<Span<'static>>> {
     let vf = &state.viewer_find;
-    if !vf.active && !vf.committed && vf.query.trim().is_empty() {
+    if !vf.title_bottom_visible() {
         return None;
     }
     let submitted = vf.committed && !vf.active;
@@ -141,14 +142,12 @@ pub fn right_pane_tab_spans(
     tabs: &[(RightPaneMode, &'static str)],
     text_w: u16,
 ) -> Vec<Span<'static>> {
-    let q_owned = state.viewer_find.query.trim().to_string();
-    let show_counts =
-        !q_owned.is_empty() && (state.viewer_find.active || state.viewer_find.committed);
+    let show_counts = state.viewer_find.find_affects_view();
     let mut out: Vec<Span<'static>> = Vec::new();
     for (mode, label) in tabs {
         let label_s = if show_counts {
             let hay = haystack_for_right_pane_mode(state, right_content, text_w, *mode);
-            let n = literal_match_count(&hay, q_owned.as_str());
+            let n = literal_match_count(&hay, state.viewer_find.query.trim());
             if n > 0 {
                 format!("{label} ·{n}")
             } else {

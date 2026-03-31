@@ -6,13 +6,45 @@ use std::hash::{Hash, Hasher};
 use ratatui::text::{Line, Span, Text};
 
 use crate::layout::{
-    setup::{RightPaneContent, UblxState},
+    setup::{RightPaneContent, UblxState, ViewerFindState},
     style,
 };
 use crate::render::panes::{ensure_viewer_text_cache, viewer_find_haystack_text};
 
+impl ViewerFindState {
+    /// True when the trimmed find query has at least one character.
+    #[inline]
+    #[must_use]
+    pub fn needle_nonempty(&self) -> bool {
+        !self.query.trim().is_empty()
+    }
+
+    /// True when find should drive highlighting and scroll (committed or typing, with a non-empty needle).
+    #[inline]
+    #[must_use]
+    pub fn find_affects_view(&self) -> bool {
+        (self.active || self.committed) && self.needle_nonempty()
+    }
+
+    /// True when the find strip should show in the title bottom (any query text, or bar open, or committed).
+    #[inline]
+    #[must_use]
+    pub fn title_bottom_visible(&self) -> bool {
+        self.active || self.committed || self.needle_nonempty()
+    }
+}
+
+/// True when `n` is `Some` and its trimmed text is non-empty (KV / optional needle for table cells).
 #[inline]
-fn literal_match_ranges(haystack: &str, needle: &str) -> Vec<(usize, usize)> {
+#[must_use]
+pub fn option_needle_nonempty(n: Option<&str>) -> bool {
+    n.is_some_and(|s| !s.trim().is_empty())
+}
+
+/// All non-overlapping byte ranges of trimmed `needle` in `haystack` (public for integration tests).
+#[inline]
+#[must_use]
+pub fn literal_match_ranges(haystack: &str, needle: &str) -> Vec<(usize, usize)> {
     let needle = needle.trim();
     if needle.is_empty() {
         return Vec::new();
@@ -23,8 +55,9 @@ fn literal_match_ranges(haystack: &str, needle: &str) -> Vec<(usize, usize)> {
         .collect()
 }
 
+/// Line index (0-based) of the line containing `byte_off` (public for integration tests).
 #[must_use]
-fn line_byte_to_index(haystack: &str, byte_off: usize) -> u16 {
+pub fn line_byte_to_index(haystack: &str, byte_off: usize) -> u16 {
     haystack
         .get(..byte_off.min(haystack.len()))
         .map_or(0, |p| p.bytes().filter(|&b| b == b'\n').count()) as u16
@@ -42,8 +75,8 @@ pub fn scroll_preview_to_current(state: &mut UblxState, haystack: &str, viewport
 
 /// Recompute match ranges when query or haystack changes; scroll to the current match.
 pub fn sync(state: &mut UblxState, rc: &RightPaneContent, content_width: u16, viewport_h: u16) {
-    let q_empty = state.viewer_find.query.trim().is_empty();
-    if q_empty || (!state.viewer_find.active && !state.viewer_find.committed) {
+    let vf = &state.viewer_find;
+    if !vf.needle_nonempty() || (!vf.active && !vf.committed) {
         state.viewer_find.ranges.clear();
         state.viewer_find.current = 0;
         state.viewer_find.last_sync_token = None;
@@ -132,7 +165,7 @@ pub fn highlight_cell_line(text: &str, needle: &str) -> Line<'static> {
 #[must_use]
 pub fn highlighted_body(state: &UblxState, haystack: &str) -> Text<'static> {
     let vf = &state.viewer_find;
-    if vf.ranges.is_empty() || vf.query.trim().is_empty() {
+    if vf.ranges.is_empty() || !vf.needle_nonempty() {
         return Text::raw(haystack.to_string());
     }
     let base_style = style::text_style();

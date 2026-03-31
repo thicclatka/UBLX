@@ -620,7 +620,7 @@ impl Default for SettingsPaneState {
 }
 
 /// Top-level mode. Tab bar order: Snapshot, Lenses (optional), Delta, Duplicates (optional), Settings.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum MainMode {
     #[default]
     Snapshot,

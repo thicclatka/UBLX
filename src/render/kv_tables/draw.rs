@@ -7,12 +7,13 @@ use super::ratatui_table;
 use super::sections;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
 
-use crate::layout::setup::UblxState;
-use crate::layout::style;
+use crate::handlers::applets::viewer_find;
+use crate::layout::{setup::UblxState, style};
 use crate::ui::UI_STRINGS;
 
 /// Visible line range for a section: (`skip_lines`, `take_lines`) or None if section is off-screen.
-fn visible_section_window(
+#[must_use]
+pub fn visible_section_window(
     section_start: u16,
     section_height: u16,
     visible_start: u16,
@@ -62,13 +63,37 @@ fn draw_section_title(
 }
 
 /// Rect for content at `y_offset` (from `table_area.y`) with height clamped so it doesn't exceed the viewport.
-fn rect_in_viewport(table_area: Rect, y_offset: u16, height: u16, viewport: u16) -> Rect {
+#[must_use]
+pub fn rect_in_viewport(table_area: Rect, y_offset: u16, height: u16, viewport: u16) -> Rect {
     let max_h = viewport.saturating_sub(y_offset);
     Rect {
         x: table_area.x,
         y: table_area.y + y_offset,
         width: table_area.width,
         height: height.min(max_h),
+    }
+}
+
+/// First data row index, row count, and Y offset for a ratatui table in the padded area.
+///
+/// `table_start_line` is the first line of the table widget (after any section title line).
+/// `take_extra_cap` is used for Contents tables only: at most `viewport - 1` data rows so the
+/// header row plus rows fit in the viewport.
+struct TableRowWindow {
+    skip: usize,
+    take: usize,
+    y_offset: u16,
+}
+
+impl TableRowWindow {
+    /// Height in terminal rows: either data rows only, or one header row plus data rows (KV / Contents).
+    #[must_use]
+    fn rect_height(self, include_header_row: bool) -> u16 {
+        if include_header_row {
+            (1 + self.take) as u16
+        } else {
+            self.take as u16
+        }
     }
 }
 
@@ -86,6 +111,30 @@ struct TableDrawCtx<'a, 'f> {
 }
 
 impl TableDrawCtx<'_, '_> {
+    /// Map scroll window to visible data rows. Returns `None` when nothing to draw.
+    fn window_table_rows(
+        &self,
+        table_start_line: u16,
+        take_lines: u16,
+        num_rows: usize,
+        take_extra_cap: Option<usize>,
+    ) -> Option<TableRowWindow> {
+        let skip =
+            (self.visible_start.saturating_sub(table_start_line)).min(num_rows as u16) as usize;
+        let mut take = (take_lines as usize).min(num_rows.saturating_sub(skip));
+        if let Some(cap) = take_extra_cap {
+            take = take.min(cap);
+        }
+        if take == 0 {
+            return None;
+        }
+        Some(TableRowWindow {
+            skip,
+            take,
+            y_offset: table_start_line.saturating_sub(self.visible_start),
+        })
+    }
+
     fn draw_kv_visible(
         &mut self,
         section_start: u16,
@@ -96,21 +145,24 @@ impl TableDrawCtx<'_, '_> {
         kv: &KvSection,
     ) {
         let table_start_line = section_start + u16::from(has_title);
-        let skip =
-            (self.visible_start.saturating_sub(table_start_line)).min(num_rows as u16) as usize;
-        let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
-        if take == 0 {
+        let Some(w) = self.window_table_rows(table_start_line, take_lines, num_rows, None) else {
             return;
-        }
+        };
+        let skip = w.skip;
+        let take = w.take;
         let kv_visible = KvSection {
             title: None,
             rows: kv.rows[skip..skip + take].to_vec(),
             sub_title: false,
         };
-        let actual_y = table_start_line.saturating_sub(self.visible_start);
-        let rect = rect_in_viewport(self.table_area, actual_y, (1 + take) as u16, self.viewport);
+        let rect = rect_in_viewport(
+            self.table_area,
+            w.y_offset,
+            w.rect_height(true),
+            self.viewport,
+        );
         let first_data_line_idx = (section_start as usize) + usize::from(has_title) + 1;
-        let find_kv = self.line_starts.and_then(|ls| {
+        let find_kv_data = self.line_starts.and_then(|ls| {
             if self.find_ranges.is_empty() {
                 return None;
             }
@@ -127,7 +179,7 @@ impl TableDrawCtx<'_, '_> {
                 &kv_visible,
                 row_offset + skip,
                 self.find_needle,
-                find_kv,
+                find_kv_data.as_ref(),
             ),
             rect,
         );
@@ -141,16 +193,21 @@ impl TableDrawCtx<'_, '_> {
         row_offset: usize,
         c: &ContentsSection,
     ) {
-        let table_start = section_start + 1;
-        let skip = (self.visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
-        let take = (take_lines as usize)
-            .min(num_rows.saturating_sub(skip))
-            .min((self.viewport as usize).saturating_sub(1));
-        if take == 0 {
+        let table_start_line = section_start + 1;
+        let take_cap = (self.viewport as usize).saturating_sub(1);
+        let Some(w) =
+            self.window_table_rows(table_start_line, take_lines, num_rows, Some(take_cap))
+        else {
             return;
-        }
-        let y_offset = table_start.saturating_sub(self.visible_start);
-        let rect = rect_in_viewport(self.table_area, y_offset, (1 + take) as u16, self.viewport);
+        };
+        let skip = w.skip;
+        let take = w.take;
+        let rect = rect_in_viewport(
+            self.table_area,
+            w.y_offset,
+            w.rect_height(true),
+            self.viewport,
+        );
         self.f.render_widget(
             ratatui_table::contents_to_table_window(
                 c,
@@ -172,14 +229,18 @@ impl TableDrawCtx<'_, '_> {
         row_offset: usize,
         list: &SingleColumnListSection,
     ) {
-        let table_start = section_start + 1;
-        let skip = (self.visible_start.saturating_sub(table_start)).min(num_rows as u16) as usize;
-        let take = (take_lines as usize).min(num_rows.saturating_sub(skip));
-        if take == 0 {
+        let table_start_line = section_start + 1;
+        let Some(w) = self.window_table_rows(table_start_line, take_lines, num_rows, None) else {
             return;
-        }
-        let y_offset = table_start.saturating_sub(self.visible_start);
-        let rect = rect_in_viewport(self.table_area, y_offset, take as u16, self.viewport);
+        };
+        let skip = w.skip;
+        let take = w.take;
+        let rect = rect_in_viewport(
+            self.table_area,
+            w.y_offset,
+            w.rect_height(false),
+            self.viewport,
+        );
         self.f.render_widget(
             ratatui_table::single_column_list_to_table(
                 list,
@@ -216,7 +277,7 @@ pub fn draw_tables(
     let viewport = table_area.height;
     let visible_start = scroll_y;
     let visible_end = scroll_y + viewport;
-    let line_starts_vec = if find_needle.is_some_and(|n| !n.trim().is_empty())
+    let line_starts_vec = if viewer_find::option_needle_nonempty(find_needle)
         && !state.viewer_find.ranges.is_empty()
     {
         let hay = sections::searchable_text_from_json(json);
