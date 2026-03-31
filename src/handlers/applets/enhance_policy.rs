@@ -4,7 +4,7 @@ use crate::app::RunUblxParams;
 use crate::config::{EnhancePolicy, UblxOpts, UblxPaths, write_local_enhance_policy};
 use crate::handlers::applets::settings::apply_config_reload;
 use crate::layout::setup::UblxState;
-use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
+use crate::ui::{UI_STRINGS, UblxAction, show_operation_toast};
 use crate::utils::clamp_selection;
 
 const CHOICES: usize = 2;
@@ -49,7 +49,7 @@ pub fn handle_enhance_policy_menu(
             } else {
                 EnhancePolicy::Manual
             };
-            write_local_enhance_policy(&UblxPaths::new(params.dir_to_ublx), &path, policy);
+            write_local_enhance_policy(&UblxPaths::new(&params.dir_to_ublx), &path, policy);
             state.config_written_by_us_at = Some(std::time::Instant::now());
             apply_config_reload(params, ublx_opts, state, None::<&str>);
             let label = match policy {

@@ -1,4 +1,4 @@
-//! Literal in-pane find (Ctrl+F): sync match ranges with right-pane text, scroll, highlighted draw.
+//! Literal in-pane search (Shift+S): sync match ranges with right-pane text, scroll, highlighted draw.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

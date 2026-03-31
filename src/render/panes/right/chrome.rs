@@ -11,7 +11,7 @@ use crate::layout::{
 };
 use crate::render::{panes, viewers::image as viewer_image};
 use crate::themes;
-use crate::ui::UI_STRINGS;
+use crate::ui::{UI_STRINGS, chord_chrome_active};
 use crate::utils::{StringObjTraits, format_bytes};
 
 use super::content::{haystack_for_right_pane_mode, literal_match_count};
@@ -68,6 +68,7 @@ pub fn right_pane_footer_line(
                 size_str.as_deref(),
                 right_content.snap_meta.mtime_ns,
                 pdf_footer.as_deref(),
+                chord_chrome_active(&state.chrome),
             )
         })
         .flatten()
@@ -159,6 +160,7 @@ pub fn right_pane_tab_spans(
         out.extend(style::tab_node_segment(
             label_s.as_str(),
             *mode == state.right_pane_mode,
+            chord_chrome_active(&state.chrome),
         ));
     }
     out
@@ -176,6 +178,7 @@ pub fn right_pane_footer_line_fullscreen(
         view.content_len,
         state.main_mode,
         state.panels.content_sort,
+        chord_chrome_active(&state.chrome),
     )
     .spans;
     if let Some(viewer_line) = right_pane_footer_line(state, right_content) {

@@ -1,4 +1,4 @@
-//! Open menu (Shift+O) and spacebar context menu input handling.
+//! Open menu (from Space menu) and spacebar context menu input handling.
 
 use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
@@ -53,26 +53,6 @@ pub fn handle_open_menu(
         _ => {}
     }
     true
-}
-
-/// If action is `OpenMenu` and a file is selected, open the open menu. Returns true if opened.
-/// Openable files (e.g. text) get Terminal + GUI; others (e.g. .mp3) get only Open (GUI).
-pub fn try_open_open_menu(
-    state: &mut UblxState,
-    right_content: &RightPaneContent,
-    action: UblxAction,
-) -> bool {
-    if !matches!(action, UblxAction::OpenMenu) {
-        return false;
-    }
-    if modal_open(state) {
-        return false;
-    }
-    if let Some(path) = right_content.snap_meta.path.clone() {
-        state.open_open_menu(path, right_content.derived.can_open);
-        return true;
-    }
-    false
 }
 
 #[must_use]
@@ -248,8 +228,12 @@ fn space_menu_enhance_zahir_if_disabled(
     if ublx_opts.enable_enhance_all {
         return;
     }
-    match applets::enhance::enhance_single_path(params.dir_to_ublx, params.db_path, path, ublx_opts)
-    {
+    match applets::enhance::enhance_single_path(
+        &params.dir_to_ublx,
+        &params.db_path,
+        path,
+        ublx_opts,
+    ) {
         Ok(()) => {
             state.session.reload.snapshot_rows = true;
             show_operation_toast(
@@ -276,7 +260,7 @@ fn space_menu_enhance_zahir_if_disabled(
 /// Copy selected relative path as an absolute path using cached clipboard command;
 /// emits a success/failure operation toast.
 fn copy_zahir_json_to_clipboard(state: &mut UblxState, params: &RunUblxParams<'_>, path: &str) {
-    let Some(json) = db_ops::load_zahir_json_for_path(params.db_path, path)
+    let Some(json) = db_ops::load_zahir_json_for_path(&params.db_path, path)
         .ok()
         .flatten()
         .filter(|s| !s.is_empty())
@@ -396,7 +380,7 @@ fn space_menu_file_actions_submit(
         else {
             return;
         };
-        if applets::lens::remove_path_from_lens(params.db_path, lens_name, &path).is_ok() {
+        if applets::lens::remove_path_from_lens(&params.db_path, lens_name, &path).is_ok() {
             show_operation_toast(
                 state,
                 params,
@@ -553,24 +537,4 @@ pub fn try_open_space_menu(
         return try_open_file_space_menu(state_mut, right_content_ref);
     }
     try_open_lens_panel_space_menu(state_mut, view_ref)
-}
-
-/// If action is `EnhanceWithZahir` and selection offers it, run one-shot enhance immediately.
-pub fn try_enhance_with_zahir(
-    state_mut: &mut UblxState,
-    right_content_ref: &RightPaneContent,
-    params_mut: &mut RunUblxParams<'_>,
-    ublx_opts_ref: &UblxOpts,
-    action: UblxAction,
-) -> bool {
-    if !matches!(action, UblxAction::EnhanceWithZahir)
-        || !right_content_ref.derived.offer_enhance_zahir
-    {
-        return false;
-    }
-    let Some(path) = right_content_ref.snap_meta.path.as_ref() else {
-        return false;
-    };
-    space_menu_enhance_zahir_if_disabled(state_mut, params_mut, path, ublx_opts_ref);
-    true
 }

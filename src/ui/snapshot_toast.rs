@@ -33,8 +33,10 @@ pub fn show_snapshot_completed_toast(
     let Some(b) = params_ref.bumper else {
         return;
     };
-    snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
     let op = OPERATION_NAME.op("snapshot");
+    snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
+    // Bumper no longer stacks old snapshot lines; reset consumed so the toast shows the new pair.
+    state_mut.toasts.consumed_per_operation.remove(&op);
     utils::show_toast_slot(
         &mut state_mut.toasts.slots,
         b,

@@ -3,8 +3,11 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use unicode_width::UnicodeWidthStr;
 
 use crate::config::LayoutOverlay;
-use crate::layout::setup::{PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData};
-use crate::render::{panes, viewers::image as viewer_image};
+use crate::layout::setup::{
+    MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
+};
+use crate::layout::style;
+use crate::render::{overlays, panes, viewers::image as viewer_image};
 use crate::ui::MainTabFlags;
 use crate::ui::consts::{UI_CONSTANTS, main_tab_bar_modes_and_labels};
 use crate::utils::{format_bytes, format_timestamp_ns};
@@ -16,6 +19,7 @@ pub struct MouseContext<'a> {
     pub frame_area: Rect,
     pub layout: &'a LayoutOverlay,
     pub tabs: MainTabFlags,
+    pub main_mode: MainMode,
 }
 
 fn contains(area: Rect, x: u16, y: u16) -> bool {
@@ -23,18 +27,6 @@ fn contains(area: Rect, x: u16, y: u16) -> bool {
         && x < area.x.saturating_add(area.width)
         && y >= area.y
         && y < area.y.saturating_add(area.height)
-}
-
-fn split_tabs_and_body(area: Rect) -> (Rect, Rect) {
-    if area.height >= 2 {
-        let vs = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(UI_CONSTANTS.tab_row_constraints())
-            .split(area);
-        (vs[0], vs[1])
-    } else {
-        (area, area)
-    }
 }
 
 fn compute_main_chunks(body_area: Rect, layout: &LayoutOverlay) -> [Rect; 3] {
@@ -64,7 +56,12 @@ fn click_to_list_index(area: Rect, y: u16, len: usize) -> Option<usize> {
     (idx < len).then_some(idx)
 }
 
-fn click_to_labeled_tab_index(area: Rect, x: u16, labels: &[&str]) -> Option<usize> {
+fn click_to_labeled_tab_index(
+    area: Rect,
+    x: u16,
+    labels: &[&str],
+    gap_between_segments: usize,
+) -> Option<usize> {
     if labels.is_empty() || !contains(area, x, area.y) {
         return None;
     }
@@ -73,6 +70,9 @@ fn click_to_labeled_tab_index(area: Rect, x: u16, labels: &[&str]) -> Option<usi
     let mut cursor = usize::from(area.x);
     let click_x = usize::from(x);
     for (idx, label) in labels.iter().enumerate() {
+        if idx > 0 {
+            cursor += gap_between_segments;
+        }
         let seg_w = UnicodeWidthStr::width(*label) + 4;
         if click_x >= cursor && click_x < cursor + seg_w {
             return Some(idx);
@@ -238,7 +238,7 @@ struct MouseFrameAreas {
 }
 
 fn compute_mouse_frame_areas(frame_area: Rect, layout: &LayoutOverlay) -> MouseFrameAreas {
-    let (tabs_area, body_area) = split_tabs_and_body(frame_area);
+    let (tabs_area, _gap_area, body_area) = style::split_main_tabs_and_body(frame_area);
     let body_vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints(UI_CONSTANTS.status_line_constraints())
@@ -307,7 +307,7 @@ fn mouse_left_down_right_pane(
         // Must match [`panes::visible_tabs`] and the tab row (Templates hidden when `templates` is empty).
         let tabs_visible = panes::visible_tabs(right_content_ref);
         let labels: Vec<&str> = tabs_visible.iter().map(|(_, label)| *label).collect();
-        if let Some(idx) = click_to_labeled_tab_index(right_tab_rect, x, &labels) {
+        if let Some(idx) = click_to_labeled_tab_index(right_tab_rect, x, &labels, 0) {
             state_mut.right_pane_mode = tabs_visible[idx].0;
             return true;
         }
@@ -351,7 +351,7 @@ fn mouse_left_down_right_pane(
 
 fn mouse_blocked_by_modals(state: &UblxState) -> bool {
     state.theme.selector_visible
-        || state.chrome.help_visible
+        || state.chrome.ublx_switch.visible
         || state.open_menu.visible
         || state.lens_menu.visible
         || state.space_menu.visible
@@ -385,10 +385,18 @@ fn handle_mouse_left_down(
         return true;
     }
     if contains(areas.tabs_click_rect, x, y) {
-        let (main_modes, label_owned) =
-            main_tab_bar_modes_and_labels(tabs.has_lenses, tabs.has_duplicates);
+        let (main_modes, label_owned) = main_tab_bar_modes_and_labels(
+            tabs.has_lenses,
+            tabs.has_duplicates,
+            tabs.duplicate_mode,
+        );
         let labels: Vec<&str> = label_owned.iter().map(String::as_str).collect();
-        if let Some(idx) = click_to_labeled_tab_index(areas.tabs_click_rect, x, &labels) {
+        if let Some(idx) = click_to_labeled_tab_index(
+            areas.tabs_click_rect,
+            x,
+            &labels,
+            usize::from(UI_CONSTANTS.main_tab_node_gap_cells),
+        ) {
             state_mut.main_mode = main_modes[idx];
             return true;
         }
@@ -428,7 +436,27 @@ pub fn handle_mouse_event(
         frame_area,
         layout,
         tabs,
+        main_mode,
     } = ctx;
+
+    if state_mut.chrome.help_visible {
+        if matches!(event.kind, MouseEventKind::Down(MouseButton::Left)) {
+            let footer = overlays::help_github_footer_rect(
+                frame_area,
+                main_mode,
+                tabs.has_lenses,
+                tabs.has_duplicates,
+            );
+            if contains(footer, event.column, event.row) {
+                let url = env!("CARGO_PKG_REPOSITORY");
+                if let Err(e) = crate::handlers::applets::opener::open_url(url) {
+                    log::warn!("open repository URL: {e}");
+                }
+            }
+        }
+        return false;
+    }
+
     // Keep first pass conservative: no mouse interaction while modals are open.
     if mouse_blocked_by_modals(state_mut) {
         return false;

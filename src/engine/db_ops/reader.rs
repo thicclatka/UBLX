@@ -9,7 +9,7 @@ fn tmp_from_db_path(db_path: &Path) -> Option<PathBuf> {
     let parent = db_path.parent()?;
     let file_name = db_path.file_name()?.to_str()?;
     if let Some(stem) = file_name.strip_suffix(INDEX_DB_FILE_EXT) {
-        Some(parent.join(format!("{}_tmp{}", stem, INDEX_DB_FILE_EXT)))
+        Some(parent.join(format!("{stem}_tmp{INDEX_DB_FILE_EXT}")))
     } else {
         // Pre-extension layout: final `stem`, temp `stem_tmp` (no [`INDEX_DB_FILE_EXT`]).
         Some(parent.join(format!("{file_name}_tmp")))

@@ -48,8 +48,8 @@ pub fn handle_file_delete_confirm(
                 && let Some(p) = rel
             {
                 match file_ops_applet::delete_entry_under_root(
-                    params.dir_to_ublx,
-                    params.db_path,
+                    &params.dir_to_ublx,
+                    &params.db_path,
                     &p,
                 ) {
                     Ok(()) => {
@@ -102,8 +102,8 @@ pub fn handle_file_rename_input(
         }
         KeyCode::Enter => {
             match file_ops_applet::rename_entry_under_root(
-                params.dir_to_ublx,
-                params.db_path,
+                &params.dir_to_ublx,
+                &params.db_path,
                 &rel_path,
                 &current,
             ) {

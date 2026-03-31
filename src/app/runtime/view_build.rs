@@ -40,7 +40,7 @@ fn build_view_and_right_for_user_selected_mode(
     let right_content = async_ops::drive_right_pane_async(
         state,
         params.right_pane_async_tx.as_ref(),
-        params.dir_to_ublx,
+        &params.dir_to_ublx,
         db_path_for_read,
         &view,
         None,
@@ -90,7 +90,7 @@ pub fn build_view_and_right_content<'a>(
     }
 
     if state.main_mode == setup::MainMode::Delta {
-        let d = build_delta_view_data(params.db_path);
+        let d = build_delta_view_data(&params.db_path);
         let view = view_data_for_delta_mode(state, &d);
         clamp_delta_selection(state, &view);
         apply_sort_anchor_selection(state, &view, None);
@@ -106,7 +106,7 @@ pub fn build_view_and_right_content<'a>(
         (view, setup::RightPaneContent::empty(), None, None)
     } else {
         let db_path_for_read =
-            db_ops::snapshot_read_path_for_tui(params.db_path, !state.snapshot_bg.done_received);
+            db_ops::snapshot_read_path_for_tui(&params.db_path, !state.snapshot_bg.done_received);
         let snapshot_mtimes = if state.main_mode == setup::MainMode::Snapshot
             && state.panels.content_sort.snapshot_key == setup::SnapshotSortKey::Mod
         {
@@ -137,7 +137,7 @@ pub fn build_view_and_right_content<'a>(
             let right_content = async_ops::drive_right_pane_async(
                 state,
                 params.right_pane_async_tx.as_ref(),
-                params.dir_to_ublx,
+                &params.dir_to_ublx,
                 &db_path_for_read,
                 &view,
                 Some(all_rows),

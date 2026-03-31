@@ -1,24 +1,35 @@
-pub mod consts;
-pub mod file_ops;
-pub mod input;
-pub mod keymap;
-pub mod lens;
-pub mod menu;
-pub mod mouse;
-pub mod snapshot;
+mod consts;
+mod ctrl_chord;
+mod file_ops;
+mod input;
+mod keymap;
+mod lens;
+mod menu;
+mod mouse;
+mod snapshot_toast;
 
 use crate::app::RunUblxParams;
 use crate::config::OPERATION_NAME;
+use crate::engine::db_ops::DuplicateGroupingMode;
 use crate::layout::setup::UblxState;
 use crate::utils;
 
 pub use consts::*;
+pub use ctrl_chord::*;
+pub use file_ops::*;
+pub use input::*;
+pub use keymap::*;
+pub use lens::*;
+pub use menu::*;
+pub use mouse::*;
+pub use snapshot_toast::*;
 
 /// Which main tabs are available (Duplicates, Lenses). Used for key binding and mode cycle.
 #[derive(Clone, Copy)]
 pub struct MainTabFlags {
     pub has_duplicates: bool,
     pub has_lenses: bool,
+    pub duplicate_mode: DuplicateGroupingMode,
 }
 
 /// Push a message to the bumper and refresh the stacked toast. `operation_name_suffix` is passed to `OPERATION_NAME.op` (e.g. `"lens"` → `ublx: lens`). No-op if `params.bumper` is None.

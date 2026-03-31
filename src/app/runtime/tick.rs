@@ -11,18 +11,73 @@ use super::frame::{DrawInputs, draw_one_frame, theme_name_for_tick};
 use super::view_build::build_view_and_right_content;
 
 use crate::app::{RunUblxParams, load_snapshot_for_tui};
-use crate::config::UblxOpts;
+use crate::config::{LayoutOverlay, UblxOpts};
 use crate::engine::{db_ops, orchestrator};
 use crate::handlers::{applets, reapply_terminal_after_editor, snapshot};
 use crate::layout::setup;
-use crate::ui::{
-    MainTabFlags,
-    input::{InputContext, handle_ublx_input},
-    snapshot::{show_force_full_enhance_started_toast, show_snapshot_completed_toast},
-};
+use crate::render::marquee;
+use crate::ui;
 use crate::utils;
 
 const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+fn run_pending_session_switch(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    state: &mut setup::UblxState,
+    categories: &mut Vec<String>,
+    all_rows: &mut Vec<setup::TuiRow>,
+    params: &mut RunUblxParams<'_>,
+    ublx_opts: &mut UblxOpts,
+) -> io::Result<()> {
+    let Some(pending) = state.session.pending_switch_to.take() else {
+        return Ok(());
+    };
+    let bumper = params.bumper;
+    match crate::handlers::session_switch::perform_session_switch(
+        pending, params, ublx_opts, categories, all_rows, state, bumper,
+    ) {
+        Ok(()) => terminal.clear(),
+        Err(msg) => {
+            ui::show_operation_toast(state, params, msg, "switch-root", log::Level::Error);
+            Ok(())
+        }
+    }
+}
+
+fn advance_marquees_for_tick(
+    state: &mut setup::UblxState,
+    term_width: u16,
+    view: &setup::ViewData,
+    layout: &LayoutOverlay,
+    rows_for_draw: Option<&[setup::TuiRow]>,
+    dir_to_ublx: &std::path::Path,
+    now: Instant,
+) {
+    let marquee_ctx = marquee::MarqueeTickCtx {
+        focus: state.panels.focus,
+        main_mode: state.main_mode,
+        viewer_fullscreen: state.chrome.viewer_fullscreen,
+        view,
+        layout,
+        term_width,
+        now,
+    };
+    marquee::tick_category_marquee_dup_lens(
+        &mut state.panels.category_marquee,
+        &marquee_ctx,
+        state.panels.category_state.selected(),
+    );
+    let content_marquee_tick = marquee::ContentMarqueeTick {
+        all_rows: rows_for_draw,
+        dir_to_ublx: Some(dir_to_ublx),
+        content_selected: state.panels.content_state.selected(),
+    };
+    marquee::tick_content_marquee(
+        &mut state.panels.content_marquee,
+        &marquee_ctx,
+        &content_marquee_tick,
+    );
+}
 
 /// One tick: update toasts/snapshot, build view and right content, draw, handle input. Returns true if quit requested.
 pub fn run_tick(
@@ -33,6 +88,8 @@ pub fn run_tick(
     params: &mut RunUblxParams<'_>,
     ublx_opts: &mut UblxOpts,
 ) -> io::Result<bool> {
+    run_pending_session_switch(terminal, state, categories, all_rows, params, ublx_opts)?;
+
     tick_applets_and_io(state, categories, all_rows, params, ublx_opts);
     tick_toasts_and_snapshot(state, categories, all_rows, params, ublx_opts);
 
@@ -48,7 +105,21 @@ pub fn run_tick(
         ublx_opts.enable_enhance_all,
     );
 
-    let latest_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(params.db_path)
+    let term_size = terminal.size()?;
+    let now = Instant::now();
+    advance_marquees_for_tick(
+        state,
+        term_size.width,
+        &view,
+        &params.layout,
+        rows_for_draw,
+        params.dir_to_ublx.as_path(),
+        now,
+    );
+
+    ui::tick_chord_menu_timeout(state, now);
+
+    let latest_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(&params.db_path)
         .ok()
         .and_then(|v| v.into_iter().next());
     let theme_name_owned = theme_name_for_tick(state, params);
@@ -68,20 +139,18 @@ pub fn run_tick(
     }
     let layout_for_input = params.layout.clone();
     let theme_ctx = applets::theme_selector::context_from_state(state, params, theme_name);
-    let quit = handle_ublx_input(
+    let quit = ui::handle_ublx_input(
         state,
-        InputContext {
+        ui::InputContext {
             view: &view,
             right_content: &right_content,
             theme_ctx,
-            frame_area: {
-                let sz = terminal.size()?;
-                Rect::new(0, 0, sz.width, sz.height)
-            },
+            frame_area: Rect::new(0, 0, term_size.width, term_size.height),
             layout: &layout_for_input,
-            tabs: MainTabFlags {
+            tabs: ui::MainTabFlags {
                 has_duplicates,
                 has_lenses,
+                duplicate_mode: params.duplicate_mode,
             },
         },
         params,
@@ -117,23 +186,25 @@ fn tick_applets_and_io(
         params.startup.pending_force_full_enhance_toast = false;
         if !state.session.reload.force_full_enhance_toast_shown {
             state.session.reload.force_full_enhance_toast_shown = true;
-            show_force_full_enhance_started_toast(state, params);
+            ui::show_force_full_enhance_started_toast(state, params);
         }
     }
 
     if state.session.reload.snapshot_rows {
-        let (c, r) =
-            load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
+        let (c, r) = load_snapshot_for_tui(
+            &params.db_path,
+            db_ops::SnapshotReaderPreference::PreferUblx,
+        );
         *categories = c;
         *all_rows = r;
         state.session.reload.snapshot_rows = false;
     }
 
     if let Some(rx) = params.duplicate_groups_rx.as_ref()
-        && let Ok(groups) = rx.try_recv()
+        && let Ok((groups, mode)) = rx.try_recv()
     {
         params.duplicate_groups_rx = None;
-        applets::dupe_finder::on_groups_received(state, params, groups);
+        applets::dupe_finder::on_groups_received(state, params, groups, mode);
     }
 
     if let Some(rx) = params.config_reload_rx.as_ref()
@@ -142,7 +213,7 @@ fn tick_applets_and_io(
         applets::settings::on_config_reload(state, params, ublx_opts);
     }
 
-    applets::dupe_finder::spawn_if_requested(state, params);
+    applets::dupe_finder::spawn_if_requested(state, params, ublx_opts);
 }
 
 fn tick_toasts_and_snapshot(
@@ -179,8 +250,8 @@ fn handle_snapshot_request(
         params.startup.pending_force_full_enhance_toast = true;
     }
     snapshot::spawn_snapshot_from_dir_db(
-        params.dir_to_ublx,
-        params.db_path,
+        &params.dir_to_ublx,
+        &params.db_path,
         params.snapshot_done_tx.as_ref(),
         params.bumper,
         Some(ublx_opts),
@@ -202,8 +273,10 @@ fn handle_snapshot_done(
         return;
     };
 
-    let (c, r) =
-        load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
+    let (c, r) = load_snapshot_for_tui(
+        &params.db_path,
+        db_ops::SnapshotReaderPreference::PreferUblx,
+    );
     *categories = c;
     *all_rows = r;
     state.snapshot_bg.poll_deadline = None;
@@ -214,7 +287,7 @@ fn handle_snapshot_done(
     }
     // Duplicates are lazy-loaded when user switches to that tab; don't block here.
 
-    show_snapshot_completed_toast(state, params, added, mod_count, removed);
+    ui::show_snapshot_completed_toast(state, params, added, mod_count, removed);
 }
 
 /// When a background snapshot is running, periodically reload from the DB (e.g. .`ublx_tmp`) so the TUI shows live progress.
@@ -235,7 +308,8 @@ fn poll_snapshot_if_due(
     if !due {
         return;
     }
-    let (c, r) = load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferTmp);
+    let (c, r) =
+        load_snapshot_for_tui(&params.db_path, db_ops::SnapshotReaderPreference::PreferTmp);
     if !c.is_empty() || !r.is_empty() {
         *categories = c;
         *all_rows = r;

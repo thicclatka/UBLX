@@ -11,18 +11,21 @@ use super::{CurrentTheme, ThemeStyles, tab_active, tab_inactive};
 
 /// One tab as a powerline-style node: round + " label " + round. No separator.
 /// Used for right-pane tabs and main (Snapshot/Delta) tabs.
+/// When `chord_mode` is true and `active`, uses hint-colored chrome (Ctrl chord leader).
 #[must_use]
-pub fn tab_node_segment(label: &str, active: bool) -> Vec<Span<'static>> {
+pub fn tab_node_segment(label: &str, active: bool, chord_mode: bool) -> Vec<Span<'static>> {
+    let t = CurrentTheme::palette();
     let (circle_style, node_style) = if active {
-        (
-            Style::default().fg(CurrentTheme::palette().tab_active_bg),
-            tab_active(),
-        )
+        if chord_mode {
+            (
+                Style::default().fg(t.hint),
+                Style::default().fg(t.background).bg(t.hint),
+            )
+        } else {
+            (Style::default().fg(t.tab_active_bg), tab_active())
+        }
     } else {
-        (
-            Style::default().fg(CurrentTheme::palette().tab_inactive_bg),
-            tab_inactive(),
-        )
+        (Style::default().fg(t.tab_inactive_bg), tab_inactive())
     };
     vec![
         Span::styled(UI_GLYPHS.round_left.to_string(), circle_style),
@@ -39,6 +42,14 @@ fn node_color() -> (ratatui::style::Color, Style, Style) {
     (pill_bg, circle_style, node_style)
 }
 
+fn chord_node_color() -> (Style, Style) {
+    let t = CurrentTheme::palette();
+    let pill_bg = t.hint;
+    let circle_style = Style::default().fg(pill_bg).bg(t.background);
+    let node_style = Style::default().fg(t.background).bg(pill_bg);
+    (circle_style, node_style)
+}
+
 fn node_spans(content: &str, circle_style: Style, node_style: Style) -> Vec<Span<'static>> {
     vec![
         Span::styled(UI_GLYPHS.round_left.to_string(), circle_style),
@@ -49,15 +60,25 @@ fn node_spans(content: &str, circle_style: Style, node_style: Style) -> Vec<Span
 
 /// Single-node footer line with the given alignment (e.g. viewer size = Right, categories "Latest Snapshot" = Left).
 #[must_use]
-pub fn node_line(text: &str, alignment: HorizontalAlignment) -> Line<'static> {
-    let (_, circle_style, node_style) = node_color();
+pub fn node_line(text: &str, alignment: HorizontalAlignment, chord_mode: bool) -> Line<'static> {
+    let (circle_style, node_style) = if chord_mode {
+        chord_node_color()
+    } else {
+        let (_, c, n) = node_color();
+        (c, n)
+    };
     Line::from(node_spans(text, circle_style, node_style)).alignment(alignment)
 }
 
 /// Powerline-style node spans for use in a combined status line (e.g. Latest Snapshot, not in a border).
 #[must_use]
-pub fn status_node_spans(content: &str) -> Vec<Span<'static>> {
-    let (_, circle_style, node_style) = node_color();
+pub fn status_node_spans(content: &str, chord_mode: bool) -> Vec<Span<'static>> {
+    let (circle_style, node_style) = if chord_mode {
+        chord_node_color()
+    } else {
+        let (_, c, n) = node_color();
+        (c, n)
+    };
     node_spans(content, circle_style, node_style)
 }
 
@@ -112,9 +133,15 @@ pub fn viewer_footer_line(
     size_str: Option<&str>,
     mtime_ns: Option<i64>,
     pdf_page_line: Option<&str>,
+    chord_mode: bool,
 ) -> Option<Line<'static>> {
     use crate::utils::format_timestamp_ns;
-    let (_, circle_style, node_style) = node_color();
+    let (circle_style, node_style) = if chord_mode {
+        chord_node_color()
+    } else {
+        let (_, c, n) = node_color();
+        (c, n)
+    };
     let mut spans: Vec<Span<'static>> = Vec::new();
     if let Some(pdf) = pdf_page_line {
         spans.extend(node_spans(pdf, circle_style, node_style));

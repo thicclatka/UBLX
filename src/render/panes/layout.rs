@@ -1,6 +1,8 @@
 //! Layout splits for panel areas.
 
 use ratatui::layout::Rect;
+use ratatui::style::Style;
+use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, HighlightSpacing, List, ListItem};
 
 use crate::layout::style;
@@ -22,18 +24,14 @@ pub fn panel_block<'a, T: Into<ratatui::text::Line<'a>>>(title: T, focused: bool
         } else {
             style::panel_unfocused()
         })
-        .title_style(style::panel_title_style(focused))
+        .title_style(Style::default())
         .title(title)
 }
 
-/// Builds a panel block title: `" Label "` or `" ► Label "` when focused.
+/// Same powerline node as the main tab bar ([`style::tab_node_segment`]).
 #[must_use]
-pub fn set_title(label: &str, focused: bool) -> String {
-    if focused {
-        format!(" ► {label} ")
-    } else {
-        format!(" {label} ")
-    }
+pub fn panel_title_line(label: &str, focused: bool, chord_mode: bool) -> Line<'static> {
+    Line::from(style::tab_node_segment(label, focused, chord_mode)).left_aligned()
 }
 
 /// Builds a styled list with items, block, and highlight style.

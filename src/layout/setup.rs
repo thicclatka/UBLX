@@ -25,6 +25,22 @@ pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
 /// Category string for directories in the snapshot (matches [`crate::engine::db_ops::UblxDbCategory`]).
 pub const CATEGORY_DIRECTORY: &str = "Directory";
 
+/// State for horizontal marquee when a list row label overflows (e.g. Duplicates/Lenses left pane).
+#[derive(Debug, Default)]
+pub struct ContentMarqueeState {
+    pub offset: usize,
+    pub last_advance: Option<Instant>,
+    pub anchor: Option<(usize, String)>,
+}
+
+impl ContentMarqueeState {
+    pub fn reset(&mut self) {
+        self.offset = 0;
+        self.last_advance = None;
+        self.anchor = None;
+    }
+}
+
 /// List panels: categories, contents, focus, preview scroll, and highlight style.
 #[derive(Default)]
 pub struct PanelState {
@@ -39,6 +55,10 @@ pub struct PanelState {
     pub sort_anchor_path: Option<String>,
     /// Last converged right-pane body text width (for find footer + tab match counts).
     pub right_pane_text_w: Option<u16>,
+    /// Marquee for the left category list in Duplicates / Lenses when the selected name overflows.
+    pub category_marquee: ContentMarqueeState,
+    /// Marquee for the middle contents path list when the selected row overflows (Snapshot / Delta / Duplicates / Lenses).
+    pub content_marquee: ContentMarqueeState,
 }
 
 impl PanelState {
@@ -133,7 +153,7 @@ pub struct SearchState {
     pub active: bool,
 }
 
-/// In-pane literal find (Ctrl+F): query, match byte ranges in haystack, current match index.
+/// In-pane literal search (Shift+S): query, match byte ranges in haystack, current match index.
 #[derive(Default)]
 pub struct ViewerFindState {
     pub query: String,
@@ -216,11 +236,36 @@ pub struct FileDeleteConfirmState {
     pub selected_index: usize,
 }
 
+/// After **Ctrl+Space**, wait for a letter or show the Command Mode menu (see [`crate::ui::ctrl_chord`]).
+#[derive(Clone, Debug, Default)]
+pub struct CtrlChordState {
+    pub pending: bool,
+    pub menu_visible: bool,
+    pub started: Option<std::time::Instant>,
+}
+
+impl CtrlChordState {
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        self.pending || self.menu_visible
+    }
+}
+
+/// Command Mode + `p`: pick another indexed root (re-exec `ublx` on that directory).
+#[derive(Default)]
+pub struct UblxSwitchPickerState {
+    pub visible: bool,
+    pub selected_index: usize,
+    pub roots: Vec<PathBuf>,
+}
+
 /// Help overlay and fullscreen right-pane preview.
 #[derive(Default)]
 pub struct ViewerChrome {
     pub help_visible: bool,
     pub viewer_fullscreen: bool,
+    pub ctrl_chord: CtrlChordState,
+    pub ublx_switch: UblxSwitchPickerState,
 }
 
 /// First-run flow when the per-root DB was new: pick root, optional prior roots, then prior-settings or enhance-all.
@@ -289,6 +334,8 @@ pub struct SessionReloadFlags {
 pub struct SessionFlow {
     pub tick: SessionTickFlags,
     pub reload: SessionReloadFlags,
+    /// Set when the user confirms another indexed root in the project picker; next tick runs [`crate::handlers::session_switch::perform_session_switch`].
+    pub pending_switch_to: Option<PathBuf>,
 }
 
 pub struct PDF {
@@ -632,7 +679,7 @@ pub enum MainMode {
 }
 
 impl MainMode {
-    /// Cycle Snapshot → Lenses (if any) → Delta → Duplicates (if any) → Settings → Snapshot (`MainModeToggle` / Shift+Tab).
+    /// Cycle Snapshot → Lenses (if any) → Delta → Duplicates (if any) → Settings → Snapshot (`MainModeToggle` / `~`).
     #[must_use]
     pub fn next(self, has_duplicates: bool, has_lenses: bool) -> MainMode {
         match self {

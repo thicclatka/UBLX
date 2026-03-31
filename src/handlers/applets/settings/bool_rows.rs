@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::config::UblxOverlay;
 use crate::layout::setup::SettingsConfigScope;
 use crate::ui::UI_STRINGS;
-use crate::ui::consts::append_settings_bool_snapshot_footnote;
+use crate::ui::append_settings_bool_snapshot_footnote;
 
 /// Maps Settings left-pane row index → [`crate::config::UblxOverlay`] bool field. Local scope uses rows 0–2; Global adds
 /// row 3 (`ask_enhance_on_new_root`).

@@ -2,7 +2,6 @@
 //! then saved local/cache settings or `enable_enhance_all` setup.
 
 use std::fs;
-use std::path::PathBuf;
 use std::process;
 
 use crate::app::RunUblxParams;
@@ -12,23 +11,7 @@ use crate::config::{
 };
 use crate::handlers::{applets::settings, core, snapshot};
 use crate::layout::setup::{StartupPromptPhase, StartupPromptState, UblxState};
-use crate::ui::keymap::UblxAction;
-
-fn relaunch_ublx(dir_ref: &PathBuf) -> ! {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ublx"));
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        let err = process::Command::new(&exe).arg(dir_ref).exec();
-        eprintln!("ublx: failed to relaunch: {err}");
-        process::exit(126);
-    }
-    #[cfg(not(unix))]
-    {
-        let status = process::Command::new(&exe).arg(dir_ref).status();
-        process::exit(status.map(|s| s.code().unwrap_or(1)).unwrap_or(1));
-    }
-}
+use crate::ui::UblxAction;
 
 /// Project-local config, or a nontrivial per-root overlay cache (not global-only).
 fn local_or_nontrivial_overlay_cache(paths: &UblxPaths) -> bool {
@@ -57,8 +40,8 @@ fn first_run_reload_and_maybe_snapshot(
     settings::apply_config_reload(params_mut, ublx_opts_mut, state_mut, Option::<&str>::None);
     if params_mut.startup.defer_first_snapshot {
         snapshot::spawn_snapshot_from_dir_db(
-            params_mut.dir_to_ublx,
-            params_mut.db_path,
+            &params_mut.dir_to_ublx,
+            &params_mut.db_path,
             params_mut.snapshot_done_tx.as_ref(),
             params_mut.bumper,
             Some(ublx_opts_mut),
@@ -74,7 +57,7 @@ fn complete_first_run_with_prior_config(
     config_written_by_us: bool,
 ) {
     state_mut.startup_prompt = None;
-    let _ = remember_indexed_root_path(params_mut.dir_to_ublx);
+    let _ = remember_indexed_root_path(&params_mut.dir_to_ublx);
     if config_written_by_us {
         state_mut.config_written_by_us_at = Some(std::time::Instant::now());
     }
@@ -86,7 +69,7 @@ fn use_previous_project_settings(
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
 ) {
-    let paths = UblxPaths::new(params_mut.dir_to_ublx);
+    let paths = UblxPaths::new(&params_mut.dir_to_ublx);
     let had_local = paths.toml_path().is_some();
     let copied_from_cache = if had_local {
         false
@@ -107,7 +90,7 @@ fn start_fresh_then_proceed(
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
 ) {
-    let paths = UblxPaths::new(params_mut.dir_to_ublx);
+    let paths = UblxPaths::new(&params_mut.dir_to_ublx);
     discard_project_local_and_overlay_cache(&paths);
     settings::apply_config_reload(params_mut, ublx_opts_mut, state_mut, Option::<&str>::None);
     index_this_directory(state_mut, params_mut, ublx_opts_mut);
@@ -138,7 +121,7 @@ pub fn handle_startup_prompt(
             }
             UblxAction::SearchSubmit => {
                 if *selected_index == 0 {
-                    let paths = UblxPaths::new(params_mut.dir_to_ublx);
+                    let paths = UblxPaths::new(&params_mut.dir_to_ublx);
                     if local_or_nontrivial_overlay_cache(&paths) {
                         if let Some(sp) = state_mut.startup_prompt.as_mut() {
                             sp.phase = StartupPromptPhase::PreviousSettings { selected_index: 0 };
@@ -148,8 +131,7 @@ pub fn handle_startup_prompt(
                     }
                 } else if let Some(dir) = roots.get(*selected_index - 1).cloned() {
                     let _ = record_prior_root_selected(&dir);
-                    core::restore_terminal();
-                    relaunch_ublx(&dir);
+                    core::relaunch_ublx_indexed_dir(&dir);
                 }
                 true
             }
@@ -239,8 +221,8 @@ fn finish_enhance_flow(
     enable_enhance_all: bool,
 ) {
     state_mut.startup_prompt = None;
-    let _ = remember_indexed_root_path(params_mut.dir_to_ublx);
-    let paths = UblxPaths::new(params_mut.dir_to_ublx);
+    let _ = remember_indexed_root_path(&params_mut.dir_to_ublx);
+    let paths = UblxPaths::new(&params_mut.dir_to_ublx);
     if let Err(e) = write_local_enhance_only_toml(&paths, enable_enhance_all) {
         log::warn!("write ublx.toml: {e}");
     }

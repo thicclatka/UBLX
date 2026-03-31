@@ -4,8 +4,8 @@ use crossterm::event::KeyCode;
 
 use crate::app::RunUblxParams;
 use crate::handlers::applets::lens as lens_applet;
-use crate::layout::setup::{RightPaneContent, UblxState};
-use crate::ui::{UI_STRINGS, file_ops::modal_open, keymap::UblxAction, show_operation_toast};
+use crate::layout::setup::UblxState;
+use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
 
 /// Handle key when user is typing a new lens name (Create New Lens). Returns true if key was consumed.
 pub fn handle_lens_name_input(
@@ -27,8 +27,8 @@ pub fn handle_lens_name_input(
             state.lens_menu.name_input = None;
             state.close_lens_menu();
             if !name_trimmed.is_empty() {
-                let created = lens_applet::create_lens(params.db_path, &name_trimmed).is_ok();
-                if lens_applet::add_path_to_lens(params.db_path, &name_trimmed, &path).is_ok() {
+                let created = lens_applet::create_lens(&params.db_path, &name_trimmed).is_ok();
+                if lens_applet::add_path_to_lens(&params.db_path, &name_trimmed, &path).is_ok() {
                     if created && !params.lens_names.contains(&name_trimmed) {
                         params.lens_names.push(name_trimmed.clone());
                     }
@@ -75,7 +75,7 @@ pub fn handle_lens_rename_input(
             let new_name = current.trim().to_string();
             if !new_name.is_empty()
                 && new_name != target_name
-                && lens_applet::rename_lens(params.db_path, &target_name, &new_name).is_ok()
+                && lens_applet::rename_lens(&params.db_path, &target_name, &new_name).is_ok()
             {
                 if let Some(i) = params.lens_names.iter().position(|n| n == &target_name) {
                     params.lens_names[i].clone_from(&new_name);
@@ -130,7 +130,7 @@ pub fn handle_lens_delete_confirm(
             state.close_lens_delete_confirm();
             if selected == 0
                 && let Some(name) = lens_name
-                && lens_applet::delete_lens(params.db_path, &name).is_ok()
+                && lens_applet::delete_lens(&params.db_path, &name).is_ok()
             {
                 params.lens_names.retain(|n| n != &name);
                 show_operation_toast(
@@ -172,7 +172,7 @@ pub fn handle_lens_menu(
                 } else if let Some(lens_name) =
                     params.lens_names.get(state.lens_menu.selected_index - 1)
                 {
-                    if lens_applet::add_path_to_lens(params.db_path, lens_name, path).is_ok() {
+                    if lens_applet::add_path_to_lens(&params.db_path, lens_name, path).is_ok() {
                         show_operation_toast(
                             state,
                             params,
@@ -191,23 +191,4 @@ pub fn handle_lens_menu(
         _ => {}
     }
     true
-}
-
-/// If action is `LensMenu` and a file is selected, open the lens menu. Returns true if opened.
-pub fn try_open_lens_menu(
-    state: &mut UblxState,
-    right_content: &RightPaneContent,
-    action: UblxAction,
-) -> bool {
-    if !matches!(action, UblxAction::LensMenu) {
-        return false;
-    }
-    if modal_open(state) {
-        return false;
-    }
-    if let Some(path) = right_content.snap_meta.path.clone() {
-        state.open_lens_menu(path);
-        return true;
-    }
-    false
 }

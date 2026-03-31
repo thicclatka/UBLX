@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::process::Command;
 use ublx::config::{UblxPaths, last_applied_config_path};
+use ublx::engine::db_ops::DuplicateGroupingMode;
 
 fn ublx_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ublx"))
@@ -117,6 +118,7 @@ fn draw_one_snapshot_frame_renders_main_chrome() {
         latest_snapshot_ns: None,
         dev: false,
         duplicate_groups: None,
+        duplicate_mode: DuplicateGroupingMode::Hash,
         lens_names: None,
     };
 

@@ -47,6 +47,12 @@ impl BumperBuffer {
         self.push_with_operation(level, text.as_ref(), None::<String>);
     }
 
+    /// Drop every message tagged with `operation` (e.g. before pushing a fresh snapshot summary so only the latest run is kept).
+    pub fn remove_messages_for_operation(&self, operation: &str) {
+        let mut g = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        g.retain(|m| m.operation.as_deref() != Some(operation));
+    }
+
     /// Push a message with an operation name; the toast title uses the most recent message's operation.
     /// Text is word-wrapped to toast content width so toasts display cleanly.
     pub fn push_with_operation(

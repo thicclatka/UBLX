@@ -7,7 +7,7 @@ use crate::config::{UblxOpts, UblxPaths, write_local_theme};
 use crate::handlers::applets::settings;
 use crate::layout::setup::UblxState;
 use crate::themes;
-use crate::ui::{keymap::UblxAction, show_operation_toast};
+use crate::ui::{UblxAction, show_operation_toast};
 use crate::utils::clamp_selection;
 
 /// Context for the theme selector: indexed project dir (local `ublx.toml` / `.ublx.toml`) + current theme label.
@@ -26,7 +26,7 @@ pub fn context_from_state(
     display_theme_name: Option<&str>,
 ) -> ThemeContext {
     ThemeContext {
-        project_dir: params_ref.dir_to_ublx.to_path_buf(),
+        project_dir: params_ref.dir_to_ublx.clone(),
         current_theme_name: display_theme_name.map(String::from),
     }
 }

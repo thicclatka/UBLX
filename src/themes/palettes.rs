@@ -112,7 +112,7 @@ pub static GARDEN_UNSEEN: Palette = Palette {
     tab_active_bg: Color::Rgb(24, 92, 75),
     tab_inactive_bg: Color::Rgb(0, 40, 22),
     search_text: Color::Rgb(98, 237, 181),
-    hint: Color::Rgb(73, 67, 44),
+    hint: Color::Rgb(102, 94, 70),
     popup_bg: Color::Rgb(0, 65, 33),
     node_bg: Color::Rgb(0, 89, 44),
     notification_bg: Color::Rgb(0, 65, 33),

@@ -7,7 +7,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 
 use crate::layout::{setup, style};
-use crate::ui::UI_STRINGS;
+use crate::ui::{UI_STRINGS, chord_chrome_active};
 use crate::utils::StringObjTraits;
 
 /// Draw placeholder when delta data is missing. `chunks` must have at least 3 elements: [left, middle, right].
@@ -77,7 +77,11 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
             ListItem::new(Line::from(span))
         })
         .collect();
-    let title = super::set_title(UI_STRINGS.delta.type_label, focused);
+    let title = super::panel_title_line(
+        UI_STRINGS.delta.type_label,
+        focused,
+        chord_chrome_active(&state.chrome),
+    );
     let left_block = super::panel_block(title, focused);
     f.render_stateful_widget(
         super::styled_list(items, left_block, state.panels.highlight_style, focused),
@@ -85,7 +89,7 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
         &mut state.panels.category_state,
     );
 
-    super::draw_paths_list_with_counter(f, state, params.view, None, middle);
+    super::draw_paths_list_with_counter(f, state, params.view, None, None, middle);
 
     let right_block = Block::default()
         .borders(Borders::ALL)

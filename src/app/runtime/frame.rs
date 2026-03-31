@@ -50,7 +50,7 @@ fn build_draw_args<'a>(
     DrawFrameArgs {
         delta_data,
         all_rows: rows_for_draw,
-        dir_to_ublx: Some(params.dir_to_ublx),
+        dir_to_ublx: Some(params.dir_to_ublx.as_path()),
         theme_name,
         layout: &params.layout,
         latest_snapshot_ns,
@@ -60,6 +60,7 @@ fn build_draw_args<'a>(
         } else {
             Some(params.duplicate_groups.as_slice())
         },
+        duplicate_mode: params.duplicate_mode,
         lens_names: if params.lens_names.is_empty() {
             None
         } else {

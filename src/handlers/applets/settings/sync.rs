@@ -6,9 +6,7 @@ use crate::app::RunUblxParams;
 use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths, first_validation_error_message};
 use crate::layout::setup::UblxState;
 use crate::themes;
-use crate::ui::consts::UI_STRINGS;
-use crate::ui::show_operation_toast;
-use crate::ui::snapshot::show_force_full_enhance_started_toast;
+use crate::ui::{UI_STRINGS, show_force_full_enhance_started_toast, show_operation_toast};
 use crate::utils;
 
 /// Window (ms) after we write config ourselves (e.g. theme selector) during which a file-watcher reload is treated as self-caused.
@@ -65,12 +63,13 @@ pub fn apply_config_reload(
     state_mut: &mut UblxState,
     message: Option<impl AsRef<str>>,
 ) {
-    let paths = UblxPaths::new(params_mut.dir_to_ublx);
+    let paths = UblxPaths::new(&params_mut.dir_to_ublx);
     let valid_themes: Vec<&str> = themes::theme_ordered_list()
         .iter()
         .map(|t| t.name)
         .collect();
     let old_enable_enhance_all = ublx_opts_mut.enable_enhance_all;
+    let old_with_hash = ublx_opts_mut.nefax.with_hash;
     let result = ublx_opts_mut.reload_hot_config(&paths, &valid_themes);
 
     if result.applied {
@@ -84,6 +83,12 @@ pub fn apply_config_reload(
             } else {
                 schedule_snapshot_after_enable_enhance_flip(state_mut);
                 show_force_full_enhance_started_toast(state_mut, params_mut);
+            }
+        }
+        if !old_with_hash && ublx_opts_mut.nefax.with_hash {
+            ublx_opts_mut.with_hash_cache_before_apply = Some(false);
+            if !params_mut.startup.defer_first_snapshot {
+                schedule_snapshot_after_enable_enhance_flip(state_mut);
             }
         }
         if let Some(msg) = message {

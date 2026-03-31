@@ -98,6 +98,8 @@ pub struct UblxOpts {
     pub ask_enhance_on_new_root: bool,
     /// `enable_enhance_all` from the config cache **before** [`Self::for_dir`] applied the current overlay and called [`Self::save_overlay_to_cache`]. Used by snapshot `force_full` Zahir when flipping the flag to `true`.
     pub enable_enhance_all_cache_before_apply: Option<bool>,
+    /// `[hash]` from the config cache **before** [`Self::for_dir`] applied the current overlay and called [`Self::save_overlay_to_cache`]. Match [`Self::enable_enhance_all_cache_before_apply`]: hot reload may set this to `Some(false)` so a snapshot `for_dir` still observes a false→true flip after the on-disk cache was updated.
+    pub with_hash_cache_before_apply: Option<bool>,
     /// Effective `[[enhance_policy]]` entries (merged global + local). Used only for index-time batch Zahir.
     pub enhance_policy: Vec<profile::EnhancePolicyEntry>,
 }
@@ -239,6 +241,8 @@ impl UblxOpts {
         let config_source = cached_settings.and_then(|s| s.config_source.clone());
         let enable_enhance_all_cache_before_apply =
             Self::load_overlay_from_cache(ublx_paths).and_then(|o| o.enable_enhance_all);
+        let with_hash_cache_before_apply =
+            Self::load_overlay_from_cache(ublx_paths).and_then(|o| o.hash);
         let mut opts = Self {
             nefax,
             zahir,
@@ -255,6 +259,7 @@ impl UblxOpts {
             enable_enhance_all: false,
             ask_enhance_on_new_root: true,
             enable_enhance_all_cache_before_apply,
+            with_hash_cache_before_apply,
             enhance_policy: Vec::new(),
         };
         let global =
@@ -318,6 +323,7 @@ impl UblxOpts {
             enable_enhance_all: true,
             ask_enhance_on_new_root: true,
             enable_enhance_all_cache_before_apply: None,
+            with_hash_cache_before_apply: None,
             enhance_policy: Vec::new(),
         }
     }

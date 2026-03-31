@@ -20,7 +20,7 @@ Or clone the repo and run `cargo build --release`; the binary is in `target/rele
 ## What it does
 
 - **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes a per-root SQLite file under your user cache (`ubli/`; stem is sanitized dir name plus path hash, extension matches the `ublx` package name). Config: `ublx.toml` or `.ublx.toml`.
-- **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), context menus (Space, Shift+L), stacked toasts. Viewer has fullscreen (F). `q` / Esc quit.
+- **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), **Space** then a letter for **Open** / **Lens** / … (see in-app help), stacked toasts. **Shift+S** viewer search, **Shift+F** viewer fullscreen. `q` / Esc quit.
 - **Snapshot-only** — `ublx --snapshot-only [DIR]` (`-s`) indexes headlessly, no TUI. Writes `.ublx.toml` with `enable_enhance_all = false` when the directory has no local config yet. Use `--enhance-all` (`-e`) or `--full-snapshot` (`-f`) for full index-time Zahir.
 
 ## Modes (tabs)
@@ -32,16 +32,17 @@ Or clone the repo and run `cargo build --release`; the binary is in `target/rele
 | **Lenses**     | Saved lists of items with a specific focus (e.g. a “lens” on a subset of files); left = lens names, middle = paths in the selected lens. Shown when the DB has at least one lens. |
 | **Duplicates** | Groups of duplicate files by content hash; left = group names, middle = paths in the group. Run duplicate detection (Ctrl+d) to populate; tab appears when groups exist.          |
 
-Cycle tabs with **Shift+Tab**.
+Cycle main tabs with `~`.
 
 ## Panes overview
 
 The right pane shows Viewer, Templates, Metadata, or Writing for the selected item. **Tab** switches focus between the left (categories) and middle (contents) panes; **h** / **l** also focus left or middle.
 
-- **Focus a right-pane tab** — **v** (Viewer), **t** (Templates), **m** (Metadata), **w** (Writing). **Shift+V** cycles through right-pane tabs.
-- **Scroll in the preview** — **Ctrl+b** / **Ctrl+e** (jump to top/bottom), **Shift+↑** / **Shift+↓** or **Shift+K** / **Shift+J** (line by line).
-- **Viewer fullscreen** — **F** toggles fullscreen for the Viewer tab.
-- **Search** — **/** filters the category and content lists (left and middle) by substring; the right pane updates with the selected row. Press **Esc** to clear the search.
+- **Focus a right-pane tab** — **v** (Viewer), **t** (Templates), **m** (Metadata), **w** (Writing). **Shift+Tab** cycles through right-pane tabs.
+- **Scroll in the preview** — **Shift+b** / **Shift+e** (jump to top/bottom), **Shift+↑** / **Shift+↓** or **Shift+K** / **Shift+J** (line by line).
+- **Viewer fullscreen** — **Shift+F** toggles fullscreen for the Viewer tab.
+- **Viewer search** — **Shift+S** opens literal in-pane search in the preview (see in-app help for n/N and Esc).
+- **Catalog search** — **/** filters the category and content lists (left and middle) by substring; the right pane updates with the selected row. Press **Esc** to clear the search.
 
 | Tab           | Content                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

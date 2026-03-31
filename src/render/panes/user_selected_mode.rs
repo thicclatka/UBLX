@@ -6,7 +6,8 @@ use ratatui::layout::Rect;
 use ratatui::widgets::ListItem;
 
 use crate::layout::setup;
-use crate::ui::UI_STRINGS;
+use crate::render::marquee;
+use crate::ui::{UI_STRINGS, chord_chrome_active};
 
 /// Draw the three panes for a list mode: left list from `view.filtered_categories`, middle paths with counter, right viewer.
 /// `chunks` must have at least 3 elements: [left, middle, right].
@@ -22,12 +23,27 @@ fn draw_user_selected_mode_panes(
     let middle = chunks[1];
     // let right_rect = chunks[2];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
-    let left_title = super::set_title(left_title_label, focused);
+    let left_title = super::panel_title_line(
+        left_title_label,
+        focused,
+        chord_chrome_active(&state.chrome),
+    );
     let left_block = super::panel_block(left_title, focused);
+    let max_cols = left.width.saturating_sub(2) as usize;
+    let cat_sel = state.panels.category_state.selected().unwrap_or(0);
     let left_items: Vec<ListItem> = view
         .filtered_categories
         .iter()
-        .map(|s| ListItem::new(s.as_str()))
+        .enumerate()
+        .map(|(i, s)| {
+            let use_marquee = i == cat_sel && focused;
+            let text = if use_marquee {
+                marquee::visible_line(s.as_str(), max_cols, state.panels.category_marquee.offset)
+            } else {
+                s.clone()
+            };
+            ListItem::new(text)
+        })
         .collect();
     super::draw_list_panel(
         f,
@@ -39,7 +55,7 @@ fn draw_user_selected_mode_panes(
         left,
     );
 
-    super::draw_paths_list_with_counter(f, state, view, None, middle);
+    super::draw_paths_list_with_counter(f, state, view, None, None, middle);
 
     super::draw_right_pane(f, state, right_content, chunks);
 }

@@ -2,15 +2,14 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::text::Line;
+use ratatui::style::Style;
 use ratatui::widgets::ListItem;
 
 use super::middle::{CONTENTS_LIST_VIRTUALIZE_MIN, contents_list_viewport};
 
 use crate::config::UblxPaths;
-use crate::layout::setup::{self, ViewContents};
-use crate::layout::style;
-use crate::ui::UI_STRINGS;
+use crate::layout::{setup, style};
+use crate::ui::{UI_STRINGS, chord_chrome_active};
 
 /// Draw the categories (left) pane. `chunks` must have at least 1 element; uses `chunks[0]`.
 pub fn draw_categories_pane(
@@ -21,7 +20,11 @@ pub fn draw_categories_pane(
 ) {
     let area = chunks[0];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Categories);
-    let title = super::set_title(UI_STRINGS.pane.categories, focused);
+    let title = super::panel_title_line(
+        UI_STRINGS.pane.categories,
+        focused,
+        chord_chrome_active(&state.chrome),
+    );
     let mut items = vec![ListItem::new(UI_STRINGS.list.all_categories)];
     items.extend(
         view.filtered_categories
@@ -41,7 +44,8 @@ pub fn draw_categories_pane(
 }
 
 /// Map UBLX Settings path to "Local"/"Global" when `dir_to_ublx` is set; otherwise return path as-is.
-fn contents_display_label(
+#[must_use]
+pub fn contents_display_label(
     path: &str,
     category: &str,
     dir_to_ublx: Option<&std::path::Path>,
@@ -79,7 +83,11 @@ pub fn draw_contents_panel(
 ) {
     let area = chunks[1];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
-    let left_title = super::set_title(UI_STRINGS.pane.contents, focused);
+    let left_title = super::panel_title_line(
+        UI_STRINGS.pane.contents,
+        focused,
+        chord_chrome_active(&state.chrome),
+    );
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(if focused {
@@ -87,15 +95,23 @@ pub fn draw_contents_panel(
         } else {
             style::panel_unfocused()
         })
-        .title_style(style::panel_title_style(focused))
-        .title(Line::from(left_title).left_aligned())
+        .title_style(Style::default())
+        .title(left_title)
         .title_bottom(super::line_for(
             state.panels.content_state.selected(),
             view.content_len,
             state.main_mode,
             state.panels.content_sort,
+            chord_chrome_active(&state.chrome),
         ));
     let total = view.content_len;
+    let global_sel = state
+        .panels
+        .content_state
+        .selected()
+        .unwrap_or(0)
+        .min(total.saturating_sub(1));
+    let max_cols = area.width.saturating_sub(2) as usize;
 
     let (items, window_start) = if total == 0 {
         (
@@ -107,39 +123,37 @@ pub fn draw_contents_panel(
             None,
         )
     } else if total >= CONTENTS_LIST_VIRTUALIZE_MIN
-        && matches!(&view.contents, ViewContents::SnapshotIndices(_))
+        && matches!(&view.contents, setup::ViewContents::SnapshotIndices(_))
         && let Some(all_rows_slice) = all_rows
     {
         let inner_h = area.height.saturating_sub(2).max(1) as usize;
-        let global_sel = state
-            .panels
-            .content_state
-            .selected()
-            .unwrap_or(0)
-            .min(total - 1);
         let (w_start, w_end) = contents_list_viewport(total, global_sel, inner_h);
         let items = (w_start..w_end)
-            .filter_map(|i| {
-                view.row_at(i, Some(all_rows_slice))
-                    .map(|(path, category, _)| {
-                        ListItem::new(contents_display_label(
-                            path.as_str(),
-                            category.as_str(),
-                            dir_to_ublx,
-                        ))
-                    })
+            .map(|i| {
+                super::middle::contents_list_item_for_row(
+                    state,
+                    view,
+                    Some(all_rows_slice),
+                    dir_to_ublx,
+                    i,
+                    global_sel,
+                    max_cols,
+                )
             })
             .collect();
         (items, Some(w_start))
     } else {
-        let items = view
-            .iter_contents(all_rows)
-            .map(|(path, category, _)| {
-                ListItem::new(contents_display_label(
-                    path.as_str(),
-                    category.as_str(),
+        let items = (0..total)
+            .map(|i| {
+                super::middle::contents_list_item_for_row(
+                    state,
+                    view,
+                    all_rows,
                     dir_to_ublx,
-                ))
+                    i,
+                    global_sel,
+                    max_cols,
+                )
             })
             .collect();
         (items, None)

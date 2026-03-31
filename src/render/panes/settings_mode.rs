@@ -67,10 +67,11 @@ fn scope_tab_spans(
     local_label: &'static str,
 ) -> Vec<Span<'static>> {
     let mut scope_spans: Vec<Span<'static>> =
-        style::tab_node_segment(global_label, scope == SettingsConfigScope::Global);
+        style::tab_node_segment(global_label, scope == SettingsConfigScope::Global, false);
     scope_spans.extend(style::tab_node_segment(
         local_label,
         scope == SettingsConfigScope::Local,
+        false,
     ));
     scope_spans
 }

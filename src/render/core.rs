@@ -1,7 +1,7 @@
 //! Main frame entry and tab bar. Snapshot/Delta content and search live in submodules.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
@@ -10,11 +10,13 @@ use super::overlays;
 use super::panes;
 
 use crate::config::{LayoutOverlay, TOAST_CONFIG};
-use crate::engine::db_ops::DuplicateGroup;
+use crate::engine::db_ops::{DuplicateGroup, DuplicateGroupingMode};
 use crate::layout;
 use crate::themes;
-use crate::ui::{UI_CONSTANTS, UI_STRINGS, main_tab_bar_modes_and_labels};
-use crate::utils::{format_timestamp_ns, toast_content_line_count};
+use crate::ui::{UI_CONSTANTS, UI_STRINGS, chord_chrome_active, main_tab_bar_modes_and_labels};
+use crate::utils::{
+    canonicalize_dir_to_ublx, format_timestamp_ns, toast_content_line_count, truncate_middle,
+};
 
 /// Arguments for [`draw_ublx_frame`] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
@@ -33,6 +35,8 @@ pub struct DrawFrameArgs<'a> {
     pub dev: bool,
     /// When non-empty, Duplicates tab is shown and this slice is the duplicate groups.
     pub duplicate_groups: Option<&'a [DuplicateGroup]>,
+    /// Duplicates tab label mode (Hash vs Name+Size fallback).
+    pub duplicate_mode: DuplicateGroupingMode,
     /// When non-empty, Lenses tab is shown.
     pub lens_names: Option<&'a [String]>,
 }
@@ -49,20 +53,31 @@ pub fn draw_ublx_frame(
     let area = f.area();
 
     draw_background(f, area, args);
-    let (tabs_area, body_area) = split_tabs_and_body(area);
+    let (tabs_area, gap_area, body_area) = layout::style::split_main_tabs_and_body(area);
     draw_main_tabs(f, state, tabs_area, args);
+    if let Some(gap) = gap_area {
+        draw_indexed_dir_path_line(f, gap, args);
+    }
 
     let body = compute_body_areas(body_area, args.layout);
     draw_main_content(f, state, view, right_content, args, &body);
 
     draw_toast_if_visible(f, state, args);
     if state.chrome.help_visible {
-        overlays::render_help_box(f, state.main_mode);
+        let has_duplicates = args.duplicate_groups.is_some_and(|g| !g.is_empty());
+        let has_lenses = args.lens_names.is_some_and(|n| !n.is_empty());
+        overlays::render_help_box(f, state.main_mode, has_lenses, has_duplicates);
     }
     if state.theme.selector_visible {
         overlays::render_theme_selector(f, state.theme.selector_index);
     }
+    if state.chrome.ublx_switch.visible {
+        overlays::popup::render_ublx_switch_picker(f, area, &state.chrome.ublx_switch);
+    }
     draw_popups(f, state, &body, args);
+    if state.chrome.ctrl_chord.menu_visible {
+        overlays::popup::render_ctrl_chord_menu(f, area);
+    }
     if let Some(ref sp) = state.startup_prompt {
         match &sp.phase {
             layout::setup::StartupPromptPhase::RootChoice {
@@ -178,13 +193,25 @@ fn draw_background(f: &mut Frame, area: Rect, _args: &DrawFrameArgs<'_>) {
     f.render_widget(Block::default().style(Style::default().bg(bg)), area);
 }
 
-fn split_tabs_and_body(area: Rect) -> (Rect, Rect) {
-    if area.height >= 2 {
-        let vs = layout::style::split_vertical(area, &UI_CONSTANTS.tab_row_constraints());
-        (vs[0], vs[1])
-    } else {
-        (area, area)
+/// Centered absolute path of the indexed directory in the gap row below main tabs.
+fn draw_indexed_dir_path_line(f: &mut Frame, gap: Rect, args: &DrawFrameArgs<'_>) {
+    let Some(dir) = args.dir_to_ublx else {
+        return;
+    };
+    if gap.width == 0 || gap.height == 0 {
+        return;
     }
+    let abs = canonicalize_dir_to_ublx(dir);
+    let s = abs.to_string_lossy();
+    let max_chars = usize::from(gap.width).max(1);
+    let display = truncate_middle(&s, max_chars);
+    let style = Style::default().fg(themes::current().hint);
+    f.render_widget(
+        Paragraph::new(display)
+            .alignment(Alignment::Center)
+            .style(style),
+        gap,
+    );
 }
 
 struct BodyAreas {
@@ -326,6 +353,7 @@ fn draw_main_content(
             args.latest_snapshot_ns,
             state.search.active,
             &state.search.query,
+            chord_chrome_active(&state.chrome),
         );
     }
 }
@@ -375,12 +403,23 @@ fn draw_main_tabs(
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
     let has_duplicates = args.duplicate_groups.is_some_and(|g| !g.is_empty());
     let has_lenses = args.lens_names.is_some_and(|n| !n.is_empty());
-    let (modes, titles) = main_tab_bar_modes_and_labels(has_lenses, has_duplicates);
+    let (modes, titles) =
+        main_tab_bar_modes_and_labels(has_lenses, has_duplicates, args.duplicate_mode);
     let mut segments: Vec<Span> = Vec::new();
-    for (mode, title) in modes.iter().zip(titles.iter()) {
+    let chord = chord_chrome_active(&state.chrome);
+    let gap_bg = themes::current().background;
+    let gap_style = Style::default().bg(gap_bg);
+    let gap_n = usize::from(UI_CONSTANTS.main_tab_node_gap_cells);
+    for (i, (mode, title)) in modes.iter().zip(titles.iter()).enumerate() {
+        if i > 0 {
+            for _ in 0..gap_n {
+                segments.push(Span::styled(" ", gap_style));
+            }
+        }
         segments.extend(layout::style::tab_node_segment(
             title.as_str(),
             state.main_mode == *mode,
+            chord,
         ));
     }
     let line = Line::from(segments);
@@ -402,6 +441,7 @@ pub fn draw_status_line(
     latest_snapshot_ns: Option<i64>,
     search_active: bool,
     search_query: &str,
+    chord_mode: bool,
 ) {
     let search_replaces_snapshot = search_active || !search_query.trim().is_empty();
     let mut spans: Vec<Span<'static>> = Vec::new();
@@ -413,7 +453,7 @@ pub fn draw_status_line(
             UI_STRINGS.search.latest_snapshot,
             format_timestamp_ns(ns)
         );
-        spans.extend(layout::style::status_node_spans(&node_content));
+        spans.extend(layout::style::status_node_spans(&node_content, chord_mode));
     }
     if let Some(popup) = layout::style::search_catalog_popup_spans(search_active, search_query) {
         spans.extend(popup);

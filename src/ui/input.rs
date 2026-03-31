@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use std::io;
 
@@ -9,7 +9,7 @@ use crate::layout::setup::{MainMode, RightPaneContent, StartupPromptPhase, UblxS
 use crate::ui::{
     MainTabFlags,
     consts::{MAIN_TAB_KEYS, UI_CONSTANTS, UI_STRINGS},
-    file_ops, keymap, lens, menu, mouse,
+    ctrl_chord, file_ops, keymap, lens, menu, mouse,
 };
 
 #[derive(Clone)]
@@ -65,6 +65,10 @@ fn dispatch_modal_handlers(
     if lens::handle_lens_delete_confirm(state_mut, params_mut, action) {
         return true;
     }
+    if state_mut.chrome.ublx_switch.visible {
+        applets::ublx_switch::handle_key(state_mut, params_mut, action);
+        return true;
+    }
     if applets::enhance_policy::handle_enhance_policy_menu(
         state_mut,
         params_mut,
@@ -96,21 +100,6 @@ fn dispatch_modal_handlers(
     if menu::handle_open_menu(state_mut, params_mut, ublx_opts_mut, action) {
         return true;
     }
-    if menu::try_enhance_with_zahir(
-        state_mut,
-        right_content_ref,
-        params_mut,
-        ublx_opts_mut,
-        action,
-    ) {
-        return true;
-    }
-    if menu::try_open_open_menu(state_mut, right_content_ref, action) {
-        return true;
-    }
-    if lens::try_open_lens_menu(state_mut, right_content_ref, action) {
-        return true;
-    }
     if menu::try_open_space_menu(state_mut, view_ref, right_content_ref, action) {
         return true;
     }
@@ -122,7 +111,8 @@ fn try_open_settings_editor_from_menu(
     action: keymap::UblxAction,
     ublx_opts_ref: &UblxOpts,
 ) -> bool {
-    if state_mut.main_mode != MainMode::Settings || !matches!(action, keymap::UblxAction::OpenMenu)
+    if state_mut.main_mode != MainMode::Settings
+        || !matches!(action, keymap::UblxAction::OpenConfigInEditor)
     {
         return false;
     }
@@ -279,7 +269,7 @@ fn apply_overlay_key_overrides(
     }
 }
 
-fn apply_action_with_settings_enter(
+pub fn apply_action_with_settings_enter(
     state_mut: &mut UblxState,
     view_ref: &ViewData,
     right_content_ref: &RightPaneContent,
@@ -331,6 +321,7 @@ pub fn handle_ublx_input(
                 frame_area,
                 layout,
                 tabs,
+                main_mode: state_mut.main_mode,
             },
         );
         return Ok(false);
@@ -338,6 +329,27 @@ pub fn handle_ublx_input(
     let Event::Key(e) = ev else {
         return Ok(false);
     };
+
+    if let Some(quit) = ctrl_chord::handle_chord_key_event(
+        state_mut,
+        &e,
+        view_ref,
+        right_content_ref,
+        params_mut,
+        tabs,
+        &theme_ctx,
+    ) {
+        return Ok(quit);
+    }
+
+    if matches!(e.code, KeyCode::Char(' '))
+        && e.modifiers.contains(KeyModifiers::CONTROL)
+        && e.kind == KeyEventKind::Press
+        && ctrl_chord::try_begin_chord(state_mut)
+    {
+        return Ok(false);
+    }
+
     let result = keymap::key_action_setup(e, &key_action_context_for(state_mut, tabs));
     state_mut.last_key_for_double = result.last_key_for_double;
     let mut action = result.action;

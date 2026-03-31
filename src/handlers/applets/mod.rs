@@ -10,4 +10,5 @@ pub mod opener;
 pub mod search;
 pub mod settings;
 pub mod theme_selector;
+pub mod ublx_switch;
 pub mod viewer_find;

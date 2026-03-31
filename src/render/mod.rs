@@ -1,5 +1,6 @@
 pub mod core;
 pub mod kv_tables;
+pub mod marquee;
 pub mod overlays;
 pub mod panes;
 pub mod path_lines;

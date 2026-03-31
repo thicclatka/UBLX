@@ -2,7 +2,8 @@
 //! TUI setup/teardown (terminal, raw mode) lives here; the main loop lives in [`crate::app::main_loop`].
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -112,8 +113,8 @@ fn run_tui_mode(
     }
     let (right_pane_tx, right_pane_rx) = tokio::sync::mpsc::unbounded_channel();
     let mut params = app::RunUblxParams {
-        db_path,
-        dir_to_ublx,
+        db_path: db_path.to_path_buf(),
+        dir_to_ublx: dir_to_ublx.to_path_buf(),
         snapshot_done_rx: Some(rx),
         snapshot_done_tx: Some(tx_for_tui),
         bumper,
@@ -121,6 +122,7 @@ fn run_tui_mode(
         theme: ublx_opts.theme.clone(),
         layout: ublx_opts.layout.clone(),
         duplicate_groups: Vec::new(),
+        duplicate_mode: db_ops::DuplicateGroupingMode::NameSize,
         duplicate_groups_rx: None,
         lens_names,
         config_reload_rx,
@@ -144,6 +146,24 @@ pub fn restore_terminal() {
     let _ = disable_raw_mode();
     let mut out = io::stdout();
     let _ = crossterm::execute!(out, DisableMouseCapture, LeaveAlternateScreen, ShowCursor);
+}
+
+/// Replace this process with `ublx` running on `dir` (same as `ublx <dir>` on the command line).
+pub fn relaunch_ublx_indexed_dir(dir: &Path) -> ! {
+    restore_terminal();
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ublx"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let err = process::Command::new(&exe).arg(dir).exec();
+        eprintln!("ublx: failed to relaunch: {err}");
+        process::exit(126);
+    }
+    #[cfg(not(unix))]
+    {
+        let status = process::Command::new(&exe).arg(dir).status();
+        process::exit(status.map(|s| s.code().unwrap_or(1)).unwrap_or(1));
+    }
 }
 
 /// Leave alternate screen and raw mode so an external editor runs on the main screen; call before spawning the editor.
@@ -182,12 +202,14 @@ pub fn run_tui_session(
     ublx_opts: &mut config::UblxOpts,
     right_pane_async_rx: Option<tokio::sync::mpsc::UnboundedReceiver<setup::RightPaneAsyncReady>>,
 ) -> io::Result<()> {
-    let (mut categories, mut all_rows) =
-        app::load_snapshot_for_tui(params.db_path, db_ops::SnapshotReaderPreference::PreferUblx);
+    let (mut categories, mut all_rows) = app::load_snapshot_for_tui(
+        &params.db_path,
+        db_ops::SnapshotReaderPreference::PreferUblx,
+    );
     let mut state = setup::UblxState::new();
     state.right_pane_async.rx = right_pane_async_rx;
     {
-        let paths = config::UblxPaths::new(params.dir_to_ublx);
+        let paths = config::UblxPaths::new(params.dir_to_ublx.as_path());
         if let Some(g) = paths.global_config() {
             config::ensure_global_config_file_with_defaults(
                 &g,
@@ -196,7 +218,7 @@ pub fn run_tui_session(
         }
     }
     if params.startup.defer_first_snapshot {
-        first_run::init_prompt_state(&mut state, params.dir_to_ublx);
+        first_run::init_prompt_state(&mut state, params.dir_to_ublx.as_path());
     }
     debug!(
         "clipboard copy command: {}",
@@ -246,7 +268,8 @@ const CONFIG_WATCH_DEBOUNCE_MS: u64 = 600;
 const CONFIG_WATCHER_PARK_SECS: u64 = 86400;
 
 /// Spawns a thread that watches global and local config paths; sends `()` when a config file changes so the main loop can trigger hot reload. Debounced so one save yields one signal. If the watcher cannot be created, the thread exits silently (no reload signals).
-fn spawn_config_watcher(dir_to_ublx: &Path) -> mpsc::Receiver<()> {
+#[must_use]
+pub fn spawn_config_watcher(dir_to_ublx: &Path) -> mpsc::Receiver<()> {
     let paths = config::UblxPaths::new(dir_to_ublx);
     let global = paths.global_config();
     let dir = dir_to_ublx.to_path_buf();

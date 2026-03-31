@@ -19,9 +19,9 @@ pub enum UblxAction {
     MainModeSettings,
     /// Switch to Lenses main tab (only when any lenses exist).
     MainModeLenses,
-    /// Alternate main tabs: Snapshot → Lenses (if any) → Delta → Duplicates (if any) → Settings (Shift+Tab).
+    /// Alternate main tabs: Snapshot → Lenses (if any) → Delta → Duplicates (if any) → Settings (`~`)
     MainModeToggle,
-    /// Run duplicate detection in background and show Duplicates tab (Ctrl+D).
+    /// Run duplicate detection in background and show Duplicates tab (Command Mode: Ctrl+Space, then d).
     LoadDuplicates,
     SearchStart,
     SearchChar(char),
@@ -29,7 +29,7 @@ pub enum UblxAction {
     SearchSubmit,
     /// Esc when search is active (clear search); when inactive, use Quit.
     SearchClear,
-    /// In-pane literal find (right pane). Ctrl+F opens; Enter commits; Esc clears; n / N next/prev.
+    /// In-pane literal search (right pane). Shift+S opens; Enter commits; Esc clears; n / N next/prev.
     ViewerFindOpen,
     ViewerFindChar(char),
     ViewerFindBackspace,
@@ -37,7 +37,7 @@ pub enum UblxAction {
     ViewerFindClear,
     ViewerFindNext,
     ViewerFindPrev,
-    /// Cycle right pane tab (Ctrl+V).
+    /// Cycle right pane tab (Shift+Tab).
     CycleRightPane,
     RightPaneViewer,
     /// Toggle right-pane fullscreen (current tab).
@@ -51,9 +51,9 @@ pub enum UblxAction {
     ListTop,
     /// G: go to bottom of list.
     ListBottom,
-    /// Ctrl+g: scroll preview to top.
+    /// Shift+b: scroll preview to top.
     PreviewTop,
-    /// Ctrl+G: scroll preview to bottom.
+    /// Shift+e: scroll preview to bottom.
     PreviewBottom,
     MoveUp,
     MoveDown,
@@ -62,26 +62,20 @@ pub enum UblxAction {
     FocusCategories,
     FocusContents,
     Tab,
-    /// Run take-snapshot pipeline in background; completion shows in log bumper (Ctrl+S).
+    /// Run take-snapshot pipeline in background; completion shows in log bumper (Command Mode: Ctrl+Space, then s).
     TakeSnapshot,
     /// Cycle middle-pane content sort mode (Name → Size → Mod).
     CycleContentSort,
-    /// Theme selector popup (Ctrl+t). Writes theme to **local** project `ublx.toml` / `.ublx.toml`.
+    /// Theme selector popup (Command Mode: Ctrl+Space, then t). Writes theme to **local** project `ublx.toml` / `.ublx.toml`.
     ThemeSelector,
     /// Open the active Settings file in $EDITOR / `editor_path` (plain `e`).
     OpenConfigInEditor,
-    /// Reload hot-reloadable config (theme, layout, hash, `show_hidden`, etc.) from disk. Ctrl+R.
+    /// Reload hot-reloadable config (theme, layout, hash, `show_hidden`, etc.) from disk (Command Mode: Ctrl+Space, then r).
     ReloadConfig,
-    /// Open menu (Shift+O): Open (Terminal) or Open (GUI). Only when selection is a non-binary file.
-    OpenMenu,
-    /// Lens menu (Ctrl+L): Add current file to a lens or create new lens.
-    LensMenu,
     /// Spacebar context menu
     SpaceMenu,
     /// Pick a context-menu row by letter while the space menu is open (indices match current items).
     SpaceMenuHotkeySelect(usize),
-    /// Quick action: Enhance selected path with `ZahirScan` when available.
-    EnhanceWithZahir,
     /// First option on a Yes/No (or two-option) confirm overlay (`y`).
     ConfirmYes,
     /// Second option (`n`).
@@ -176,7 +170,7 @@ fn key_action_default(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResul
         KeyCode::Char('?') => (UblxAction::Help, None),
         KeyCode::Char('/') if !ctx.search.active => (UblxAction::SearchStart, None),
         KeyCode::Char(c) if ctx.search.active => (UblxAction::SearchChar(c), None),
-        KeyCode::Char('f' | 'F') if ctrl && ctx.allow_viewer_find => {
+        KeyCode::Char('s' | 'S') if shift && ctx.allow_viewer_find && !ctx.search.active => {
             (UblxAction::ViewerFindOpen, None)
         }
         KeyCode::Char('n')
@@ -197,20 +191,16 @@ fn key_action_default(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResul
             (UblxAction::ViewerFindPrev, None)
         }
         KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
-        KeyCode::Char('o' | 'O') if shift => (UblxAction::OpenMenu, None),
-        KeyCode::Char('t' | 'T') if ctrl => (UblxAction::ThemeSelector, None),
         KeyCode::Char('J') | KeyCode::Down if shift => (UblxAction::ScrollPreviewDown, None),
         KeyCode::Char('K') | KeyCode::Up if shift => (UblxAction::ScrollPreviewUp, None),
-        KeyCode::Char('b' | 'B') if ctrl => (UblxAction::PreviewTop, None),
-        KeyCode::Char('d' | 'D') if ctrl => (UblxAction::LoadDuplicates, None),
-        KeyCode::Char('e' | 'E') if ctrl => (UblxAction::PreviewBottom, None),
+        KeyCode::Char('B') if shift => (UblxAction::PreviewTop, None),
+        KeyCode::Char('E') if shift => (UblxAction::PreviewBottom, None),
         KeyCode::Char('j' | 'J') | KeyCode::Down if ctrl => (UblxAction::MoveDownFast, None),
         KeyCode::Char('k' | 'K') | KeyCode::Up if ctrl => (UblxAction::MoveUpFast, None),
-        KeyCode::Char('r' | 'R') if ctrl => (UblxAction::ReloadConfig, None),
-        KeyCode::Char('s' | 'S') if ctrl => (UblxAction::TakeSnapshot, None),
-        KeyCode::Char('v' | 'V') if ctrl => (UblxAction::CycleRightPane, None),
-        KeyCode::Char('l' | 'L') if ctrl => (UblxAction::LensMenu, None),
-        KeyCode::Char('E') if shift => (UblxAction::EnhanceWithZahir, None),
+        KeyCode::Char('~') => (UblxAction::MainModeToggle, None),
+        KeyCode::Char('\u{60}') if shift && !ctx.search.active => {
+            (UblxAction::MainModeToggle, None)
+        }
         KeyCode::Char('G') if shift => (UblxAction::ListBottom, None),
         KeyCode::Char('g') if !shift && !ctrl => {
             if ctx.last_key_for_double == Some('g') {
@@ -220,7 +210,7 @@ fn key_action_default(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResul
             }
         }
         KeyCode::Char(c) if shift => (UblxAction::SearchChar(c), None),
-        KeyCode::Char(c) => {
+        KeyCode::Char(c) if !ctrl => {
             let a = if let Some(mode) = main_mode_action_for_digit(c, ctx.tab_keys, ctx.tabs) {
                 mode
             } else {
@@ -250,7 +240,7 @@ fn key_action_default(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResul
         KeyCode::Left => (UblxAction::FocusCategories, None),
         KeyCode::Right => (UblxAction::FocusContents, None),
         KeyCode::Tab => (UblxAction::Tab, None),
-        KeyCode::BackTab => (UblxAction::MainModeToggle, None),
+        KeyCode::BackTab => (UblxAction::CycleRightPane, None),
         _ => (UblxAction::Noop, None),
     };
     KeyActionResult {

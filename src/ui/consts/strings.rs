@@ -1,9 +1,9 @@
-use ratatui::layout::Constraint;
-use ratatui::style::Style;
-use ratatui::text::Span;
+//! User-visible string tables and `UiStrings` helpers.
 
-use crate::layout::setup::MainMode;
 use crate::utils::StringObjTraits;
+
+use super::glyph::UI_GLYPHS;
+use super::tabs::UiStringsMainTabs;
 
 /// Generic and feature-specific loading lines.
 pub struct UiStringsLoading {
@@ -47,82 +47,6 @@ pub struct UiStringsList {
     pub list_symbol: &'static str,
 }
 
-/// Main mode tab bar: Snapshot | Delta | …
-pub struct UiStringsMainTabs {
-    pub snapshot: &'static str,
-    pub delta: &'static str,
-    pub settings: &'static str,
-    pub duplicates: &'static str,
-    pub lenses: &'static str,
-}
-
-/// Digit keys (1–9) for main-mode tabs. Single source for keymap, tab labels, mouse hit-testing, and help.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct UblxTabNumber {
-    pub snapshot: u8,
-    pub delta: u8,
-    pub settings: u8,
-    pub lenses: u8,
-    pub duplicates: u8,
-}
-
-impl UblxTabNumber {
-    /// Snapshot [1], Lenses [2], Delta [7], Duplicates [8], Settings [9] — matches left-to-right tab bar order.
-    pub const DEFAULT: Self = Self {
-        snapshot: 1,
-        lenses: 2,
-        delta: 7,
-        duplicates: 8,
-        settings: 9,
-    };
-}
-
-pub const MAIN_TAB_KEYS: UblxTabNumber = UblxTabNumber::DEFAULT;
-
-/// Tab label with hotkey digit, e.g. `Settings [9]` — use with [`MAIN_TAB_KEYS`] and [`UiStringsMainTabs`].
-#[must_use]
-pub fn main_tab_title(label: &str, key_digit: u8) -> String {
-    format!("{label} [{key_digit}]")
-}
-
-/// Main tab bar order and labels (Snapshot, optional Lenses, Delta, optional Duplicates, Settings).
-/// Matches [`crate::render::core::draw_main_tabs`] segment order and mouse hit-testing.
-#[must_use]
-pub fn main_tab_bar_modes_and_labels(
-    has_lenses: bool,
-    has_duplicates: bool,
-) -> (Vec<MainMode>, Vec<String>) {
-    let k = MAIN_TAB_KEYS;
-    let mut modes = vec![MainMode::Snapshot];
-    let mut labels = vec![main_tab_title(UI_STRINGS.main_tabs.snapshot, k.snapshot)];
-    if has_lenses {
-        modes.push(MainMode::Lenses);
-        labels.push(main_tab_title(UI_STRINGS.main_tabs.lenses, k.lenses));
-    }
-    modes.push(MainMode::Delta);
-    labels.push(main_tab_title(UI_STRINGS.main_tabs.delta, k.delta));
-    if has_duplicates {
-        modes.push(MainMode::Duplicates);
-        labels.push(main_tab_title(
-            UI_STRINGS.main_tabs.duplicates,
-            k.duplicates,
-        ));
-    }
-    modes.push(MainMode::Settings);
-    labels.push(main_tab_title(UI_STRINGS.main_tabs.settings, k.settings));
-    (modes, labels)
-}
-
-/// Help header: digits in tab-bar order (Snapshot, Lenses, Delta, Duplicates, Settings).
-#[must_use]
-pub fn main_tab_keys_help_keys_line() -> String {
-    let k = MAIN_TAB_KEYS;
-    format!(
-        "{} | {} | {} | {} | {}",
-        k.snapshot, k.lenses, k.delta, k.duplicates, k.settings
-    )
-}
-
 /// Status / search line (snapshot + query).
 pub struct UiStringsSearchStatus {
     pub search_label: &'static str,
@@ -161,8 +85,22 @@ pub struct UiStringsDialogs {
     pub help: &'static str,
     pub theme: &'static str,
     pub notification: &'static str,
+    /// Command Mode popup (`Ctrl+Space`); use with [`UiStrings::pad`].
+    pub command_mode_popup: &'static str,
+    /// First column header in the Command Mode table (single-letter key after Ctrl+Space).
+    pub command_mode_key_column: &'static str,
+    /// Help overlay: section title above Viewer pane shortcuts.
+    pub help_section_viewer: &'static str,
+    /// Help overlay: section title above Space menu shortcuts.
+    pub help_section_space: &'static str,
     pub help_command: &'static str,
     pub help_action: &'static str,
+    /// [`crate::render::overlays::popup::render_ublx_switch_picker`] border title; use with [`UiStrings::pad`].
+    pub ublx_switch_popup: &'static str,
+    /// [`crate::render::overlays::popup::render_ublx_switch_picker`]: table header (indexed root path).
+    pub ublx_switch_column_path: &'static str,
+    /// No recents entries with a DB — body line in the switch picker.
+    pub ublx_switch_empty: &'static str,
 }
 
 /// Image / PDF / raster preview chrome and error prefixes (detail after `: ` from `format!`).
@@ -327,10 +265,10 @@ impl UiStrings {
             templates: "Templates",
             metadata: "Metadata",
             writing: "Writing",
-            tab_templates: "Templates",
-            tab_viewer: "Viewer",
-            tab_metadata: "Metadata",
-            tab_writing: "Writing",
+            tab_templates: "Templates (t)",
+            tab_viewer: "Viewer (v)",
+            tab_metadata: "Metadata (m)",
+            tab_writing: "Writing (w)",
             not_available: "(not available for this item)",
             viewer_placeholder: "(viewer — file content will load here)",
         }
@@ -358,7 +296,7 @@ impl UiStrings {
     const fn search() -> UiStringsSearchStatus {
         UiStringsSearchStatus {
             search_label: "Search (Categories & Contents): ",
-            find_label: "Find: ",
+            find_label: "Search: ",
             latest_snapshot: "Latest Snapshot",
         }
     }
@@ -400,8 +338,15 @@ impl UiStrings {
             help: "Help",
             theme: "Theme",
             notification: "Notification",
+            command_mode_popup: "Command Mode",
+            command_mode_key_column: "Key",
+            help_section_viewer: "Viewer Pane",
+            help_section_space: "Space Menu",
             help_command: "Command",
             help_action: "Action",
+            ublx_switch_popup: "UBLX Switcher",
+            ublx_switch_column_path: "UBLX projects",
+            ublx_switch_empty: "No indexed projects found (recents empty or no DB under ubli/).",
         }
     }
 
@@ -522,12 +467,6 @@ impl UiStrings {
         }
     }
 
-    // /// Toast when config is reloaded by file watcher (save).
-    // #[must_use]
-    // pub fn config_reload_triggered_by_save(&self) -> String {
-    //     format!("{} (triggered by save)", self.toasts.config_reloaded)
-    // }
-
     /// Padded label width so **Dark** / **Light** section lines share the same total width.
     pub const THEME_SELECTOR_SECTION_LABEL_WIDTH: usize = 5;
 
@@ -596,172 +535,3 @@ impl UiStrings {
 }
 
 pub const UI_STRINGS: UiStrings = UiStrings::new();
-
-/// Shared UI layout constants (padding, etc.). Constraint arrays are derived from the scalar values via the `*_constraints()` methods.
-pub struct UiConstants {
-    pub h_pad: u16,
-    pub v_pad: u16,
-    pub popup_padding_w: u16,
-    pub popup_padding_h: u16,
-    /// Theme-picker swatch for **dark** themes on a **dark** popup: HSL lighten off page background via [`crate::themes::adjust_surface_rgb`].
-    pub swatch_lighten: f32,
-    /// Same as [`Self::swatch_lighten`] but when the picker is shown while a **light** theme is active — stronger lighten so chips are not mud-on-cream.
-    pub swatch_lighten_dark_on_light_popup: f32,
-    /// Theme-picker swatch for **light** themes: [`crate::themes::lighten_rgb`] on body text (try 0.2–0.4).
-    pub swatch_light_theme_text: f32,
-    pub table_stripe_lighten: f32,
-    pub input_poll_ms: u64,
-    pub status_line_height: u16,
-    pub tab_row_height: u16,
-    pub brand_block_width: u16,
-    pub empty_space: &'static str,
-}
-
-impl Default for UiConstants {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl UiConstants {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            h_pad: 1,
-            v_pad: 1,
-            popup_padding_w: 4,
-            popup_padding_h: 2,
-            swatch_lighten: 0.2,
-            swatch_lighten_dark_on_light_popup: 0.38,
-            swatch_light_theme_text: 0.6,
-            table_stripe_lighten: 0.06,
-            input_poll_ms: 100,
-            status_line_height: 1,
-            tab_row_height: 1,
-            brand_block_width: 4,
-            empty_space: " ",
-        }
-    }
-
-    /// Main area (min 1 row) + status line. Derived from [`Self::status_line_height`].
-    #[must_use]
-    pub fn status_line_constraints(&self) -> [Constraint; 2] {
-        [
-            Constraint::Min(1),
-            Constraint::Length(self.status_line_height),
-        ]
-    }
-
-    /// Tab row (Snapshot|Delta) + body. Derived from [`Self::tab_row_height`].
-    #[must_use]
-    pub fn tab_row_constraints(&self) -> [Constraint; 2] {
-        [Constraint::Length(self.tab_row_height), Constraint::Min(1)]
-    }
-
-    /// Tabs (flex) + brand block. Derived from [`Self::brand_block_width`].
-    #[must_use]
-    pub fn brand_block_constraints(&self) -> [Constraint; 2] {
-        [
-            Constraint::Min(0),
-            Constraint::Length(self.brand_block_width),
-        ]
-    }
-
-    #[must_use]
-    pub fn get_empty_span(&self, style: Style) -> Span<'static> {
-        Span::styled(self.empty_space, style)
-    }
-}
-
-pub const UI_CONSTANTS: UiConstants = UiConstants::new();
-
-/// Unicode symbols used in layout/render. Nerd Fonts or similar may be needed for powerline characters.
-pub struct UiGlyphs {
-    /// Powerline-style segment: round left (curve on right). Used for tab nodes and status nodes.
-    pub round_left: char,
-    /// Powerline-style segment: round right (curve on left). Used for tab nodes and status nodes.
-    pub round_right: char,
-    /// Full block (e.g. theme selector swatch). U+2588.
-    pub swatch_block: char,
-    /// Short box-drawing run for theme-picker section headers (`───`); placed on both sides of **Dark** / **Light**.
-    pub theme_section_rule: &'static str,
-    /// Markdown viewer: suffix (after link text) for inline links `[text](url)`.
-    pub markdown_link: char,
-    /// Markdown viewer: suffix for link destinations that look like file attachments (.pdf, .zip, …).
-    pub markdown_attachment: char,
-    /// Markdown viewer: prefix for `![alt](url)` image syntax (photo / figure).
-    pub markdown_image: char,
-    /// Sort direction glyph for ascending/up.
-    pub arrow_up: char,
-    /// Sort direction glyph for descending/down.
-    pub arrow_down: char,
-    /// Settings left pane: prefix when this row is focused (`›` + space).
-    pub settings_row_active: &'static str,
-    /// Two-space indent: inactive Settings row prefix and wrapped path continuation lines.
-    pub indent_two_spaces: &'static str,
-}
-
-impl Default for UiGlyphs {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl StringObjTraits for UiGlyphs {
-    fn new() -> Self {
-        UiGlyphs::new()
-    }
-}
-
-impl UiGlyphs {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            round_left: '\u{e0b6}',
-            round_right: '\u{e0b4}',
-            swatch_block: '\u{2588}',
-            theme_section_rule: "\u{2500}\u{2500}\u{2500}",
-            markdown_link: '\u{2197}',        // ↗
-            markdown_attachment: '\u{1f4ce}', // 📎
-            markdown_image: '\u{1f5bc}',      // 🖼 (framed picture)
-            arrow_up: '\u{2191}',             // ↑
-            arrow_down: '\u{2193}',           // ↓
-            settings_row_active: "\u{203a} ", // ›
-            indent_two_spaces: "  ",
-        }
-    }
-}
-
-pub const UI_GLYPHS: UiGlyphs = UiGlyphs::new();
-
-/// Tree-drawing characters for directory-style trees (e.g. schema tree, file tree). Single place to tweak box-drawing.
-pub struct TreeChars {
-    /// Non-last sibling: "├─ "
-    pub branch: &'static str,
-    /// Last sibling: "└─ "
-    pub last_branch: &'static str,
-    /// Continuation (more siblings below): "│  "
-    pub vertical: &'static str,
-    /// No continuation (last branch): "   "
-    pub space: &'static str,
-}
-
-impl Default for TreeChars {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TreeChars {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            branch: "├─ ",
-            last_branch: "└─ ",
-            vertical: "│  ",
-            space: "   ",
-        }
-    }
-}
-
-pub const TREE_CHARS: TreeChars = TreeChars::new();

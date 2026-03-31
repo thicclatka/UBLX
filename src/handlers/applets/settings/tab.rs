@@ -7,7 +7,7 @@ use crate::config::{
 };
 use crate::handlers::state_transitions::PREVIEW_SCROLL_STEP_LINES;
 use crate::layout::setup::{SettingsConfigScope, UblxState};
-use crate::ui::{keymap::UblxAction, show_operation_toast};
+use crate::ui::{UblxAction, show_operation_toast};
 use crate::utils::clamp_selection;
 
 use super::apply_config_reload;
@@ -46,7 +46,7 @@ fn handle_settings_search_submit(
         let Some(path) = state_mut.settings.editing_path.clone() else {
             return;
         };
-        let paths = UblxPaths::new(params_mut.dir_to_ublx);
+        let paths = UblxPaths::new(&params_mut.dir_to_ublx);
         let mut overlay = load_ublx_toml(Some(path.clone()), None).unwrap_or_default();
         let merged_before = match scope {
             SettingsConfigScope::Local => {
@@ -111,7 +111,7 @@ fn handle_settings_search_submit(
             );
         } else {
             state_mut.settings.layout_unlocked = true;
-            let paths = UblxPaths::new(params_mut.dir_to_ublx);
+            let paths = UblxPaths::new(&params_mut.dir_to_ublx);
             if scope == SettingsConfigScope::Local {
                 let (local_o, merged) = local_edit_context(&paths);
                 let lay_src = layout_overlay_for_local_editing(local_o.as_ref(), &merged);

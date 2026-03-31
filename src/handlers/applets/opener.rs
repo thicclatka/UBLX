@@ -1,7 +1,32 @@
 //! Opener applet: open file in external editor (Terminal) or with OS default app (GUI).
 
+use std::io;
 use std::path::Path;
 use std::process::Command;
+
+/// Open `https://` / `http://` URL in the system browser.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] if spawning the platform helper fails.
+pub fn open_url(url: &str) -> io::Result<()> {
+    if cfg!(target_os = "macos") {
+        Command::new("open").arg(url).spawn()?;
+    } else if cfg!(windows) {
+        Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(url)
+            .spawn()?;
+    } else if cfg!(unix) {
+        Command::new("xdg-open").arg(url).spawn()?;
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "open URL not supported on this platform",
+        ));
+    }
+    Ok(())
+}
 
 /// Resolve editor command: config `editor_path` or $EDITOR. Returns None if neither set.
 pub fn editor_for_open(editor_path: Option<&str>) -> Option<String> {

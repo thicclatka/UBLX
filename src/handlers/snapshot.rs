@@ -55,12 +55,10 @@ pub fn run_snapshot_pipeline(
         Err(e) => {
             error!("take snapshot failed: {e}");
             if let Some(b) = bumper.as_ref() {
+                let op = OPERATION_NAME.op("snapshot");
+                b.remove_messages_for_operation(&op);
                 let err_msg = format!("Snapshot failed: {e}");
-                b.push_with_operation(
-                    log::Level::Error,
-                    err_msg.as_str(),
-                    Some(OPERATION_NAME.op("snapshot")),
-                );
+                b.push_with_operation(log::Level::Error, err_msg.as_str(), Some(op));
             }
             (0, 0, 0)
         }
@@ -75,19 +73,20 @@ pub fn run_snapshot_pipeline(
 }
 
 /// Load `prior_nefax` and `ublx_opts` from `dir` and `db_path`, then run [`run_snapshot_pipeline`].
-/// Use from the TUI when running a snapshot on demand (e.g. Ctrl+S).
+/// Use from the TUI when running a snapshot on demand (e.g. Command Mode: Ctrl+Space, then s).
 ///
-/// `preserve_enhance_all_cache_before_apply`: when `Some`, replaces [`UblxOpts::enable_enhance_all_cache_before_apply`]
-/// on the opts returned from [`UblxOpts::for_dir`]. Pass the in-memory opts from the running TUI (e.g. main's startup
-/// `for_dir`) so index-time Zahir still treats a false→true flip as needing a full run: a second `for_dir` in this
-/// process re-reads the on-disk cache after the first `for_dir` already wrote `enable_enhance_all = true`, which
-/// would otherwise look like "no flip" and skip full Zahir.
+/// `preserve_*_cache_before_apply`: when `Some`, replaces the corresponding field on the opts returned from
+/// [`UblxOpts::for_dir`]. Pass the in-memory opts from the running TUI so a second `for_dir` in the snapshot thread
+/// still sees a false→true flip after [`UblxOpts::reload_hot_config`] (or startup `for_dir`) already wrote the new
+/// values to the on-disk cache — otherwise the snapshot would look like "no flip" (e.g. skip full Zahir, or lose hash
+/// backfill intent).
 pub fn run_snapshot_pipeline_from_dir_db(
     dir: &Path,
     db_path: &Path,
     done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
     bumper: Option<&BumperBuffer>,
     preserve_enhance_all_cache_before_apply: Option<Option<bool>>,
+    preserve_with_hash_cache_before_apply: Option<Option<bool>>,
 ) {
     let prior_nefax = db_ops::load_nefax_from_db(dir, db_path).ok().flatten();
     let cached = db_ops::load_settings_from_db(db_path).ok().flatten();
@@ -112,10 +111,13 @@ pub fn run_snapshot_pipeline_from_dir_db(
     if let Some(v) = preserve_enhance_all_cache_before_apply {
         ublx_opts.enable_enhance_all_cache_before_apply = v;
     }
+    if let Some(v) = preserve_with_hash_cache_before_apply {
+        ublx_opts.with_hash_cache_before_apply = v;
+    }
     run_snapshot_pipeline(dir, &ublx_opts, prior_nefax.as_ref(), done_tx, bumper);
 }
 
-/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Ctrl+S).
+/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Command Mode: Ctrl+Space, then s).
 pub fn spawn_snapshot_from_dir_db(
     dir: &Path,
     db_path: &Path,
@@ -130,6 +132,8 @@ pub fn spawn_snapshot_from_dir_db(
         let bumper_clone = bumper.cloned();
         let preserve_enhance_all_cache_before_apply =
             preserve_enhance_cache_from.map(|o| o.enable_enhance_all_cache_before_apply);
+        let preserve_with_hash_cache_before_apply =
+            preserve_enhance_cache_from.map(|o| o.with_hash_cache_before_apply);
         std::thread::spawn(move || {
             run_snapshot_pipeline_from_dir_db(
                 &dir,
@@ -137,35 +141,27 @@ pub fn spawn_snapshot_from_dir_db(
                 Some(tx_clone),
                 bumper_clone.as_ref(),
                 preserve_enhance_all_cache_before_apply,
+                preserve_with_hash_cache_before_apply,
             );
         });
     }
 }
 
 /// Push "Snapshot finished" and a second line: counts when there are changes, "No changes" at Info when there are not.
+/// Replaces any prior snapshot-tagged lines in the bumper so only this completion is visible.
 pub fn push_snapshot_done_to_bumper(
     bumper: &BumperBuffer,
     added: usize,
     mod_count: usize,
     removed: usize,
 ) {
-    bumper.push_with_operation(
-        log::Level::Info,
-        "Snapshot finished",
-        Some(OPERATION_NAME.op("snapshot")),
-    );
+    let op = OPERATION_NAME.op("snapshot");
+    bumper.remove_messages_for_operation(&op);
+    bumper.push_with_operation(log::Level::Info, "Snapshot finished", Some(op.clone()));
     if added + mod_count + removed > 0 {
         let summary = format!("{added} added, {mod_count} modified, {removed} removed");
-        bumper.push_with_operation(
-            log::Level::Info,
-            summary.as_str(),
-            Some(OPERATION_NAME.op("snapshot")),
-        );
+        bumper.push_with_operation(log::Level::Info, summary.as_str(), Some(op));
     } else {
-        bumper.push_with_operation(
-            log::Level::Info,
-            "No changes",
-            Some(OPERATION_NAME.op("snapshot")),
-        );
+        bumper.push_with_operation(log::Level::Info, "No changes", Some(op));
     }
 }

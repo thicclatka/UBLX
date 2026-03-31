@@ -38,6 +38,25 @@ pub fn split_vertical(area: Rect, constraints: &[Constraint]) -> Rc<[Rect]> {
         .split(area)
 }
 
+/// Split [main tab row][blank gap][body]. `body` is the 3-pane + status area. If the frame is too
+/// short for tab + gap + one body row, falls back to tab + body (no gap); the middle [`None`] is
+/// then the unused gap row.
+#[must_use]
+pub fn split_main_tabs_and_body(area: Rect) -> (Rect, Option<Rect>, Rect) {
+    let gap = UI_CONSTANTS.tab_body_gap_height;
+    let tab_h = UI_CONSTANTS.tab_row_height;
+    let min_with_gap = tab_h + gap + 1;
+    if area.height >= min_with_gap {
+        let vs = split_vertical(area, &UI_CONSTANTS.tab_row_constraints());
+        (vs[0], Some(vs[1]), vs[2])
+    } else if area.height >= 2 {
+        let vs = split_vertical(area, &[Constraint::Length(tab_h), Constraint::Min(1)]);
+        (vs[0], None, vs[1])
+    } else {
+        (area, None, area)
+    }
+}
+
 /// Centered popup rect: inner content size plus padding (e.g. for borders/title), clamped to area.
 #[must_use]
 pub fn centered_popup_rect(

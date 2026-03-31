@@ -1,12 +1,12 @@
 //! Parameters for the TUI app loop.
 
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::mpsc;
 
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::config::LayoutOverlay;
-use crate::engine::db_ops::DuplicateGroup;
+use crate::engine::db_ops::{DuplicateGroup, DuplicateGroupingMode};
 use crate::layout::setup::RightPaneAsyncReady;
 use crate::utils;
 
@@ -27,8 +27,8 @@ pub struct RunUblxStartupFlow {
 
 /// Parameters for the TUI event loop. Passed from [`crate::handlers::core::run_tui_session`] into [`super::main_loop`].
 pub struct RunUblxParams<'a> {
-    pub db_path: &'a Path,
-    pub dir_to_ublx: &'a Path,
+    pub db_path: PathBuf,
+    pub dir_to_ublx: PathBuf,
     pub snapshot_done_rx: Option<mpsc::Receiver<(usize, usize, usize)>>,
     pub snapshot_done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
     pub bumper: Option<&'a utils::BumperBuffer>,
@@ -38,8 +38,10 @@ pub struct RunUblxParams<'a> {
     pub layout: LayoutOverlay,
     /// Duplicate groups (lazy-loaded when user switches to Duplicates tab). Empty until load completes.
     pub duplicate_groups: Vec<DuplicateGroup>,
+    /// Grouping mode backing `duplicate_groups` (Hash vs Name+Size fallback label).
+    pub duplicate_mode: DuplicateGroupingMode,
     /// When some, a background thread is loading duplicate groups; main loop receives via `try_recv`.
-    pub duplicate_groups_rx: Option<mpsc::Receiver<Vec<DuplicateGroup>>>,
+    pub duplicate_groups_rx: Option<mpsc::Receiver<(Vec<DuplicateGroup>, DuplicateGroupingMode)>>,
     /// Lens names for the Lenses tab (loaded at startup). When non-empty, Lenses tab is shown.
     pub lens_names: Vec<String>,
     /// When some, a file watcher sends () on global/local config save; main loop triggers hot reload.

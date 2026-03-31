@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::{
-    collections::hash_map::Entry,
+    collections::{HashSet, hash_map::Entry},
     env,
     ffi::OsStr,
     fs,
@@ -21,6 +21,22 @@ pub const LOCAL_CONFIG_VISIBLE_TOML: &str = concat!(env!("CARGO_PKG_NAME"), ".to
 pub const LOCAL_CONFIG_HIDDEN_TOML: &str = concat!(".", env!("CARGO_PKG_NAME"), ".toml");
 /// Name of the Nefaxer DB file.
 pub const NEFAX_DB: &str = ".nefaxer";
+
+/// `path_to_hex` / DB stem suffix length (16 hex chars from `DefaultHasher`).
+const PATH_HASH_HEX_LEN: usize = 16;
+
+/// True if `s` is exactly 16 ASCII hex digits (matches [`path_to_hex`] output).
+#[must_use]
+pub fn is_hex_hash16(s: &str) -> bool {
+    s.len() == PATH_HASH_HEX_LEN && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Last segment of a DB stem after the final `_`, when it is a 16-char path hash (`{safe}_{hash}`).
+#[must_use]
+pub fn hash_suffix_from_db_stem(stem: &str) -> Option<&str> {
+    let (_, rest) = stem.rsplit_once('_')?;
+    is_hex_hash16(rest).then_some(rest)
+}
 
 /// Stable hex string for a path (for cache filenames). Same path => same string.
 #[must_use]
@@ -290,7 +306,7 @@ pub fn record_ublx_session_open(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Collect all recents entries
+/// Collect all recents entries (deduped by canonical path).
 fn collect_recents_entries() -> Vec<RecentsFileData> {
     let Some(dir) = recents_dir() else {
         return Vec::new();
@@ -328,6 +344,63 @@ fn collect_recents_entries() -> Vec<RecentsFileData> {
         }
     }
     best.into_values().collect()
+}
+
+/// Indexed roots that have **both** a valid `recents/{hash}.txt` and the matching **main** DB under `ubli/`.
+///
+/// For each recents file, the path in the file must resolve to a directory whose expected DB exists, and the
+/// **16-hex hash in the recents filename** must match the **hash suffix** of that DB file’s stem (same rule as
+/// [`UblxPaths::db_stem`]). Entries with a missing DB, wrong hash, or non-hex filename are skipped.
+#[must_use]
+pub fn all_indexed_roots_alphabetical() -> Vec<PathBuf> {
+    let Some(recents) = recents_dir() else {
+        return Vec::new();
+    };
+    let Ok(rd) = fs::read_dir(&recents) else {
+        return Vec::new();
+    };
+
+    let mut out: HashSet<PathBuf> = HashSet::new();
+    for entry in rd.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("txt") {
+            continue;
+        }
+        let Some(fname) = p.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if !is_hex_hash16(fname) {
+            continue;
+        }
+        let Some(data) = read_recents_file(&p) else {
+            continue;
+        };
+        let path = data
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| data.path.clone());
+        if !path.is_dir() {
+            continue;
+        }
+        let db_path = UblxPaths::new(&path).db();
+        if !db_path.exists() {
+            continue;
+        }
+        let Some(db_stem) = db_path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(hash_from_db) = hash_suffix_from_db_stem(db_stem) else {
+            continue;
+        };
+        if hash_from_db != fname {
+            continue;
+        }
+        out.insert(path);
+    }
+
+    let mut paths: Vec<PathBuf> = out.into_iter().collect();
+    paths.sort_by_key(|a| a.display().to_string());
+    paths
 }
 
 /// Prior indexed roots that still look valid (directory exists and has a DB file), excluding `current`.

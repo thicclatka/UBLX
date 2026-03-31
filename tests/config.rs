@@ -61,6 +61,7 @@ fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> Ublx
         enable_enhance_all,
         ask_enhance_on_new_root: true,
         enable_enhance_all_cache_before_apply: None,
+        with_hash_cache_before_apply: None,
         enhance_policy: entries,
     }
 }

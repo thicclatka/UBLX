@@ -104,6 +104,10 @@ impl UblxDbStatements {
     /// User rename on disk: repoint PK and refresh metadata without a full index (`hash` cleared until next full run).
     pub const UPDATE_SNAPSHOT_RENAME_IN_PLACE: &'static str = "UPDATE snapshot SET path = ?1, mtime_ns = ?2, size = ?3, hash = ?4, category = ?5, zahir_json = ?6 WHERE path = ?7";
 
+    /// Set `hash` (32-byte blake3) for a row when duplicates scan fills missing hashes from disk.
+    pub const UPDATE_SNAPSHOT_HASH_BY_PATH: &'static str =
+        "UPDATE snapshot SET hash = ?1 WHERE path = ?2";
+
     pub const DELETE_SNAPSHOT_ROW: &'static str = "DELETE FROM snapshot WHERE path = ?1";
 
     pub const INSERT_SETTINGS: &'static str = "INSERT OR REPLACE INTO settings (id, num_threads, drive_type, parallel_walk, config_source) VALUES (1, ?1, ?2, ?3, ?4)";

@@ -1,21 +1,25 @@
-//! Duplicate detection: group snapshot rows by content (hash from DB or computed from file).
+//! Duplicate detection: group snapshot rows by stored DB hash only.
 
 use std::collections::HashMap;
-use std::fs;
-use std::io::Read;
 use std::path::Path;
+use std::time::Duration;
 
-use blake3::Hasher;
-use rayon::prelude::*;
+use rusqlite::Connection;
 
-use crate::utils::resolve_under_root;
-
+use super::consts::UblxDbStatements;
 use super::{SnapshotPathSizeHash, load_snapshot_path_size_hash};
 
 /// One group of duplicate paths (same content). Left panel shows one name per group.
 #[derive(Clone, Debug)]
 pub struct DuplicateGroup {
     pub paths: Vec<String>,
+}
+
+/// Which grouping strategy produced duplicate groups for the current load.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DuplicateGroupingMode {
+    Hash,
+    NameSize,
 }
 
 impl DuplicateGroup {
@@ -26,27 +30,6 @@ impl DuplicateGroup {
             .min_by_key(|p| p.len())
             .map_or("", String::as_str)
     }
-}
-
-const CONTENT_HASH_CHUNK: usize = 64 * 1024;
-const MAX_FILE_SIZE_FOR_CONTENT_HASH: u64 = 50 * 1024 * 1024; // 50 MiB cap for no-hash path
-
-/// Compute blake3 hash of file at `full_path`. Returns None on read error or if too large.
-fn content_hash(full_path: &Path, size: u64) -> Option<[u8; 32]> {
-    if size > MAX_FILE_SIZE_FOR_CONTENT_HASH {
-        return None;
-    }
-    let mut f = fs::File::open(full_path).ok()?;
-    let mut hasher = Hasher::new();
-    let mut buf = vec![0u8; CONTENT_HASH_CHUNK];
-    loop {
-        let n = f.read(&mut buf).ok()?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Some(hasher.finalize().into())
 }
 
 /// Group rows by 32-byte hash; keep only groups with more than one path.
@@ -70,61 +53,97 @@ fn group_by_hash(rows: &[SnapshotPathSizeHash]) -> Vec<DuplicateGroup> {
         .collect()
 }
 
-/// When DB has no hashes: group by size, then for each size bucket with >1 file compute content hash in parallel and group.
-fn group_by_content_hash(rows: &[SnapshotPathSizeHash], dir_to_ublx: &Path) -> Vec<DuplicateGroup> {
-    let by_size: HashMap<u64, Vec<(String, u64)>> = rows
-        .iter()
-        .map(|(path, size, _)| (path.clone(), *size))
-        .fold(HashMap::new(), |mut m, (path, size)| {
-            m.entry(size).or_default().push((path, size));
-            m
-        });
-    let dir = dir_to_ublx.to_path_buf();
-    let buckets: Vec<_> = by_size
+/// Group rows by `(basename, size)` for fast non-content duplicate hints.
+fn group_by_name_size(rows: &[SnapshotPathSizeHash]) -> Vec<DuplicateGroup> {
+    let mut by_name_size: HashMap<(String, u64), Vec<String>> = HashMap::new();
+    for (path, size, _hash_opt) in rows {
+        let base = std::path::Path::new(path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map_or_else(|| path.clone(), ToString::to_string);
+        by_name_size
+            .entry((base, *size))
+            .or_default()
+            .push(path.clone());
+    }
+    by_name_size
         .into_values()
-        .filter(|path_sizes| path_sizes.len() >= 2)
-        .collect();
-    buckets
-        .par_iter()
-        .flat_map(|path_sizes| {
-            let hashed: Vec<(String, [u8; 32])> = path_sizes
-                .par_iter()
-                .filter_map(|(path, size)| {
-                    let full = resolve_under_root(&dir, path);
-                    content_hash(&full, *size).map(|h| (path.clone(), h))
-                })
-                .collect();
-            let mut by_hash: HashMap<[u8; 32], Vec<String>> = HashMap::new();
-            for (path, key) in hashed {
-                by_hash.entry(key).or_default().push(path);
-            }
-            by_hash
-                .into_values()
-                .filter(|p| p.len() > 1)
-                .map(|paths| DuplicateGroup { paths })
-                .collect::<Vec<_>>()
-        })
+        .filter(|paths| paths.len() > 1)
+        .map(|paths| DuplicateGroup { paths })
         .collect()
 }
 
-/// Load duplicate groups from the snapshot. If any row has a hash, group by DB hash; otherwise group by content hash (read files).
-/// Returns empty vec when no duplicates exist or on error.
+fn hash_file_blake3(path: &Path) -> std::io::Result<[u8; 32]> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    Ok(*hasher.finalize().as_bytes())
+}
+
+/// For rows missing a 32-byte hash, read each file under `dir_to_ublx`, compute blake3, persist to DB, and refresh `rows`.
+fn fill_missing_hashes_from_disk(
+    db_path: &Path,
+    dir_to_ublx: &Path,
+    rows: &mut [SnapshotPathSizeHash],
+) -> Result<(), anyhow::Error> {
+    let conn = Connection::open(db_path)?;
+    conn.busy_timeout(Duration::from_secs(5))?;
+    for (path, _size, hash_opt) in rows.iter_mut() {
+        if hash_opt.as_ref().is_some_and(|v| v.len() == 32) {
+            continue;
+        }
+        let abs = dir_to_ublx.join(path.as_str());
+        if !abs.is_file() {
+            continue;
+        }
+        let h = match hash_file_blake3(&abs) {
+            Ok(h) => h,
+            Err(e) => {
+                log::debug!("duplicates: skip hash for {}: {e}", abs.display());
+                continue;
+            }
+        };
+        let blob: Vec<u8> = h.to_vec();
+        conn.execute(
+            UblxDbStatements::UPDATE_SNAPSHOT_HASH_BY_PATH,
+            rusqlite::params![blob.clone(), path.as_str()],
+        )?;
+        *hash_opt = Some(blob);
+    }
+    Ok(())
+}
+
+fn any_valid_hash(rows: &[SnapshotPathSizeHash]) -> bool {
+    rows.iter()
+        .any(|(_, _, h)| h.as_ref().is_some_and(|v| v.len() == 32))
+}
+
+/// Load duplicate groups from the snapshot DB.
+///
+/// - If any row has a valid 32-byte hash, groups by hash ([`DuplicateGroupingMode::Hash`]).
+/// - Else, when `config_wants_hash` is true (merged `ublx.toml` **`hash`** → nefax `with_hash`),
+///   computes blake3 for each indexed file, writes `hash` into the DB, then groups by hash.
+/// - Otherwise groups by `(basename, size)` ([`DuplicateGroupingMode::NameSize`]).
 ///
 /// # Errors
 ///
-/// Returns [`anyhow::Error`] on `SQLite` errors, or when reading file contents for hashing fails.
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors or hash I/O failures bubbled from updates.
 pub fn load_duplicate_groups(
     db_path: &Path,
     dir_to_ublx: &Path,
-) -> Result<Vec<DuplicateGroup>, anyhow::Error> {
-    let rows = load_snapshot_path_size_hash(db_path)?;
-    let any_has_hash = rows
-        .iter()
-        .any(|(_, _, h)| h.as_ref().is_some_and(|b| b.len() == 32));
-    let groups = if any_has_hash {
-        group_by_hash(&rows)
-    } else {
-        group_by_content_hash(&rows, dir_to_ublx)
-    };
-    Ok(groups)
+    config_wants_hash: bool,
+) -> Result<(Vec<DuplicateGroup>, DuplicateGroupingMode), anyhow::Error> {
+    let mut rows = load_snapshot_path_size_hash(db_path)?;
+    if any_valid_hash(&rows) {
+        return Ok((group_by_hash(&rows), DuplicateGroupingMode::Hash));
+    }
+
+    if config_wants_hash {
+        fill_missing_hashes_from_disk(db_path, dir_to_ublx, &mut rows)?;
+        if any_valid_hash(&rows) {
+            return Ok((group_by_hash(&rows), DuplicateGroupingMode::Hash));
+        }
+    }
+
+    Ok((group_by_name_size(&rows), DuplicateGroupingMode::NameSize))
 }

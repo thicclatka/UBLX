@@ -5,7 +5,7 @@ use crate::integrations::ZahirFileType as FileType;
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
 };
-use crate::ui::keymap::UblxAction;
+use crate::ui::UblxAction;
 use crate::utils::clamp_selection;
 
 pub const PREVIEW_SCROLL_STEP_LINES: u16 = 5;
