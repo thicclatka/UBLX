@@ -110,6 +110,90 @@ struct FileSpaceMenuIndices {
     delete: usize,
 }
 
+fn label_with_hotkey(label: &str, key: char) -> String {
+    format!("{label} ({key})")
+}
+
+/// Menu labels in display order with `(letter)` hints. Must match [`space_menu_hotkey_to_index`] and submit logic.
+#[must_use]
+pub fn space_menu_item_labels(kind: &SpaceMenuKind, main_mode: MainMode) -> Vec<String> {
+    match kind {
+        SpaceMenuKind::FileActions {
+            show_enhance_directory_policy,
+            show_enhance_zahir,
+            show_copy_zahir_json,
+            ..
+        } => {
+            let mut v = vec![
+                label_with_hotkey(UI_STRINGS.space.open, 'o'),
+                label_with_hotkey(UI_STRINGS.space.show_in_folder, 'f'),
+            ];
+            if *show_enhance_directory_policy {
+                v.push(label_with_hotkey(UI_STRINGS.space.enhance_policy, 'p'));
+            }
+            if *show_enhance_zahir {
+                v.push(label_with_hotkey(
+                    UI_STRINGS.space.enhance_with_zahirscan,
+                    'z',
+                ));
+            }
+            if main_mode == MainMode::Lenses {
+                v.push(label_with_hotkey(UI_STRINGS.space.remove_from_lens, 'l'));
+            } else {
+                v.push(label_with_hotkey(UI_STRINGS.space.add_to_lens, 'l'));
+            }
+            v.push(label_with_hotkey(UI_STRINGS.space.copy_path, 'c'));
+            if *show_copy_zahir_json {
+                v.push(label_with_hotkey(UI_STRINGS.space.copy_zahir_json, 'j'));
+            }
+            v.push(label_with_hotkey(UI_STRINGS.space.rename, 'r'));
+            v.push(label_with_hotkey(UI_STRINGS.space.delete, 'd'));
+            v
+        }
+        SpaceMenuKind::LensPanelActions { .. } => vec![
+            label_with_hotkey(UI_STRINGS.space.rename, 'r'),
+            label_with_hotkey(UI_STRINGS.space.delete, 'd'),
+        ],
+    }
+}
+
+/// Map a typed letter to a row index for the **current** menu (`None` if that row is not shown or key unknown).
+#[must_use]
+pub fn space_menu_hotkey_to_index(kind: &SpaceMenuKind, key: char) -> Option<usize> {
+    let c = key.to_ascii_lowercase();
+    match kind {
+        SpaceMenuKind::FileActions {
+            show_enhance_directory_policy,
+            show_enhance_zahir,
+            show_copy_zahir_json,
+            ..
+        } => {
+            let m = file_space_menu_indices(
+                *show_enhance_directory_policy,
+                *show_enhance_zahir,
+                *show_copy_zahir_json,
+            );
+            match c {
+                'o' => Some(m.open),
+                'f' => Some(m.reveal),
+                'p' => m.policy,
+                'z' => m.zahir,
+                'l' => Some(m.lens),
+                'c' => Some(m.copy_path),
+                'j' => m.copy_json,
+                'r' => Some(m.rename),
+                'd' => Some(m.delete),
+                _ => None,
+            }
+        }
+        SpaceMenuKind::LensPanelActions { .. } => match c {
+            'r' => Some(0),
+            'd' => Some(1),
+            _ => None,
+        },
+    }
+}
+
 fn file_space_menu_indices(
     show_enhance_directory_policy: bool,
     show_enhance_zahir: bool,
@@ -353,7 +437,7 @@ fn space_menu_apply_submit(
 ) {
     match kind {
         fa @ SpaceMenuKind::FileActions { .. } => {
-            space_menu_file_actions_submit(state, view, params, ublx_opts, fa, idx)
+            space_menu_file_actions_submit(state, view, params, ublx_opts, fa, idx);
         }
         SpaceMenuKind::LensPanelActions { lens_name } => match idx {
             0 => {
@@ -391,6 +475,15 @@ pub fn handle_space_menu(
             state.close_space_menu();
             if let Some(k) = kind {
                 space_menu_apply_submit(state, view, params, ublx_opts, k, idx);
+            }
+        }
+        UblxAction::SpaceMenuHotkeySelect(idx) => {
+            if idx < item_count {
+                let kind = state.space_menu.kind.clone();
+                state.close_space_menu();
+                if let Some(k) = kind {
+                    space_menu_apply_submit(state, view, params, ublx_opts, k, idx);
+                }
             }
         }
         _ => {}

@@ -2,11 +2,13 @@
 //! [`draw_right_pane`] / [`draw_right_pane_fullscreen`].
 //!
 //! Delegates text/raster decisions to [`super::content`] and frame/tabs/footers to [`super::chrome`].
+//! Imports the sibling modules by path (`chrome::…`, `content::…`) instead of listing every symbol.
 
 use ratatui::layout::{Constraint, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
+use crate::handlers::applets::viewer_find;
 use crate::layout::{
     setup::{RightPaneContent, RightPaneMode, UblxState},
     style,
@@ -15,14 +17,8 @@ use crate::render::viewers::image as viewer_image;
 use crate::render::{kv_tables, scrollable_content};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 
-use super::chrome::{
-    right_pane_block, right_pane_footer_line, right_pane_footer_line_fullscreen, title,
-    visible_tabs,
-};
-use super::content::{
-    content_display_text, ensure_viewer_text_cache, ratatui_wrap_right_paragraph,
-    viewer_text_cache_viewport_active, viewer_total_lines,
-};
+use super::chrome;
+use super::content;
 
 fn draw_right_pane_scrollable_body(
     f: &mut ratatui::Frame,
@@ -40,16 +36,17 @@ fn draw_right_pane_scrollable_body(
     viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
     let mut text_w = padded.width;
     for _ in 0..6 {
-        ensure_viewer_text_cache(state, right_content, text_w);
-        let guess_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+        content::ensure_viewer_text_cache(state, right_content, text_w);
+        let guess_lines = content::viewer_total_lines(right_content, text_w, use_kv_tables, state);
         let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
         if w_next == text_w {
             break;
         }
         text_w = w_next;
     }
-    ensure_viewer_text_cache(state, right_content, text_w);
-    let total_lines = viewer_total_lines(right_content, text_w, use_kv_tables, state);
+    content::ensure_viewer_text_cache(state, right_content, text_w);
+    let total_lines = content::viewer_total_lines(right_content, text_w, use_kv_tables, state);
+    viewer_find::sync(state, right_content, text_w, padded.height);
     let layout = scrollable_content::layout_scrollable_content(
         scroll_area,
         total_lines,
@@ -57,8 +54,11 @@ fn draw_right_pane_scrollable_body(
         bottom_pad,
     );
     let text_rect = layout.content_rect;
+    let find_active = (state.viewer_find.active || state.viewer_find.committed)
+        && !state.viewer_find.query.trim().is_empty();
     if let Some(json) = use_kv_tables {
-        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y);
+        let needle = find_active.then_some(state.viewer_find.query.as_str());
+        kv_tables::draw_tables(f, text_rect, json, layout.scroll_y, needle, state);
     } else {
         let image_mode = state.right_pane_mode == RightPaneMode::Viewer
             && viewer_image::is_raster_preview_category(right_content)
@@ -70,24 +70,35 @@ fn draw_right_pane_scrollable_body(
                 let _ = proto.last_encoding_result();
             }
         } else {
-            let text_vp = viewer_text_cache_viewport_active(state, right_content, text_w)
+            let text_vp = content::viewer_text_cache_viewport_active(state, right_content, text_w)
                 .then_some((layout.scroll_y, text_rect.height));
-            let para_scroll = if text_vp.is_some() {
+            // When find is active, use full highlighted text + paragraph scroll (same as plain text).
+            // CSV / markdown-cache viewport paths skip `text_vp` so substring highlights match the haystack.
+            let use_highlighted_find = find_active;
+            let para_scroll = if use_highlighted_find {
+                (layout.scroll_y, 0)
+            } else if text_vp.is_some() {
                 (0, 0)
             } else {
                 (layout.scroll_y, 0)
             };
-            let mut paragraph =
-                Paragraph::new(content_display_text(state, right_content, text_w, text_vp))
-                    .style(style::text_style())
-                    .scroll(para_scroll);
-            if ratatui_wrap_right_paragraph(state, right_content, text_w) {
+            let body = if use_highlighted_find {
+                let hay = content::viewer_find_haystack_text(state, right_content, text_w);
+                viewer_find::highlighted_body(state, &hay)
+            } else {
+                content::content_display_text(state, right_content, text_w, text_vp)
+            };
+            let mut paragraph = Paragraph::new(body)
+                .style(style::text_style())
+                .scroll(para_scroll);
+            if content::ratatui_wrap_right_paragraph(state, right_content, text_w) {
                 paragraph = paragraph.wrap(Wrap { trim: false });
             }
             f.render_widget(paragraph, text_rect);
         }
     }
     scrollable_content::draw_scrollbar(f, &layout, total_lines);
+    state.panels.right_pane_text_w = Some(text_w);
 }
 
 /// Draw the right (viewer) pane. `chunks` must have at least 3 elements; the right pane uses `chunks[2]`.
@@ -98,16 +109,18 @@ pub fn draw_right_pane(
     chunks: &[Rect],
 ) {
     let area = chunks[2];
-    let footer_line = right_pane_footer_line(state, right_content);
-    let right_block = right_pane_block(None, footer_line.as_ref());
-    let tabs = visible_tabs(right_content);
+    let inner_w = chrome::right_pane_inner_content_width(area);
+    let text_w = state
+        .panels
+        .right_pane_text_w
+        .unwrap_or_else(|| inner_w.saturating_sub(4));
+    let footer_line = chrome::right_pane_bottom_line(state, right_content, inner_w);
+    let right_block = chrome::right_pane_block(None, footer_line.as_ref());
+    let tabs = chrome::visible_tabs(right_content);
     if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
         state.right_pane_mode = tabs[0].0;
     }
-    let tab_spans: Vec<Span> = tabs
-        .iter()
-        .flat_map(|(mode, label)| style::tab_node_segment(label, *mode == state.right_pane_mode))
-        .collect();
+    let tab_spans: Vec<Span> = chrome::right_pane_tab_spans(state, right_content, &tabs, text_w);
     let right_inner = right_block.inner(area);
     let constraints = &[
         Constraint::Length(1),
@@ -134,9 +147,15 @@ pub fn draw_right_pane_fullscreen(
     view: &crate::layout::setup::ViewData,
     area: Rect,
 ) {
-    let footer_line = right_pane_footer_line_fullscreen(state, right_content, view);
-    let fullscreen_title = format!("{} {}", title(state), UI_STRINGS.brand.fullscreen_suffix);
-    let block = right_pane_block(Some(fullscreen_title.as_str()), Some(&footer_line));
+    let inner_w = chrome::right_pane_inner_content_width(area);
+    let footer_line =
+        chrome::right_pane_footer_line_fullscreen(state, right_content, view, inner_w);
+    let fullscreen_title = format!(
+        "{} {}",
+        chrome::title(state),
+        UI_STRINGS.brand.fullscreen_suffix
+    );
+    let block = chrome::right_pane_block(Some(fullscreen_title.as_str()), Some(&footer_line));
     let inner = block.inner(area);
     let bottom_pad = UI_CONSTANTS.v_pad;
     f.render_widget(&block, area);

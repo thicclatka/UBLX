@@ -2,6 +2,7 @@ use ratatui::layout::Constraint;
 use ratatui::style::Style;
 use ratatui::text::Span;
 
+use crate::layout::setup::MainMode;
 use crate::utils::StringObjTraits;
 
 /// Generic and feature-specific loading lines.
@@ -55,10 +56,77 @@ pub struct UiStringsMainTabs {
     pub lenses: &'static str,
 }
 
+/// Digit keys (1–9) for main-mode tabs. Single source for keymap, tab labels, mouse hit-testing, and help.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UblxTabNumber {
+    pub snapshot: u8,
+    pub delta: u8,
+    pub settings: u8,
+    pub lenses: u8,
+    pub duplicates: u8,
+}
+
+impl UblxTabNumber {
+    /// Snapshot [1], Lenses [2], Delta [7], Duplicates [8], Settings [9] — matches left-to-right tab bar order.
+    pub const DEFAULT: Self = Self {
+        snapshot: 1,
+        lenses: 2,
+        delta: 7,
+        duplicates: 8,
+        settings: 9,
+    };
+}
+
+pub const MAIN_TAB_KEYS: UblxTabNumber = UblxTabNumber::DEFAULT;
+
+/// Tab label with hotkey digit, e.g. `Settings [9]` — use with [`MAIN_TAB_KEYS`] and [`UiStringsMainTabs`].
+#[must_use]
+pub fn main_tab_title(label: &str, key_digit: u8) -> String {
+    format!("{label} [{key_digit}]")
+}
+
+/// Main tab bar order and labels (Snapshot, optional Lenses, Delta, optional Duplicates, Settings).
+/// Matches [`crate::render::core::draw_main_tabs`] segment order and mouse hit-testing.
+#[must_use]
+pub fn main_tab_bar_modes_and_labels(
+    has_lenses: bool,
+    has_duplicates: bool,
+) -> (Vec<MainMode>, Vec<String>) {
+    let k = MAIN_TAB_KEYS;
+    let mut modes = vec![MainMode::Snapshot];
+    let mut labels = vec![main_tab_title(UI_STRINGS.main_tabs.snapshot, k.snapshot)];
+    if has_lenses {
+        modes.push(MainMode::Lenses);
+        labels.push(main_tab_title(UI_STRINGS.main_tabs.lenses, k.lenses));
+    }
+    modes.push(MainMode::Delta);
+    labels.push(main_tab_title(UI_STRINGS.main_tabs.delta, k.delta));
+    if has_duplicates {
+        modes.push(MainMode::Duplicates);
+        labels.push(main_tab_title(
+            UI_STRINGS.main_tabs.duplicates,
+            k.duplicates,
+        ));
+    }
+    modes.push(MainMode::Settings);
+    labels.push(main_tab_title(UI_STRINGS.main_tabs.settings, k.settings));
+    (modes, labels)
+}
+
+/// Help header: digits in tab-bar order (Snapshot, Lenses, Delta, Duplicates, Settings).
+#[must_use]
+pub fn main_tab_keys_help_keys_line() -> String {
+    let k = MAIN_TAB_KEYS;
+    format!(
+        "{} | {} | {} | {} | {}",
+        k.snapshot, k.lenses, k.delta, k.duplicates, k.settings
+    )
+}
+
 /// Status / search line (snapshot + query).
 pub struct UiStringsSearchStatus {
     pub search_label: &'static str,
-    pub esc_to_clear: &'static str,
+    pub find_label: &'static str,
     pub latest_snapshot: &'static str,
 }
 
@@ -145,6 +213,23 @@ pub struct UiStringsFile {
     pub delete_confirm_title: &'static str,
 }
 
+/// Settings tab: bool row labels (TOML key names). For `show_hidden_files` / `hash` in the left pane, use [`append_settings_bool_snapshot_footnote`].
+pub struct UiStringsSettingsBool {
+    pub show_hidden_files: &'static str,
+    pub hash: &'static str,
+    pub enable_enhance_all: &'static str,
+    pub ask_enhance_on_new_root: &'static str,
+    pub unknown_row: &'static str,
+}
+
+/// Suffix for Settings left-pane rows whose values apply on the next snapshot (same `*` as the footnote under External apps).
+pub const SETTINGS_BOOL_SNAPSHOT_FOOTNOTE_SUFFIX: &str = " *";
+
+#[must_use]
+pub fn append_settings_bool_snapshot_footnote(base: &'static str) -> String {
+    format!("{base}{SETTINGS_BOOL_SNAPSHOT_FOOTNOTE_SUFFIX}")
+}
+
 /// First launch: no local `ublx.toml` yet.
 pub struct UiStringsFirstRun {
     pub welcome_title: &'static str,
@@ -200,6 +285,7 @@ pub struct UiStrings {
     pub space: UiStringsSpaceMenu,
     pub file: UiStringsFile,
     pub first_run: UiStringsFirstRun,
+    pub settings_bool: UiStringsSettingsBool,
 }
 
 impl Default for UiStrings {
@@ -271,8 +357,8 @@ impl UiStrings {
 
     const fn search() -> UiStringsSearchStatus {
         UiStringsSearchStatus {
-            search_label: "Search: ",
-            esc_to_clear: "Esc to clear",
+            search_label: "Search (Categories & Contents): ",
+            find_label: "Find: ",
             latest_snapshot: "Latest Snapshot",
         }
     }
@@ -359,8 +445,8 @@ impl UiStrings {
             name_prompt: "Lens name: ",
             rename_prompt: "Rename lens: ",
             delete_confirm_title: "Delete lens ",
-            delete_yes: "Yes",
-            delete_no: "No",
+            delete_yes: "Yes (y)",
+            delete_no: "No (n)",
             toast_created_and_added_file: r#"Created lens "{LENS}" and added file"#,
             toast_added_to_lens: r#"Added to lens "{LENS}""#,
             toast_renamed_to: r#"Renamed lens to "{LENS}""#,
@@ -374,14 +460,24 @@ impl UiStrings {
             show_in_folder: "Show in folder",
             copy_path: "Copy Path",
             enhance_policy: "Enhance policy",
-            enhance_policy_always: "Always (automatic)",
-            enhance_policy_never: "Per-file (manual)",
+            enhance_policy_always: "Always — automatic (y)",
+            enhance_policy_never: "Per-file — manual (n)",
             enhance_with_zahirscan: "Enhance with ZahirScan",
             copy_zahir_json: "Copy Templates",
             add_to_lens: "Add to Lens",
             remove_from_lens: "Remove from Lens",
             rename: "Rename",
             delete: "Delete",
+        }
+    }
+
+    const fn settings_bool() -> UiStringsSettingsBool {
+        UiStringsSettingsBool {
+            show_hidden_files: "show_hidden_files",
+            hash: "hash",
+            enable_enhance_all: "enable_enhance_all",
+            ask_enhance_on_new_root: "ask_enhance_on_new_root",
+            unknown_row: "?",
         }
     }
 
@@ -393,12 +489,12 @@ impl UiStrings {
             recent_heading: "Recent UBLX",
             enhance_prompt_title: "Index with full ZahirScan for all files automatically?",
             enhance_prompt_footnote: "Not recommended for very large directories.\nChange anytime in Settings (`enable_enhance_all`).\nTo turn off this prompt: `ask_enhance_on_new_root = false` in Settings (Global).\nDefault is off unless you set `enable_enhance_all = true`.",
-            enhance_yes: "Yes",
-            enhance_no: "No",
+            enhance_yes: "Yes (y)",
+            enhance_no: "No (n)",
             previous_settings_title: "Previous settings found",
             previous_settings_footnote: "Use saved: keep or restore `ublx.toml` from the last run.\nStart fresh: remove local and cached config, then continue setup.\nGlobal config remains unchanged.",
-            previous_settings_use: "Use saved settings",
-            previous_settings_fresh: "Start from scratch",
+            previous_settings_use: "Use saved settings (y)",
+            previous_settings_fresh: "Start from scratch (n)",
         }
     }
 
@@ -422,6 +518,7 @@ impl UiStrings {
             space: Self::space(),
             file: Self::file_strings(),
             first_run: Self::first_run(),
+            settings_bool: Self::settings_bool(),
         }
     }
 

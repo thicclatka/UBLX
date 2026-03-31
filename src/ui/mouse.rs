@@ -3,12 +3,10 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use unicode_width::UnicodeWidthStr;
 
 use crate::config::LayoutOverlay;
-use crate::layout::setup::{
-    MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
-};
+use crate::layout::setup::{PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData};
 use crate::render::{panes, viewers::image as viewer_image};
 use crate::ui::MainTabFlags;
-use crate::ui::consts::UI_CONSTANTS;
+use crate::ui::consts::{UI_CONSTANTS, main_tab_bar_modes_and_labels};
 use crate::utils::{format_bytes, format_timestamp_ns};
 
 #[derive(Clone, Copy)]
@@ -306,24 +304,11 @@ fn mouse_left_down_right_pane(
         .split(right_split[0]);
     let right_tab_rect = right_tab_outer[1];
     if contains(right_tab_rect, x, y) {
-        let mut tabs = vec![RightPaneMode::Viewer, RightPaneMode::Templates];
-        if right_content_ref.metadata.is_some() {
-            tabs.push(RightPaneMode::Metadata);
-        }
-        if right_content_ref.writing.is_some() {
-            tabs.push(RightPaneMode::Writing);
-        }
-        let labels: Vec<&str> = tabs
-            .iter()
-            .map(|m| match m {
-                RightPaneMode::Viewer => "Viewer",
-                RightPaneMode::Templates => "Templates",
-                RightPaneMode::Metadata => "Metadata",
-                RightPaneMode::Writing => "Writing",
-            })
-            .collect();
+        // Must match [`panes::visible_tabs`] and the tab row (Templates hidden when `templates` is empty).
+        let tabs_visible = panes::visible_tabs(right_content_ref);
+        let labels: Vec<&str> = tabs_visible.iter().map(|(_, label)| *label).collect();
         if let Some(idx) = click_to_labeled_tab_index(right_tab_rect, x, &labels) {
-            state_mut.right_pane_mode = tabs[idx];
+            state_mut.right_pane_mode = tabs_visible[idx].0;
             return true;
         }
     }
@@ -364,6 +349,74 @@ fn mouse_left_down_right_pane(
     false
 }
 
+fn mouse_blocked_by_modals(state: &UblxState) -> bool {
+    state.theme.selector_visible
+        || state.chrome.help_visible
+        || state.open_menu.visible
+        || state.lens_menu.visible
+        || state.space_menu.visible
+        || state.enhance_policy_menu.visible
+        || state.lens_confirm.delete_visible
+        || state.file_rename_input.is_some()
+        || state.file_delete_confirm.visible
+        || state.startup_prompt.is_some()
+}
+
+fn handle_mouse_left_down(
+    state_mut: &mut UblxState,
+    view_ref: &ViewData,
+    right_content_ref: &RightPaneContent,
+    areas: &MouseFrameAreas,
+    x: u16,
+    y: u16,
+    tabs: MainTabFlags,
+) -> bool {
+    if state_mut.chrome.viewer_fullscreen
+        && fullscreen_sort_hit(
+            areas.fullscreen_main_area,
+            x,
+            y,
+            state_mut,
+            view_ref,
+            right_content_ref,
+        )
+    {
+        cycle_sort_from_mouse(state_mut, right_content_ref);
+        return true;
+    }
+    if contains(areas.tabs_click_rect, x, y) {
+        let (main_modes, label_owned) =
+            main_tab_bar_modes_and_labels(tabs.has_lenses, tabs.has_duplicates);
+        let labels: Vec<&str> = label_owned.iter().map(String::as_str).collect();
+        if let Some(idx) = click_to_labeled_tab_index(areas.tabs_click_rect, x, &labels) {
+            state_mut.main_mode = main_modes[idx];
+            return true;
+        }
+    }
+
+    if contains(areas.left, x, y) {
+        state_mut.panels.focus = PanelFocus::Categories;
+        if let Some(idx) = click_to_list_index(areas.left, y, view_ref.category_list_len) {
+            state_mut.panels.category_state.select(Some(idx));
+        }
+        return true;
+    }
+
+    if contains(areas.middle, x, y) {
+        if middle_sort_hit(areas.middle, x, y, state_mut, view_ref) {
+            cycle_sort_from_mouse(state_mut, right_content_ref);
+            return true;
+        }
+        state_mut.panels.focus = PanelFocus::Contents;
+        if let Some(idx) = click_to_list_index(areas.middle, y, view_ref.content_len) {
+            state_mut.panels.content_state.select(Some(idx));
+        }
+        return true;
+    }
+
+    mouse_left_down_right_pane(state_mut, x, y, areas.right, right_content_ref)
+}
+
 pub fn handle_mouse_event(
     state_mut: &mut UblxState,
     event: MouseEvent,
@@ -377,17 +430,7 @@ pub fn handle_mouse_event(
         tabs,
     } = ctx;
     // Keep first pass conservative: no mouse interaction while modals are open.
-    if state_mut.theme.selector_visible
-        || state_mut.chrome.help_visible
-        || state_mut.open_menu.visible
-        || state_mut.lens_menu.visible
-        || state_mut.space_menu.visible
-        || state_mut.enhance_policy_menu.visible
-        || state_mut.lens_confirm.delete_visible
-        || state_mut.file_rename_input.is_some()
-        || state_mut.file_delete_confirm.visible
-        || state_mut.startup_prompt.is_some()
-    {
+    if mouse_blocked_by_modals(state_mut) {
         return false;
     }
 
@@ -397,64 +440,7 @@ pub fn handle_mouse_event(
 
     match event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            if state_mut.chrome.viewer_fullscreen
-                && fullscreen_sort_hit(
-                    areas.fullscreen_main_area,
-                    x,
-                    y,
-                    state_mut,
-                    view_ref,
-                    right_content_ref,
-                )
-            {
-                cycle_sort_from_mouse(state_mut, right_content_ref);
-                return true;
-            }
-            if contains(areas.tabs_click_rect, x, y) {
-                let mut main_tabs = vec![MainMode::Snapshot, MainMode::Delta, MainMode::Settings];
-                if tabs.has_lenses {
-                    main_tabs.push(MainMode::Lenses);
-                }
-                if tabs.has_duplicates {
-                    main_tabs.push(MainMode::Duplicates);
-                }
-                let labels: Vec<&str> = main_tabs
-                    .iter()
-                    .map(|m| match m {
-                        MainMode::Snapshot => "Snapshot",
-                        MainMode::Delta => "Delta",
-                        MainMode::Settings => "Settings",
-                        MainMode::Lenses => "Lenses",
-                        MainMode::Duplicates => "Duplicates",
-                    })
-                    .collect();
-                if let Some(idx) = click_to_labeled_tab_index(areas.tabs_click_rect, x, &labels) {
-                    state_mut.main_mode = main_tabs[idx];
-                    return true;
-                }
-            }
-
-            if contains(areas.left, x, y) {
-                state_mut.panels.focus = PanelFocus::Categories;
-                if let Some(idx) = click_to_list_index(areas.left, y, view_ref.category_list_len) {
-                    state_mut.panels.category_state.select(Some(idx));
-                }
-                return true;
-            }
-
-            if contains(areas.middle, x, y) {
-                if middle_sort_hit(areas.middle, x, y, state_mut, view_ref) {
-                    cycle_sort_from_mouse(state_mut, right_content_ref);
-                    return true;
-                }
-                state_mut.panels.focus = PanelFocus::Contents;
-                if let Some(idx) = click_to_list_index(areas.middle, y, view_ref.content_len) {
-                    state_mut.panels.content_state.select(Some(idx));
-                }
-                return true;
-            }
-
-            if mouse_left_down_right_pane(state_mut, x, y, areas.right, right_content_ref) {
+            if handle_mouse_left_down(state_mut, view_ref, right_content_ref, &areas, x, y, tabs) {
                 return true;
             }
         }

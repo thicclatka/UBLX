@@ -1,11 +1,11 @@
 //! Powerline-style nodes: tabs, footer lines, status spans.
 
 use ratatui::layout::HorizontalAlignment;
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
 use crate::themes;
-use crate::ui::UI_GLYPHS;
+use crate::ui::{UI_GLYPHS, UI_STRINGS};
 
 use super::{CurrentTheme, ThemeStyles, tab_active, tab_inactive};
 
@@ -59,6 +59,51 @@ pub fn node_line(text: &str, alignment: HorizontalAlignment) -> Line<'static> {
 pub fn status_node_spans(content: &str) -> Vec<Span<'static>> {
     let (_, circle_style, node_style) = node_color();
     node_spans(content, circle_style, node_style)
+}
+
+/// Accent for [`popup_input_line_spans`] (label fg, solid bar): editing vs after Enter.
+#[must_use]
+pub fn popup_input_accent_color(submitted: bool) -> Color {
+    let t = themes::current();
+    if submitted { t.hint } else { t.focused_border }
+}
+
+/// One-line popup input strip: accent bar, `popup_bg` buffer space, hint-styled label, query text.
+/// Shared by catalog search (status line) and viewer find (right pane `title_bottom`); placement is caller-specific.
+///
+/// Accent colors follow [`popup_input_accent_color`].
+#[must_use]
+pub fn popup_input_line_spans(
+    label: impl Into<String>,
+    query: impl Into<String>,
+    submitted: bool,
+) -> Vec<Span<'static>> {
+    let t = themes::current();
+    let bg = t.popup_bg;
+    let accent = popup_input_accent_color(submitted);
+    vec![
+        Span::styled(" ", Style::default().bg(accent).fg(accent)),
+        Span::styled(" ", Style::default().bg(bg)),
+        Span::styled(label.into(), Style::default().fg(accent).bg(bg)),
+        Span::styled(query.into(), Style::default().fg(t.search_text).bg(bg)),
+    ]
+}
+
+/// Catalog `/` search on the status line. Callers hide the Latest Snapshot node while this is visible.
+#[must_use]
+pub fn search_catalog_popup_spans(
+    search_active: bool,
+    search_query: &str,
+) -> Option<Vec<Span<'static>>> {
+    let show = search_active || !search_query.trim().is_empty();
+    if !show {
+        return None;
+    }
+    Some(popup_input_line_spans(
+        UI_STRINGS.search.search_label.to_string(),
+        search_query.to_string(),
+        !search_active,
+    ))
 }
 
 /// Footer line: optional PDF page, optional size, and optional mtime — **right-aligned** together.

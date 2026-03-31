@@ -61,7 +61,7 @@ fn handle_settings_search_submit(
         state_mut.config_written_by_us_at = Some(std::time::Instant::now());
         apply_config_reload(params_mut, ublx_opts_mut, state_mut, None::<&str>);
         refresh_editing_metadata(state_mut, params_mut);
-        let label = bool_row_label(scope, cur);
+        let label = bool_row_label(scope, cur, false);
         let msg = format!("{label} = {v}");
         show_operation_toast(
             state_mut,

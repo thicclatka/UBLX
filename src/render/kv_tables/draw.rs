@@ -6,6 +6,8 @@ use super::consts::TABLE_GAP;
 use super::ratatui_table;
 use super::sections;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
+
+use crate::layout::setup::UblxState;
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
 
@@ -76,6 +78,11 @@ struct TableDrawCtx<'a, 'f> {
     table_area: Rect,
     viewport: u16,
     visible_start: u16,
+    find_needle: Option<&'a str>,
+    /// Haystack line starts when find has synced ranges (for `n`/`N` cell highlight alignment).
+    line_starts: Option<&'a [usize]>,
+    find_ranges: &'a [(usize, usize)],
+    find_current: usize,
 }
 
 impl TableDrawCtx<'_, '_> {
@@ -102,8 +109,26 @@ impl TableDrawCtx<'_, '_> {
         };
         let actual_y = table_start_line.saturating_sub(self.visible_start);
         let rect = rect_in_viewport(self.table_area, actual_y, (1 + take) as u16, self.viewport);
+        let first_data_line_idx = (section_start as usize) + usize::from(has_title) + 1;
+        let find_kv = self.line_starts.and_then(|ls| {
+            if self.find_ranges.is_empty() {
+                return None;
+            }
+            Some(ratatui_table::KvFindSync {
+                line_starts: ls,
+                ranges: self.find_ranges,
+                current: self.find_current,
+                first_data_line_idx,
+                row_skip: skip,
+            })
+        });
         self.f.render_widget(
-            ratatui_table::section_to_table(&kv_visible, row_offset + skip),
+            ratatui_table::section_to_table(
+                &kv_visible,
+                row_offset + skip,
+                self.find_needle,
+                find_kv,
+            ),
             rect,
         );
     }
@@ -133,6 +158,7 @@ impl TableDrawCtx<'_, '_> {
                 skip,
                 skip + take,
                 rect.width,
+                self.find_needle,
             ),
             rect,
         );
@@ -155,14 +181,27 @@ impl TableDrawCtx<'_, '_> {
         let y_offset = table_start.saturating_sub(self.visible_start);
         let rect = rect_in_viewport(self.table_area, y_offset, take as u16, self.viewport);
         self.f.render_widget(
-            ratatui_table::single_column_list_to_table(list, row_offset, skip, skip + take),
+            ratatui_table::single_column_list_to_table(
+                list,
+                row_offset,
+                skip,
+                skip + take,
+                self.find_needle,
+            ),
             rect,
         );
     }
 }
 
 /// Render Key/Value and Contents tables from JSON in the given rect, with scroll offset. Only the visible window is drawn; Contents rows are built only for visible range (memory optimization).
-pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16) {
+pub fn draw_tables(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    json: &str,
+    scroll_y: u16,
+    find_needle: Option<&str>,
+    state: &UblxState,
+) {
     use ratatui::widgets::Paragraph;
 
     let sections = sections::parse_json_sections(json);
@@ -177,11 +216,24 @@ pub fn draw_tables(f: &mut ratatui::Frame, area: Rect, json: &str, scroll_y: u16
     let viewport = table_area.height;
     let visible_start = scroll_y;
     let visible_end = scroll_y + viewport;
+    let line_starts_vec = if find_needle.is_some_and(|n| !n.trim().is_empty())
+        && !state.viewer_find.ranges.is_empty()
+    {
+        let hay = sections::searchable_text_from_json(json);
+        Some(sections::line_byte_starts(&hay))
+    } else {
+        None
+    };
+    let line_starts = line_starts_vec.as_deref();
     let mut ctx = TableDrawCtx {
         f,
         table_area,
         viewport,
         visible_start,
+        find_needle,
+        line_starts,
+        find_ranges: &state.viewer_find.ranges,
+        find_current: state.viewer_find.current,
     };
     let mut line_index: u16 = 0;
     let mut row_offset = 0;

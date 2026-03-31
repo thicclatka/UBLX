@@ -20,6 +20,14 @@ pub fn handle_enhance_policy_menu(
         return false;
     }
     match action {
+        UblxAction::ConfirmYes => {
+            state.enhance_policy_menu.selected_index = 0;
+            return handle_enhance_policy_menu(state, params, ublx_opts, UblxAction::SearchSubmit);
+        }
+        UblxAction::ConfirmNo => {
+            state.enhance_policy_menu.selected_index = 1;
+            return handle_enhance_policy_menu(state, params, ublx_opts, UblxAction::SearchSubmit);
+        }
         UblxAction::Quit | UblxAction::SearchClear => state.close_enhance_policy_menu(),
         UblxAction::MoveDown => {
             state.enhance_policy_menu.selected_index =

@@ -1,14 +1,14 @@
-use crossterm::event::{self, Event, KeyEvent};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use std::io;
 
 use crate::app::RunUblxParams;
 use crate::config::{LayoutOverlay, UblxOpts};
 use crate::handlers::{applets, leave_terminal_for_editor, state_transitions};
-use crate::layout::setup::{MainMode, RightPaneContent, UblxState, ViewData};
+use crate::layout::setup::{MainMode, RightPaneContent, StartupPromptPhase, UblxState, ViewData};
 use crate::ui::{
     MainTabFlags,
-    consts::{UI_CONSTANTS, UI_STRINGS},
+    consts::{MAIN_TAB_KEYS, UI_CONSTANTS, UI_STRINGS},
     file_ops, keymap, lens, menu, mouse,
 };
 
@@ -168,12 +168,38 @@ fn handle_post_modal_chrome_keys(
         );
         return true;
     }
+    if matches!(action, keymap::UblxAction::ViewerFindClear) {
+        applets::viewer_find::clear(state_mut);
+        return true;
+    }
     if matches!(action, keymap::UblxAction::SearchClear) {
         state_mut.search.query.clear();
         state_mut.search.active = false;
         return true;
     }
     false
+}
+
+fn handle_viewer_find_typing(state_mut: &mut UblxState, action: keymap::UblxAction) -> bool {
+    if !state_mut.viewer_find.active {
+        return false;
+    }
+    match action {
+        keymap::UblxAction::ViewerFindSubmit => {
+            state_mut.viewer_find.active = false;
+            state_mut.viewer_find.committed = true;
+        }
+        keymap::UblxAction::ViewerFindBackspace => {
+            state_mut.viewer_find.query.pop();
+            state_mut.viewer_find.last_sync_token = None;
+        }
+        keymap::UblxAction::ViewerFindChar(c) => {
+            state_mut.viewer_find.query.push(c);
+            state_mut.viewer_find.last_sync_token = None;
+        }
+        _ => return false,
+    }
+    keymap::viewer_find_consumes(action)
 }
 
 fn handle_active_search_key(state_mut: &mut UblxState, action: keymap::UblxAction) -> bool {
@@ -189,6 +215,68 @@ fn handle_active_search_key(state_mut: &mut UblxState, action: keymap::UblxActio
         _ => {}
     }
     keymap::search_consumes(action)
+}
+
+fn key_action_context_for(state: &UblxState, tabs: MainTabFlags) -> keymap::KeyActionContext {
+    let has_search_filter = !state.search.query.is_empty();
+    keymap::KeyActionContext {
+        search: keymap::KeySearchState {
+            active: state.search.active,
+            has_filter: has_search_filter,
+        },
+        viewer_find_typing: state.viewer_find.active,
+        viewer_find_committed: state.viewer_find.committed,
+        allow_viewer_find: !matches!(state.main_mode, MainMode::Settings),
+        last_key_for_double: state.last_key_for_double,
+        tabs: keymap::KeyOptionalTabs {
+            duplicates: tabs.has_duplicates,
+            lenses: tabs.has_lenses,
+        },
+        tab_keys: MAIN_TAB_KEYS,
+    }
+}
+
+/// Yes/no overlays and space-menu letter hotkeys override the mapped action.
+fn apply_overlay_key_overrides(
+    state_mut: &mut UblxState,
+    e: KeyEvent,
+    action: &mut keymap::UblxAction,
+) {
+    let binary_y_n_overlay = state_mut.file_delete_confirm.visible
+        || state_mut.lens_confirm.delete_visible
+        || state_mut.enhance_policy_menu.visible
+        || matches!(
+            state_mut.startup_prompt.as_ref().map(|s| &s.phase),
+            Some(StartupPromptPhase::PreviousSettings { .. } | StartupPromptPhase::Enhance { .. })
+        );
+    if binary_y_n_overlay
+        && !e.modifiers.contains(KeyModifiers::CONTROL)
+        && !e.modifiers.contains(KeyModifiers::SHIFT)
+        && let KeyCode::Char(c) = e.code
+    {
+        match c.to_ascii_lowercase() {
+            'y' => {
+                *action = keymap::UblxAction::ConfirmYes;
+                state_mut.last_key_for_double = None;
+            }
+            'n' => {
+                *action = keymap::UblxAction::ConfirmNo;
+                state_mut.last_key_for_double = None;
+            }
+            _ => {}
+        }
+    }
+
+    if state_mut.space_menu.visible
+        && let Some(ref kind) = state_mut.space_menu.kind
+        && !e.modifiers.contains(KeyModifiers::CONTROL)
+        && !e.modifiers.contains(KeyModifiers::SHIFT)
+        && let KeyCode::Char(c) = e.code
+        && let Some(idx) = menu::space_menu_hotkey_to_index(kind, c)
+    {
+        *action = keymap::UblxAction::SpaceMenuHotkeySelect(idx);
+        state_mut.last_key_for_double = None;
+    }
 }
 
 fn apply_action_with_settings_enter(
@@ -250,23 +338,11 @@ pub fn handle_ublx_input(
     let Event::Key(e) = ev else {
         return Ok(false);
     };
-    let has_search_filter = !state_mut.search.query.is_empty();
-    let result = keymap::key_action_setup(
-        e,
-        &keymap::KeyActionContext {
-            search: keymap::KeySearchState {
-                active: state_mut.search.active,
-                has_filter: has_search_filter,
-            },
-            last_key_for_double: state_mut.last_key_for_double,
-            tabs: keymap::KeyOptionalTabs {
-                duplicates: tabs.has_duplicates,
-                lenses: tabs.has_lenses,
-            },
-        },
-    );
+    let result = keymap::key_action_setup(e, &key_action_context_for(state_mut, tabs));
     state_mut.last_key_for_double = result.last_key_for_double;
-    let action = result.action;
+    let mut action = result.action;
+
+    apply_overlay_key_overrides(state_mut, e, &mut action);
 
     if try_open_settings_editor_from_menu(state_mut, action, &*ublx_opts_mut) {
         return Ok(false);
@@ -285,6 +361,10 @@ pub fn handle_ublx_input(
     }
 
     if handle_post_modal_chrome_keys(state_mut, &theme_ctx, params_mut, ublx_opts_mut, e, action) {
+        return Ok(false);
+    }
+
+    if handle_viewer_find_typing(state_mut, action) {
         return Ok(false);
     }
 

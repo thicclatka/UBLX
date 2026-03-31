@@ -21,7 +21,7 @@ categories = [
 
 [dependencies]
 anyhow = "1.0.102"
-blake3 = "1.5"
+blake3 = "1.8.4"
 chrono = "0.4"
 clap = { version = "4.6.0", features = ["derive"] }
 colored = "3.1.1"
@@ -29,6 +29,9 @@ comfy-table = "7.2.2"
 crossterm = "0.29"
 csv = "1.4.0"
 env_logger = "0.11.9"
+fuzzy-matcher = "0.3.7"
+image = "0.25"
+lofty = "0.23.3"
 log = "0.4.29"
 nefaxer = "0.1.6"
 notify = "8.2.0"
@@ -38,8 +41,6 @@ ratatui-image = { version = "10", default-features = false, features = [
   "crossterm",
   "image-defaults",
 ] }
-image = "0.25"
-lofty = "0.23.3"
 rayon = "1.10"
 ratatui-notifications = "0.1.0"
 rusqlite = { version = "0.38.0", features = ["bundled-sqlcipher"] }

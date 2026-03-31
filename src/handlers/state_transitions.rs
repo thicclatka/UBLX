@@ -1,5 +1,6 @@
 //! Apply key actions to TUI state. Moved from layout so "what happens on key" lives with other behavior.
 
+use crate::handlers::applets::viewer_find;
 use crate::integrations::ZahirFileType as FileType;
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
@@ -146,7 +147,32 @@ impl<'a> UblxActionContext<'a> {
             | UblxAction::LoadDuplicates => {
                 apply_mode_switch(state_mut, action, has_duplicates, has_lenses);
             }
-            UblxAction::SearchStart => state_mut.search.active = true,
+            UblxAction::SearchStart => {
+                viewer_find::clear(state_mut);
+                state_mut.search.active = true;
+            }
+            UblxAction::ViewerFindOpen => {
+                state_mut.search.active = false;
+                state_mut.viewer_find.active = true;
+                state_mut.viewer_find.committed = false;
+            }
+            UblxAction::ViewerFindNext => {
+                let vf = &mut state_mut.viewer_find;
+                if !vf.ranges.is_empty() {
+                    vf.current = (vf.current + 1) % vf.ranges.len();
+                    vf.pending_scroll = true;
+                }
+            }
+            UblxAction::ViewerFindPrev => {
+                let vf = &mut state_mut.viewer_find;
+                if !vf.ranges.is_empty() {
+                    vf.current = vf
+                        .current
+                        .checked_sub(1)
+                        .unwrap_or(vf.ranges.len().saturating_sub(1));
+                    vf.pending_scroll = true;
+                }
+            }
             UblxAction::CycleRightPane
             | UblxAction::RightPaneViewer
             | UblxAction::ViewerFullscreenToggle

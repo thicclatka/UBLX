@@ -136,7 +136,7 @@ fn push_bool_rows(
             format!(
                 "{}{}: ",
                 row_prefix(row_active),
-                settings::bool_row_label(scope, i)
+                settings::bool_row_label(scope, i, true)
             ),
             label_st,
         )];
@@ -242,6 +242,12 @@ fn push_external_apps_section(left_lines: &mut Vec<Line>) {
         ),
         Span::styled(pdf_detail, pdf_st),
     ]));
+    left_lines.push(Line::from(""));
+    left_lines.push(Line::from(""));
+    left_lines.push(Line::from(Span::styled(
+        "* — settings applied on next snapshot",
+        style::hint_text(),
+    )));
 }
 
 fn render_settings_toml_preview(

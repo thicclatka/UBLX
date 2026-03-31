@@ -114,6 +114,84 @@ pub fn parse_json_sections(json: &str) -> Vec<Section> {
     sections
 }
 
+/// One logical line per rendered row (same order and count as [`content_height`]). Find `n`/`N`
+/// scroll uses newline indices in the joined string as `preview_scroll` coordinates.
+#[must_use]
+pub fn visual_lines_from_sections(sections: &[Section]) -> Vec<String> {
+    use super::format;
+    let mut lines: Vec<String> = Vec::new();
+    for (i, section) in sections.iter().enumerate() {
+        if i > 0 {
+            for _ in 0..TABLE_GAP {
+                lines.push(String::new());
+            }
+        }
+        match section {
+            Section::KeyValue(kv) => {
+                if let Some(t) = &kv.title {
+                    lines.push(t.clone());
+                }
+                lines.push(format!(
+                    "{} {}",
+                    UI_STRINGS.tables.header_key, UI_STRINGS.tables.header_value
+                ));
+                for (k, v) in &kv.rows {
+                    lines.push(format!("{k} {v}"));
+                }
+            }
+            Section::Contents(c) => {
+                lines.push(c.title.clone());
+                lines.push(c.columns.join(" "));
+                for entry in &c.entries {
+                    if let Some(obj) = entry.as_object() {
+                        let row: Vec<String> = c
+                            .column_keys
+                            .iter()
+                            .map(|k| {
+                                obj.get(k)
+                                    .map_or_else(|| "—".to_string(), |v| format::format_value(v, k))
+                            })
+                            .collect();
+                        lines.push(row.join(" "));
+                    }
+                }
+            }
+            Section::SingleColumnList(list) => {
+                lines.push(list.title.clone());
+                for s in &list.values {
+                    lines.push(s.clone());
+                }
+            }
+        }
+    }
+    lines
+}
+
+/// Byte offset of each line start in `s` (including 0). Length equals newline count + 1.
+/// Aligns with [`visual_lines_from_sections`] joined by `\n` (no trailing newline).
+#[must_use]
+pub fn line_byte_starts(s: &str) -> Vec<usize> {
+    let mut v = vec![0];
+    for (i, b) in s.bytes().enumerate() {
+        if b == b'\n' {
+            v.push(i + 1);
+        }
+    }
+    v
+}
+
+/// Haystack for in-pane find: tab `·n`, `cur/total`, `sync` ranges, and `n`/`N` scroll (must match
+/// [`content_height`] line layout).
+#[must_use]
+pub fn searchable_text_from_json(json: &str) -> String {
+    let sections = parse_json_sections(json);
+    if sections.is_empty() {
+        return json.to_string();
+    }
+    let lines = visual_lines_from_sections(&sections);
+    lines.join("\n")
+}
+
 /// Total line count for the parsed sections (title + header + data rows + gaps). Used for scrollbar and clamping.
 #[must_use]
 pub fn content_height(json: &str) -> u16 {

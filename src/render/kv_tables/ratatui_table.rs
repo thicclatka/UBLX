@@ -4,6 +4,7 @@
 //! File-viewer grids (CSV / Markdown) use **comfy-table** in [`crate::render::viewers::pretty_tables`].
 
 use ratatui::layout::Constraint;
+use ratatui::text::Line;
 use ratatui::widgets::{Cell, Row, Table};
 use rayon::prelude::*;
 
@@ -12,6 +13,7 @@ use super::{
     sections::{ContentsSection, KvSection, SingleColumnListSection},
 };
 use crate::config::PARALLEL;
+use crate::handlers::applets::viewer_find;
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;
@@ -23,6 +25,27 @@ const VALUE_WIDTH_MIN: usize = 10;
 
 /// When a table has more than this many columns, we balance widths to fill the pane; otherwise we use natural (compact) widths so few-column tables (e.g. sheet stats) don’t look over-spaced.
 const SIZE_OPTIMIZATION_COLUMN_THRESHOLD: usize = 3;
+
+/// Global byte offsets for KV cells when find ranges are synced to [`super::sections::searchable_text_from_json`].
+pub struct KvFindSync<'a> {
+    pub line_starts: &'a [usize],
+    pub ranges: &'a [(usize, usize)],
+    pub current: usize,
+    /// Line index in haystack of the first data row in the full (unwindowed) section.
+    pub first_data_line_idx: usize,
+    /// Row offset into that section for the visible window (`skip` in draw).
+    pub row_skip: usize,
+}
+
+/// Owned cell text so [`Table`] rows are `'static` (find highlights are already owned [`Line`]s).
+#[inline]
+fn cell_for_str(s: &str, find_needle: Option<&str>) -> Cell<'static> {
+    if let Some(n) = find_needle.filter(|x| !x.trim().is_empty()) {
+        Cell::from(viewer_find::highlight_cell_line(s, n))
+    } else {
+        Cell::from(Line::from(s.to_string()))
+    }
+}
 
 /// Compute column widths (in characters) from natural widths and available width.
 /// Natural width per column is typically max(header len, max cell len in column).
@@ -71,7 +94,12 @@ pub fn entry_cell(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -
 
 /// Build key/value table for one section.
 #[must_use]
-pub fn section_to_table(section: &KvSection, row_offset: usize) -> Table<'_> {
+pub fn section_to_table(
+    section: &KvSection,
+    row_offset: usize,
+    find_needle: Option<&str>,
+    find_kv: Option<KvFindSync<'_>>,
+) -> Table<'static> {
     let header = Row::new(vec![
         UI_STRINGS.tables.header_key,
         UI_STRINGS.tables.header_value,
@@ -83,12 +111,36 @@ pub fn section_to_table(section: &KvSection, row_offset: usize) -> Table<'_> {
         .iter()
         .enumerate()
         .map(|(i, (k, v))| {
-            let value_cell = match format::value_cell_style(v.as_str()) {
-                Some(s) => Cell::from(ratatui::text::Line::from(v.as_str()).style(s)),
-                None => Cell::from(v.as_str()),
+            let (key_cell, value_cell) = if let Some(ref f) = find_kv {
+                let li = f.first_data_line_idx + f.row_skip + i;
+                let key_off = f.line_starts.get(li).copied().unwrap_or(0);
+                let value_off = key_off.saturating_add(k.len()).saturating_add(1);
+                let key_cell = Cell::from(viewer_find::highlight_table_cell_line(
+                    k.as_str(),
+                    key_off,
+                    f.ranges,
+                    f.current,
+                ));
+                let value_cell = Cell::from(viewer_find::highlight_table_cell_line(
+                    v.as_str(),
+                    value_off,
+                    f.ranges,
+                    f.current,
+                ));
+                (key_cell, value_cell)
+            } else {
+                let key_cell = cell_for_str(k.as_str(), find_needle);
+                let value_cell = if find_needle.is_some_and(|n| !n.trim().is_empty()) {
+                    cell_for_str(v.as_str(), find_needle)
+                } else {
+                    match format::value_cell_style(v.as_str()) {
+                        Some(st) => Cell::from(Line::from(v.to_string()).style(st)),
+                        None => Cell::from(Line::from(v.to_string())),
+                    }
+                };
+                (key_cell, value_cell)
             };
-            Row::new(vec![Cell::from(k.as_str()), value_cell])
-                .style(style::table_row_style(row_offset + i))
+            Row::new(vec![key_cell, value_cell]).style(style::table_row_style(row_offset + i))
         })
         .collect();
     let key_w = section
@@ -204,7 +256,8 @@ pub fn contents_to_table_window(
     start: usize,
     end: usize,
     table_width: u16,
-) -> Table<'_> {
+    find_needle: Option<&str>,
+) -> Table<'static> {
     let natural = contents_natural_widths(section, start, end);
     let header_widths = contents_header_widths(section);
     let ncols = section.column_keys.len();
@@ -248,7 +301,7 @@ pub fn contents_to_table_window(
         section
             .columns
             .iter()
-            .map(|s| Cell::from(s.as_str()))
+            .map(|s| cell_for_str(s.as_str(), find_needle))
             .collect::<Vec<_>>(),
     )
     .style(style::table_header_style())
@@ -263,8 +316,13 @@ pub fn contents_to_table_window(
         .enumerate()
         .map(|(idx, obj)| {
             let row_strs = contents_row(obj, &section.column_keys, &column_widths);
-            Row::new(row_strs.into_iter().map(Cell::from).collect::<Vec<_>>())
-                .style(style::table_row_style(row_offset + start + idx))
+            Row::new(
+                row_strs
+                    .into_iter()
+                    .map(|c| cell_for_str(&c, find_needle))
+                    .collect::<Vec<_>>(),
+            )
+            .style(style::table_row_style(row_offset + start + idx))
         })
         .collect();
     Table::new(data_rows, constraints)
@@ -280,7 +338,8 @@ pub fn single_column_list_to_table(
     row_offset: usize,
     start: usize,
     end: usize,
-) -> Table<'_> {
+    find_needle: Option<&str>,
+) -> Table<'static> {
     let data_rows: Vec<Row> = section
         .values
         .iter()
@@ -288,7 +347,7 @@ pub fn single_column_list_to_table(
         .take(end.saturating_sub(start))
         .enumerate()
         .map(|(idx, s)| {
-            Row::new(vec![Cell::from(s.as_str())])
+            Row::new(vec![cell_for_str(s.as_str(), find_needle)])
                 .style(style::table_row_style(row_offset + start + idx))
         })
         .collect();

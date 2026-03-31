@@ -23,6 +23,14 @@ pub fn handle_file_delete_confirm(
         return false;
     }
     match action {
+        UblxAction::ConfirmYes => {
+            state.file_delete_confirm.selected_index = 0;
+            return handle_file_delete_confirm(state, params, UblxAction::SearchSubmit);
+        }
+        UblxAction::ConfirmNo => {
+            state.file_delete_confirm.selected_index = 1;
+            return handle_file_delete_confirm(state, params, UblxAction::SearchSubmit);
+        }
         UblxAction::Quit | UblxAction::SearchClear => state.close_file_delete_confirm(),
         UblxAction::MoveDown => {
             state.file_delete_confirm.selected_index =

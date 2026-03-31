@@ -13,7 +13,7 @@ use crate::config::{LayoutOverlay, TOAST_CONFIG};
 use crate::engine::db_ops::DuplicateGroup;
 use crate::layout;
 use crate::themes;
-use crate::ui::{UI_CONSTANTS, UI_STRINGS};
+use crate::ui::{UI_CONSTANTS, UI_STRINGS, main_tab_bar_modes_and_labels};
 use crate::utils::{format_timestamp_ns, toast_content_line_count};
 
 /// Arguments for [`draw_ublx_frame`] that vary per frame (keeps arg count under clippy limit).
@@ -57,7 +57,7 @@ pub fn draw_ublx_frame(
 
     draw_toast_if_visible(f, state, args);
     if state.chrome.help_visible {
-        overlays::render_help_box(f);
+        overlays::render_help_box(f, state.main_mode);
     }
     if state.theme.selector_visible {
         overlays::render_theme_selector(f, state.theme.selector_index);
@@ -375,30 +375,12 @@ fn draw_main_tabs(
     let (tabs_rect, brand_rect) = (chunks[0], chunks[1]);
     let has_duplicates = args.duplicate_groups.is_some_and(|g| !g.is_empty());
     let has_lenses = args.lens_names.is_some_and(|n| !n.is_empty());
-    let mut segments: Vec<_> = layout::style::tab_node_segment(
-        UI_STRINGS.main_tabs.snapshot,
-        state.main_mode == layout::setup::MainMode::Snapshot,
-    )
-    .into_iter()
-    .chain(layout::style::tab_node_segment(
-        UI_STRINGS.main_tabs.delta,
-        state.main_mode == layout::setup::MainMode::Delta,
-    ))
-    .chain(layout::style::tab_node_segment(
-        UI_STRINGS.main_tabs.settings,
-        state.main_mode == layout::setup::MainMode::Settings,
-    ))
-    .collect();
-    if has_lenses {
+    let (modes, titles) = main_tab_bar_modes_and_labels(has_lenses, has_duplicates);
+    let mut segments: Vec<Span> = Vec::new();
+    for (mode, title) in modes.iter().zip(titles.iter()) {
         segments.extend(layout::style::tab_node_segment(
-            UI_STRINGS.main_tabs.lenses,
-            state.main_mode == layout::setup::MainMode::Lenses,
-        ));
-    }
-    if has_duplicates {
-        segments.extend(layout::style::tab_node_segment(
-            UI_STRINGS.main_tabs.duplicates,
-            state.main_mode == layout::setup::MainMode::Duplicates,
+            title.as_str(),
+            state.main_mode == *mode,
         ));
     }
     let line = Line::from(segments);
@@ -412,7 +394,8 @@ fn draw_main_tabs(
     );
 }
 
-/// Status line: powerline node (Latest Snapshot) + Search: + Esc to clear, all on one line
+/// Status line: Latest Snapshot powerline node, or catalog search (same popup look as find) in that slot.
+/// Esc clears search and the snapshot node returns.
 pub fn draw_status_line(
     f: &mut Frame,
     area: Rect,
@@ -420,8 +403,11 @@ pub fn draw_status_line(
     search_active: bool,
     search_query: &str,
 ) {
+    let search_replaces_snapshot = search_active || !search_query.trim().is_empty();
     let mut spans: Vec<Span<'static>> = Vec::new();
-    if let Some(ns) = latest_snapshot_ns {
+    if let Some(ns) = latest_snapshot_ns
+        && !search_replaces_snapshot
+    {
         let node_content = format!(
             "{}: {}",
             UI_STRINGS.search.latest_snapshot,
@@ -429,17 +415,8 @@ pub fn draw_status_line(
         );
         spans.extend(layout::style::status_node_spans(&node_content));
     }
-    if search_active || !search_query.is_empty() {
-        spans.push(Span::raw("  "));
-        spans.push(Span::styled(
-            format!("{}{}", UI_STRINGS.search.search_label, search_query),
-            layout::style::search_text(),
-        ));
-        spans.push(Span::raw("  "));
-        spans.push(Span::styled(
-            UI_STRINGS.search.esc_to_clear,
-            layout::style::hint_text(),
-        ));
+    if let Some(popup) = layout::style::search_catalog_popup_spans(search_active, search_query) {
+        spans.extend(popup);
     }
     let line = Line::from(spans);
     f.render_widget(Paragraph::new(line), area);

@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::layout::{filter, setup};
+use crate::handlers::applets::search::{self, fuzzy_matches_field};
+use crate::layout::setup;
 use crate::utils::{clamp_selection, clamp_selection_opt};
 
 fn sort_indices_by_mode(
@@ -113,7 +114,7 @@ pub fn filter_contents_by_search(
         rows
     } else {
         rows.into_iter()
-            .filter(|(path, _, _)| path.contains(search_query))
+            .filter(|(path, _, _)| fuzzy_matches_field(path, search_query))
             .collect()
     }
 }
@@ -161,18 +162,19 @@ pub fn build_view_data(
     mtimes_by_path: Option<&HashMap<String, Option<i64>>>,
 ) -> setup::ViewData {
     let search_query = state_mut.search.query.trim();
-    let filtered_categories = filter::categories_for_search(categories, all_rows, search_query);
+    let filtered_categories = search::categories_for_search(categories, all_rows, search_query);
     let category_idx = state_mut.panels.category_state.selected().unwrap_or(0);
     let selected_category = selected_category(&filtered_categories, category_idx);
-    let contents_indices =
-        filter::content_indices_for_view(all_rows, selected_category, search_query);
-    let mut contents_indices = contents_indices;
-    sort_indices_by_mode(
-        &mut contents_indices,
-        all_rows,
-        state_mut.panels.content_sort,
-        mtimes_by_path,
-    );
+    let mut contents_indices =
+        search::content_indices_for_view(all_rows, selected_category, search_query);
+    if search_query.is_empty() {
+        sort_indices_by_mode(
+            &mut contents_indices,
+            all_rows,
+            state_mut.panels.content_sort,
+            mtimes_by_path,
+        );
+    }
 
     let category_list_len = 1 + filtered_categories.len();
     let content_len = contents_indices.len();

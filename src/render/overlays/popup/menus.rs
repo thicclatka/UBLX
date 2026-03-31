@@ -9,7 +9,7 @@ use crate::layout::{
     setup::{MainMode, SpaceMenuKind},
     style,
 };
-use crate::ui::UI_STRINGS;
+use crate::ui::{UI_STRINGS, menu};
 
 use super::utils::{ListPopupParams, POPUP_MENU, render_list_popup, render_text_input_popup};
 
@@ -21,49 +21,28 @@ pub fn render_context_menu(
     anchor_area: Rect,
     anchor_row_index: usize,
 ) {
-    // File actions: Open, Show in folder, [optional enhance], Add/Remove lens, Copy Path, Copy Templates,
-    // Rename, Delete.
-    let (title, items): (&str, Vec<&str>) = match kind {
-        SpaceMenuKind::FileActions {
-            show_enhance_directory_policy,
-            show_enhance_zahir,
-            show_copy_zahir_json,
-            ..
-        } => {
-            let mut items = vec![UI_STRINGS.space.open, UI_STRINGS.space.show_in_folder];
-            if *show_enhance_directory_policy {
-                items.push(UI_STRINGS.space.enhance_policy);
-            }
-            if *show_enhance_zahir {
-                items.push(UI_STRINGS.space.enhance_with_zahirscan);
-            }
-            if main_mode == MainMode::Lenses {
-                items.push(UI_STRINGS.space.remove_from_lens);
-            } else {
-                items.push(UI_STRINGS.space.add_to_lens);
-            }
-            items.push(UI_STRINGS.space.copy_path);
-            if *show_copy_zahir_json {
-                items.push(UI_STRINGS.space.copy_zahir_json);
-            }
-            items.push(UI_STRINGS.space.rename);
-            items.push(UI_STRINGS.space.delete);
-            (" Actions ", items)
-        }
-        SpaceMenuKind::LensPanelActions { .. } => (
-            " Lens ",
-            vec![UI_STRINGS.space.rename, UI_STRINGS.space.delete],
-        ),
+    let title = match kind {
+        SpaceMenuKind::FileActions { .. } => " Actions ",
+        SpaceMenuKind::LensPanelActions { .. } => " Lens ",
     };
+    let labeled = menu::space_menu_item_labels(kind, main_mode);
+    let item_refs: Vec<&str> = labeled.iter().map(String::as_str).collect();
+    let max_width = labeled
+        .iter()
+        .map(|s| s.chars().count())
+        .max()
+        .unwrap_or(0)
+        .saturating_add(2)
+        .clamp(28, 52) as u16;
     render_list_popup(
         f,
         &ListPopupParams {
             title,
-            items: &items,
+            items: &item_refs,
             selected_index,
             anchor_area,
             anchor_row_index,
-            max_width: 34,
+            max_width,
             max_items: None,
         },
     );

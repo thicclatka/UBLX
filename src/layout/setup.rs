@@ -37,6 +37,8 @@ pub struct PanelState {
     pub content_sort: ContentSort,
     /// Temporary anchor used to keep the same selected item identity after sort changes.
     pub sort_anchor_path: Option<String>,
+    /// Last converged right-pane body text width (for find footer + tab match counts).
+    pub right_pane_text_w: Option<u16>,
 }
 
 impl PanelState {
@@ -129,6 +131,22 @@ impl ContentSort {
 pub struct SearchState {
     pub query: String,
     pub active: bool,
+}
+
+/// In-pane literal find (Ctrl+F): query, match byte ranges in haystack, current match index.
+#[derive(Default)]
+pub struct ViewerFindState {
+    pub query: String,
+    /// Typing into the find bar (chars go to query).
+    pub active: bool,
+    /// Enter pressed: bar closed, `n` / `N` cycle matches.
+    pub committed: bool,
+    pub ranges: Vec<(usize, usize)>,
+    pub current: usize,
+    /// Fingerprint of `(query, haystack)` last used to build `ranges`.
+    pub last_sync_token: Option<u64>,
+    /// After `n` / `N`, scroll even when the haystack token is unchanged.
+    pub pending_scroll: bool,
 }
 
 /// Theme selector and override.
@@ -400,6 +418,7 @@ pub struct UblxState {
     pub right_pane_mode: RightPaneMode,
     pub panels: PanelState,
     pub search: SearchState,
+    pub viewer_find: ViewerFindState,
     pub theme: ThemeState,
     pub toasts: ToastState,
     pub open_menu: OpenMenuState,
@@ -448,6 +467,7 @@ impl UblxState {
             right_pane_mode: RightPaneMode::default(),
             panels: PanelState::new(),
             search: SearchState::default(),
+            viewer_find: ViewerFindState::default(),
             theme: ThemeState::default(),
             toasts: ToastState::default(),
             open_menu: OpenMenuState::default(),
@@ -599,7 +619,7 @@ impl Default for SettingsPaneState {
     }
 }
 
-/// Top-level mode: Snapshot, Delta, Settings, Duplicates (if any), or Lenses (if any).
+/// Top-level mode. Tab bar order: Snapshot, Lenses (optional), Delta, Duplicates (optional), Settings.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum MainMode {
     #[default]
@@ -612,15 +632,27 @@ pub enum MainMode {
 }
 
 impl MainMode {
-    /// Cycle Snapshot → Delta → Settings → Lenses (when available) → Duplicates (when available) → Snapshot. Used for `MainModeToggle` (Shift+Tab).
+    /// Cycle Snapshot → Lenses (if any) → Delta → Duplicates (if any) → Settings → Snapshot (`MainModeToggle` / Shift+Tab).
     #[must_use]
     pub fn next(self, has_duplicates: bool, has_lenses: bool) -> MainMode {
         match self {
-            MainMode::Snapshot => MainMode::Delta,
-            MainMode::Delta => MainMode::Settings,
-            MainMode::Settings if has_lenses => MainMode::Lenses,
-            MainMode::Settings | MainMode::Lenses if has_duplicates => MainMode::Duplicates,
-            MainMode::Settings | MainMode::Lenses | MainMode::Duplicates => MainMode::Snapshot,
+            MainMode::Snapshot => {
+                if has_lenses {
+                    MainMode::Lenses
+                } else {
+                    MainMode::Delta
+                }
+            }
+            MainMode::Lenses => MainMode::Delta,
+            MainMode::Delta => {
+                if has_duplicates {
+                    MainMode::Duplicates
+                } else {
+                    MainMode::Settings
+                }
+            }
+            MainMode::Duplicates => MainMode::Settings,
+            MainMode::Settings => MainMode::Snapshot,
         }
     }
 }

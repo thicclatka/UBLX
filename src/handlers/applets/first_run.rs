@@ -176,7 +176,11 @@ pub fn handle_startup_prompt(
                 }
                 true
             }
-            UblxAction::Quit | UblxAction::SearchClear => {
+            UblxAction::ConfirmYes => {
+                use_previous_project_settings(state_mut, params_mut, ublx_opts_mut);
+                true
+            }
+            UblxAction::ConfirmNo | UblxAction::Quit | UblxAction::SearchClear => {
                 start_fresh_then_proceed(state_mut, params_mut, ublx_opts_mut);
                 true
             }
@@ -196,7 +200,11 @@ pub fn handle_startup_prompt(
                 finish_enhance_flow(state_mut, params_mut, ublx_opts_mut, enable);
                 true
             }
-            UblxAction::Quit | UblxAction::SearchClear => {
+            UblxAction::ConfirmYes => {
+                finish_enhance_flow(state_mut, params_mut, ublx_opts_mut, true);
+                true
+            }
+            UblxAction::ConfirmNo | UblxAction::Quit | UblxAction::SearchClear => {
                 finish_enhance_flow(state_mut, params_mut, ublx_opts_mut, false);
                 true
             }

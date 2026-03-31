@@ -6,6 +6,7 @@ use ratatui::text::Text;
 use crate::engine::cache::{self, ViewerContentIdentity, ViewerTextCacheEntry};
 use crate::integrations::{ZahirFileType as FileType, delimiter_from_path_for_viewer};
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
+use crate::render::kv_tables;
 use crate::render::viewers::{csv_handler, image as viewer_image, markdown};
 use crate::themes;
 use crate::ui::UI_STRINGS;
@@ -390,4 +391,89 @@ pub fn content_display_text(
                 .unwrap_or_else(|| UI_STRINGS.pane.not_available.to_string()),
         ),
     }
+}
+
+#[must_use]
+pub fn text_to_plain_string(text: &Text<'_>) -> String {
+    let mut s = String::new();
+    for (i, line) in text.lines.iter().enumerate() {
+        if i > 0 {
+            s.push('\n');
+        }
+        for span in &line.spans {
+            s.push_str(span.content.as_ref());
+        }
+    }
+    s
+}
+
+/// Haystack for Metadata / Writing tabs: formatted table text (same as on-screen cells), not raw JSON.
+#[must_use]
+pub fn json_tab_find_haystack(
+    right_content: &RightPaneContent,
+    mode: RightPaneMode,
+) -> Option<String> {
+    let json = match mode {
+        RightPaneMode::Metadata => right_content.metadata.as_deref(),
+        RightPaneMode::Writing => right_content.writing.as_deref(),
+        _ => None,
+    }?;
+    if json.trim().is_empty() {
+        return None;
+    }
+    Some(kv_tables::searchable_text_from_json(json))
+}
+
+#[must_use]
+pub fn viewer_find_haystack_text(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+) -> String {
+    ensure_viewer_text_cache(state, right_content, content_width);
+    if let Some(h) = json_tab_find_haystack(right_content, state.right_pane_mode) {
+        return h;
+    }
+    text_to_plain_string(&content_display_text(
+        state,
+        right_content,
+        content_width,
+        None,
+    ))
+}
+
+/// Number of non-overlapping literal occurrences of `needle` in `haystack`.
+#[must_use]
+pub fn literal_match_count(haystack: &str, needle: &str) -> usize {
+    let needle = needle.trim();
+    if needle.is_empty() {
+        return 0;
+    }
+    haystack.match_indices(needle).count()
+}
+
+/// Plain text for a given right-pane tab (restores active tab and cache after).
+#[must_use]
+pub fn haystack_for_right_pane_mode(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+    mode: RightPaneMode,
+) -> String {
+    let saved = state.right_pane_mode;
+    state.right_pane_mode = mode;
+    ensure_viewer_text_cache(state, right_content, content_width);
+    let out = if let Some(h) = json_tab_find_haystack(right_content, mode) {
+        h
+    } else {
+        text_to_plain_string(&content_display_text(
+            state,
+            right_content,
+            content_width,
+            None,
+        ))
+    };
+    state.right_pane_mode = saved;
+    ensure_viewer_text_cache(state, right_content, content_width);
+    out
 }

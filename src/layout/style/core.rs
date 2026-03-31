@@ -237,3 +237,33 @@ theme_style_fn_thru_list!(
     delta_removed,
     title_brand,
 );
+
+/// Non-current in-pane find matches (underlined accent).
+#[must_use]
+pub fn viewer_find_match() -> Style {
+    CurrentTheme::search_text().add_modifier(Modifier::UNDERLINED)
+}
+
+/// KV / sheet table cells: body text, bold + underline (no fill; row stripe shows through).
+#[must_use]
+pub fn viewer_find_match_table_cell() -> Style {
+    let t = CurrentTheme::palette();
+    Style::default()
+        .fg(t.text)
+        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+}
+
+/// Active find match inside a KV / sheet cell: accent fg (not [`Modifier::REVERSED`]) so it reads on stripes.
+#[must_use]
+pub fn viewer_find_match_current_table_cell() -> Style {
+    let t = CurrentTheme::palette();
+    Style::default()
+        .fg(t.search_text)
+        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+}
+
+/// Current in-pane find match.
+#[must_use]
+pub fn viewer_find_match_current() -> Style {
+    CurrentTheme::text_style().add_modifier(Modifier::BOLD | Modifier::REVERSED)
+}

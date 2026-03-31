@@ -40,4 +40,6 @@ mod chrome;
 mod content;
 mod draw;
 
-pub use draw::{draw_right_pane, draw_right_pane_fullscreen};
+pub use chrome::visible_tabs;
+pub use content::*;
+pub use draw::*;

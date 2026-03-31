@@ -108,6 +108,14 @@ pub fn handle_lens_delete_confirm(
         return false;
     }
     match action {
+        UblxAction::ConfirmYes => {
+            state.lens_confirm.delete_selected = 0;
+            return handle_lens_delete_confirm(state, params, UblxAction::SearchSubmit);
+        }
+        UblxAction::ConfirmNo => {
+            state.lens_confirm.delete_selected = 1;
+            return handle_lens_delete_confirm(state, params, UblxAction::SearchSubmit);
+        }
         UblxAction::Quit | UblxAction::SearchClear => state.close_lens_delete_confirm(),
         UblxAction::MoveDown => {
             state.lens_confirm.delete_selected = 1.min(state.lens_confirm.delete_selected + 1);

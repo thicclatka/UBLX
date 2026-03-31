@@ -7,6 +7,7 @@ use rayon::prelude::*;
 
 use crate::config::PARALLEL;
 use crate::engine::db_ops::{self, DuplicateGroup};
+use crate::handlers::applets::search::fuzzy_matches_field;
 use crate::layout::setup;
 use crate::utils::clamp_selection;
 
@@ -41,8 +42,8 @@ pub fn view_data_for_user_selected_mode(
                 groups
                     .par_iter()
                     .filter(|g| {
-                        g.representative_name().contains(search_query)
-                            || g.paths.iter().any(|p| p.contains(search_query))
+                        fuzzy_matches_field(g.representative_name(), search_query)
+                            || g.paths.iter().any(|p| fuzzy_matches_field(p, search_query))
                     })
                     .map(|g| g.representative_name().to_string())
                     .collect()
@@ -50,8 +51,8 @@ pub fn view_data_for_user_selected_mode(
                 groups
                     .iter()
                     .filter(|g| {
-                        g.representative_name().contains(search_query)
-                            || g.paths.iter().any(|p| p.contains(search_query))
+                        fuzzy_matches_field(g.representative_name(), search_query)
+                            || g.paths.iter().any(|p| fuzzy_matches_field(p, search_query))
                     })
                     .map(|g| g.representative_name().to_string())
                     .collect()
@@ -63,13 +64,13 @@ pub fn view_data_for_user_selected_mode(
             } else if lens_names.len() >= PARALLEL.user_selected_filter {
                 lens_names
                     .par_iter()
-                    .filter(|n| n.contains(search_query))
+                    .filter(|n| fuzzy_matches_field(n, search_query))
                     .cloned()
                     .collect()
             } else {
                 lens_names
                     .iter()
-                    .filter(|n| n.contains(search_query))
+                    .filter(|n| fuzzy_matches_field(n, search_query))
                     .cloned()
                     .collect()
             }

@@ -2,6 +2,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
+use super::consts::UblxTabNumber;
+
 /// Actions for the 3-panel TUI (categories, contents, preview).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UblxAction {
@@ -17,7 +19,7 @@ pub enum UblxAction {
     MainModeSettings,
     /// Switch to Lenses main tab (only when any lenses exist).
     MainModeLenses,
-    /// Alternate between Snapshot, Delta, Duplicates, and Lenses when available (Shift+Tab).
+    /// Alternate main tabs: Snapshot → Lenses (if any) → Delta → Duplicates (if any) → Settings (Shift+Tab).
     MainModeToggle,
     /// Run duplicate detection in background and show Duplicates tab (Ctrl+D).
     LoadDuplicates,
@@ -27,6 +29,14 @@ pub enum UblxAction {
     SearchSubmit,
     /// Esc when search is active (clear search); when inactive, use Quit.
     SearchClear,
+    /// In-pane literal find (right pane). Ctrl+F opens; Enter commits; Esc clears; n / N next/prev.
+    ViewerFindOpen,
+    ViewerFindChar(char),
+    ViewerFindBackspace,
+    ViewerFindSubmit,
+    ViewerFindClear,
+    ViewerFindNext,
+    ViewerFindPrev,
     /// Cycle right pane tab (Ctrl+V).
     CycleRightPane,
     RightPaneViewer,
@@ -68,8 +78,14 @@ pub enum UblxAction {
     LensMenu,
     /// Spacebar context menu
     SpaceMenu,
+    /// Pick a context-menu row by letter while the space menu is open (indices match current items).
+    SpaceMenuHotkeySelect(usize),
     /// Quick action: Enhance selected path with `ZahirScan` when available.
     EnhanceWithZahir,
+    /// First option on a Yes/No (or two-option) confirm overlay (`y`).
+    ConfirmYes,
+    /// Second option (`n`).
+    ConfirmNo,
     Noop,
 }
 
@@ -98,26 +114,61 @@ pub struct KeyOptionalTabs {
 #[derive(Clone, Copy, Debug)]
 pub struct KeyActionContext {
     pub search: KeySearchState,
+    pub viewer_find_typing: bool,
+    pub viewer_find_committed: bool,
+    /// Snapshot / Delta / Duplicates / Lenses (not Settings): in-pane find applies.
+    pub allow_viewer_find: bool,
     pub last_key_for_double: Option<char>,
     pub tabs: KeyOptionalTabs,
+    pub tab_keys: UblxTabNumber,
 }
 
-/// Map a key event to a vanilla TUI action. Call only when `event.kind == KeyEventKind::Press`.
-/// Esc yields `SearchClear` when the search bar is open or when a filter is active (so Esc clears
-/// search instead of quitting). Only when not searching at all does Esc mean Quit.
-/// Use `last_key_for_double` in `ctx` to detect gg (two g's) for `ListTop`.
-/// Use `tabs.duplicates` / `tabs.lenses` so keys 3/9 and `MainModeToggle` switch only when the tab exists.
 #[must_use]
-pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResult {
-    if event.kind != KeyEventKind::Press {
-        return KeyActionResult {
-            action: UblxAction::Noop,
-            last_key_for_double: None,
-        };
+fn main_mode_action_for_digit(
+    c: char,
+    keys: UblxTabNumber,
+    tabs: KeyOptionalTabs,
+) -> Option<UblxAction> {
+    let ch = |n: u8| char::from_digit(u32::from(n), 10);
+    if ch(keys.snapshot) == Some(c) {
+        return Some(UblxAction::MainModeSnapshot);
     }
+    if ch(keys.delta) == Some(c) {
+        return Some(UblxAction::MainModeDelta);
+    }
+    if ch(keys.settings) == Some(c) {
+        return Some(UblxAction::MainModeSettings);
+    }
+    if tabs.lenses && ch(keys.lenses) == Some(c) {
+        return Some(UblxAction::MainModeLenses);
+    }
+    if tabs.duplicates && ch(keys.duplicates) == Some(c) {
+        return Some(UblxAction::MainModeDuplicates);
+    }
+    None
+}
+
+#[must_use]
+fn viewer_find_typing_mapping(event: KeyEvent) -> KeyActionResult {
+    let (action, last_key) = match event.code {
+        KeyCode::Esc => (UblxAction::ViewerFindClear, None),
+        KeyCode::Enter => (UblxAction::ViewerFindSubmit, None),
+        KeyCode::Backspace => (UblxAction::ViewerFindBackspace, None),
+        KeyCode::Char(c) => (UblxAction::ViewerFindChar(c), None),
+        _ => (UblxAction::Noop, None),
+    };
+    KeyActionResult {
+        action,
+        last_key_for_double: last_key,
+    }
+}
+
+#[must_use]
+fn key_action_default(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResult {
     let shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
     let (action, last_key) = match event.code {
+        KeyCode::Esc if ctx.viewer_find_committed => (UblxAction::ViewerFindClear, None),
         KeyCode::Esc if ctx.search.active || ctx.search.has_filter => {
             (UblxAction::SearchClear, None)
         }
@@ -125,6 +176,26 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
         KeyCode::Char('?') => (UblxAction::Help, None),
         KeyCode::Char('/') if !ctx.search.active => (UblxAction::SearchStart, None),
         KeyCode::Char(c) if ctx.search.active => (UblxAction::SearchChar(c), None),
+        KeyCode::Char('f' | 'F') if ctrl && ctx.allow_viewer_find => {
+            (UblxAction::ViewerFindOpen, None)
+        }
+        KeyCode::Char('n')
+            if !shift
+                && !ctrl
+                && ctx.viewer_find_committed
+                && !ctx.viewer_find_typing
+                && !ctx.search.active =>
+        {
+            (UblxAction::ViewerFindNext, None)
+        }
+        KeyCode::Char('N')
+            if !ctrl
+                && ctx.viewer_find_committed
+                && !ctx.viewer_find_typing
+                && !ctx.search.active =>
+        {
+            (UblxAction::ViewerFindPrev, None)
+        }
         KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
         KeyCode::Char('o' | 'O') if shift => (UblxAction::OpenMenu, None),
         KeyCode::Char('t' | 'T') if ctrl => (UblxAction::ThemeSelector, None),
@@ -150,26 +221,25 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
         }
         KeyCode::Char(c) if shift => (UblxAction::SearchChar(c), None),
         KeyCode::Char(c) => {
-            let a = match c {
-                ' ' => UblxAction::SpaceMenu,
-                '1' => UblxAction::MainModeSnapshot,
-                '2' => UblxAction::MainModeDelta,
-                '3' => UblxAction::MainModeSettings,
-                '4' if ctx.tabs.lenses => UblxAction::MainModeLenses,
-                '9' if ctx.tabs.duplicates => UblxAction::MainModeDuplicates,
-                'e' => UblxAction::OpenConfigInEditor,
-                'v' => UblxAction::RightPaneViewer,
-                't' => UblxAction::RightPaneTemplates,
-                'm' => UblxAction::RightPaneMetadata,
-                'w' => UblxAction::RightPaneWriting,
-                's' => UblxAction::CycleContentSort,
-                'j' => UblxAction::MoveDown,
-                'k' => UblxAction::MoveUp,
-                'h' => UblxAction::FocusCategories,
-                'l' => UblxAction::FocusContents,
-                'J' => UblxAction::ScrollPreviewDown,
-                'K' => UblxAction::ScrollPreviewUp,
-                _ => UblxAction::Noop,
+            let a = if let Some(mode) = main_mode_action_for_digit(c, ctx.tab_keys, ctx.tabs) {
+                mode
+            } else {
+                match c {
+                    ' ' => UblxAction::SpaceMenu,
+                    'e' => UblxAction::OpenConfigInEditor,
+                    'v' => UblxAction::RightPaneViewer,
+                    't' => UblxAction::RightPaneTemplates,
+                    'm' => UblxAction::RightPaneMetadata,
+                    'w' => UblxAction::RightPaneWriting,
+                    's' => UblxAction::CycleContentSort,
+                    'j' => UblxAction::MoveDown,
+                    'k' => UblxAction::MoveUp,
+                    'h' => UblxAction::FocusCategories,
+                    'l' => UblxAction::FocusContents,
+                    'J' => UblxAction::ScrollPreviewDown,
+                    'K' => UblxAction::ScrollPreviewUp,
+                    _ => UblxAction::Noop,
+                }
             };
             (a, None)
         }
@@ -189,6 +259,28 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
     }
 }
 
+/// Map a key event to a vanilla TUI action. Call only when `event.kind == KeyEventKind::Press`.
+/// Esc yields `SearchClear` when the search bar is open or when a filter is active (so Esc clears
+/// search instead of quitting). Only when not searching at all does Esc mean Quit.
+/// Use `last_key_for_double` in `ctx` to detect gg (two g's) for `ListTop`.
+/// Use `tabs.duplicates` / `tabs.lenses` so optional tab digits and `MainModeToggle` apply only when the tab exists.
+#[must_use]
+pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResult {
+    if event.kind != KeyEventKind::Press {
+        return KeyActionResult {
+            action: UblxAction::Noop,
+            last_key_for_double: None,
+        };
+    }
+    if ctx.viewer_find_typing {
+        let r = viewer_find_typing_mapping(event);
+        if !matches!(r.action, UblxAction::Noop) {
+            return r;
+        }
+    }
+    key_action_default(event, ctx)
+}
+
 /// Returns true if the action was handled by the search bar (main loop should skip navigation).
 #[must_use]
 pub fn search_consumes(action: UblxAction) -> bool {
@@ -198,5 +290,17 @@ pub fn search_consumes(action: UblxAction) -> bool {
             | UblxAction::SearchSubmit
             | UblxAction::SearchBackspace
             | UblxAction::SearchChar(_)
+    )
+}
+
+/// Returns true if the action was handled by the in-pane find bar (skip navigation / other handlers).
+#[must_use]
+pub fn viewer_find_consumes(action: UblxAction) -> bool {
+    matches!(
+        action,
+        UblxAction::ViewerFindClear
+            | UblxAction::ViewerFindSubmit
+            | UblxAction::ViewerFindBackspace
+            | UblxAction::ViewerFindChar(_)
     )
 }
