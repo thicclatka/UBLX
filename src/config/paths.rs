@@ -13,6 +13,8 @@ use std::{
 pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 /// Plural of `PKG_NAME` for the directory name.
 pub const PKG_NAME_PLURAL: &str = "ubli";
+/// File extension for the per-root index DB under `cache_dir()/`[`PKG_NAME_PLURAL`] (leading dot + [`PKG_NAME`]).
+pub const INDEX_DB_FILE_EXT: &str = concat!(".", env!("CARGO_PKG_NAME"));
 /// Basename of visible local config (`ublx.toml`). Same leaf as [`UblxPaths::visible_toml`].
 pub const LOCAL_CONFIG_VISIBLE_TOML: &str = concat!(env!("CARGO_PKG_NAME"), ".toml");
 /// Basename of hidden local config (`.ublx.toml`). Same leaf as [`UblxPaths::hidden_toml`].
@@ -209,9 +211,7 @@ pub fn has_any_cached_ublx_db() -> bool {
         e.path()
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| {
-                n.starts_with(&format!("{PKG_NAME}_")) || n.ends_with(&format!("_{PKG_NAME}"))
-            })
+            .is_some_and(|n| n.ends_with(INDEX_DB_FILE_EXT))
     })
 }
 
@@ -403,7 +403,7 @@ pub fn rel_path_is_exact_local_config_toml(path_str: &str) -> bool {
     norm == LOCAL_CONFIG_VISIBLE_TOML || norm == LOCAL_CONFIG_HIDDEN_TOML
 }
 
-/// Paths for the index DB and related files under an indexed `dir_to_ublx_abs`. All names use `PKG_NAME` (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
+/// Paths for the index DB and related files under an indexed `dir_to_ublx_abs`. Filenames use [`INDEX_DB_FILE_EXT`] and related suffixes (`_tmp`, `-wal`, `-shm`).
 #[derive(Clone, Debug)]
 pub struct UblxPaths {
     pub dir_to_ublx_abs: PathBuf,
@@ -417,6 +417,7 @@ impl UblxPaths {
         }
     }
 
+    /// Filename stem (no extension) for the index DB: sanitized dir name + path hash.
     fn db_stem(&self) -> String {
         let dir_name = self
             .dir_to_ublx_abs
@@ -426,6 +427,12 @@ impl UblxPaths {
         let safe_name = sanitize_name_for_fs(dir_name);
         let hash = path_to_hex(&self.dir_to_ublx_abs);
         format!("{safe_name}_{hash}")
+    }
+
+    /// Full filename for the index DB under [`Self::db_dir`] (stem + [`INDEX_DB_FILE_EXT`]).
+    #[must_use]
+    fn db_filename(&self) -> String {
+        format!("{}{}", self.db_stem(), INDEX_DB_FILE_EXT)
     }
 
     #[must_use]
@@ -487,12 +494,12 @@ impl UblxPaths {
         }
     }
 
-    /// Main DB file. e.g. `dir_to_ublx_abs/.ublx`. `SQLite` creates it if missing.
+    /// Main DB file under `cache_dir()` / [`PKG_NAME_PLURAL`] (basename + [`INDEX_DB_FILE_EXT`]). `SQLite` creates it if missing.
     #[must_use]
     pub fn db(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(self.db_stem())
+            .join(self.db_filename())
     }
 
     /// Nefaxer index file (e.g. `dir_to_ublx_abs/.nefaxer`). When present, used as prior snapshot before ublx snapshot.
@@ -501,47 +508,47 @@ impl UblxPaths {
         self.dir_to_ublx_abs.join(NEFAX_DB)
     }
 
-    /// Temp file (e.g. write-then-rename). e.g. `dir_to_ublx_abs/.ublx_tmp`.
+    /// Temp file (write-then-rename to [`Self::db`]). Same stem as DB with `_tmp` before [`INDEX_DB_FILE_EXT`].
     #[must_use]
     pub fn tmp(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}_tmp", self.db_stem()))
+            .join(format!("{}_tmp{}", self.db_stem(), INDEX_DB_FILE_EXT))
     }
 
-    /// WAL file for [`Self::tmp`] when snapshot build uses `journal_mode=WAL`. e.g. `.ublx_tmp-wal`.
+    /// WAL file for [`Self::tmp`] when snapshot build uses `journal_mode=WAL`.
     #[must_use]
     pub fn tmp_wal(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}_tmp-wal", self.db_stem()))
+            .join(format!("{}_tmp{}-wal", self.db_stem(), INDEX_DB_FILE_EXT))
     }
 
-    /// Shared-memory file for [`Self::tmp`] in WAL mode. e.g. `.ublx_tmp-shm`.
+    /// Shared-memory file for [`Self::tmp`] in WAL mode.
     #[must_use]
     pub fn tmp_shm(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}_tmp-shm", self.db_stem()))
+            .join(format!("{}_tmp{}-shm", self.db_stem(), INDEX_DB_FILE_EXT))
     }
 
-    /// `SQLite` WAL file (created by `SQLite` when WAL mode is on). e.g. `dir_to_ublx_abs/.ublx-wal`.
+    /// `SQLite` WAL file for [`Self::db`] when WAL mode is on.
     #[must_use]
     pub fn wal(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}-wal", self.db_stem()))
+            .join(format!("{}{}-wal", self.db_stem(), INDEX_DB_FILE_EXT))
     }
 
-    /// `SQLite` shared-memory file (WAL mode). e.g. `dir_to_ublx_abs/.ublx-shm`.
+    /// `SQLite` shared-memory file for [`Self::db`] in WAL mode.
     #[must_use]
     pub fn shm(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}-shm", self.db_stem()))
+            .join(format!("{}{}-shm", self.db_stem(), INDEX_DB_FILE_EXT))
     }
 
-    /// Paths to exclude from indexing (db, tmp, wal, shm). Returns segment-style names so nefaxer’s exclude (matched per path component) works, e.g. `.ublx`, `.ublx_tmp`.
+    /// Paths to exclude from indexing (nefax + local config). DB files under `ubli/` use [`INDEX_DB_FILE_EXT`] and are not listed here (nefax matches path components).
     /// Local `ublx.toml` / `.ublx.toml` are edited from the Settings tab, not listed as a snapshot category.
     #[must_use]
     pub fn exclude(&self) -> Vec<String> {

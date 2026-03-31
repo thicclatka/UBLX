@@ -19,7 +19,7 @@ Or clone the repo and run `cargo build --release`; the binary is in `target/rele
 
 ## What it does
 
-- **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes `DIR/.ublx` (SQLite: snapshot, settings, delta_log, lenses). Config: `ublx.toml` or `.ublx.toml`.
+- **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes a per-root SQLite file under your user cache (`ubli/`; stem is sanitized dir name plus path hash, extension matches the `ublx` package name). Config: `ublx.toml` or `.ublx.toml`.
 - **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), context menus (Space, Shift+L), stacked toasts. Viewer has fullscreen (F). `q` / Esc quit.
 - **Snapshot-only** — `ublx --snapshot-only [DIR]` (`-s`) indexes headlessly, no TUI. Writes `.ublx.toml` with `enable_enhance_all = false` when the directory has no local config yet. Use `--enhance-all` (`-e`) or `--full-snapshot` (`-f`) for full index-time Zahir.
 

@@ -1,12 +1,19 @@
 //! Snapshot DB path resolution for reading. Use when the TUI should show live data
-//! from a running snapshot (e.g. read from `.ublx_tmp` until the pipeline renames to `.ublx`).
+//! from a running snapshot (e.g. read from the temp file until rename to the final [`INDEX_DB_FILE_EXT`] file).
 
 use std::path::{Path, PathBuf};
+
+use crate::config::INDEX_DB_FILE_EXT;
 
 fn tmp_from_db_path(db_path: &Path) -> Option<PathBuf> {
     let parent = db_path.parent()?;
     let file_name = db_path.file_name()?.to_str()?;
-    Some(parent.join(format!("{file_name}_tmp")))
+    if let Some(stem) = file_name.strip_suffix(INDEX_DB_FILE_EXT) {
+        Some(parent.join(format!("{}_tmp{}", stem, INDEX_DB_FILE_EXT)))
+    } else {
+        // Pre-extension layout: final `stem`, temp `stem_tmp` (no [`INDEX_DB_FILE_EXT`]).
+        Some(parent.join(format!("{file_name}_tmp")))
+    }
 }
 
 /// Which file to prefer when both exist: final `.ublx` or in-progress `.ublx_tmp`.

@@ -55,7 +55,9 @@ fn snapshot_only_writes_db_and_hidden_toml() {
         .join("ublx_integration_test_dir");
     let _ = std::fs::create_dir_all(&tmp);
     // Must match `validate_dir` → `canonicalize()` in main: `UblxPaths::db_stem` hashes this path.
-    let tmp = tmp.canonicalize().expect("canonicalize integration test dir");
+    let tmp = tmp
+        .canonicalize()
+        .expect("canonicalize integration test dir");
     cleanup_integration_test_cache(&tmp);
     let paths = UblxPaths::new(&tmp);
     let out = ublx_bin()

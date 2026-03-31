@@ -2,7 +2,7 @@
 //!
 //! Settings overlay tests: `tests/settings_overlay.rs`.
 
-use ublx::config::should_show_initial_prompt;
+use ublx::config::{INDEX_DB_FILE_EXT, PKG_NAME, should_show_initial_prompt};
 use ublx::render::path_lines::wrap_path_string_segments;
 
 // --- `config::paths` / `should_show_initial_prompt` ------------------------------------------------
@@ -17,6 +17,12 @@ fn never_in_snapshot_only_mode() {
 fn initial_prompt_only_if_no_ubli_db_when_not_snapshot_only() {
     assert!(should_show_initial_prompt(false, false));
     assert!(!should_show_initial_prompt(false, true));
+}
+
+#[test]
+fn index_db_file_ext_is_dot_pkg_name() {
+    assert_eq!(INDEX_DB_FILE_EXT, concat!(".", env!("CARGO_PKG_NAME")));
+    assert_eq!(INDEX_DB_FILE_EXT, format!(".{PKG_NAME}"));
 }
 
 // --- `render::path_lines` / `wrap_path_string_segments` --------------------------------------------
