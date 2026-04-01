@@ -5,11 +5,11 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Borders, ListItem};
 
-use super::middle::{CONTENTS_LIST_VIRTUALIZE_MIN, contents_list_viewport};
-
 use crate::config::UblxPaths;
 use crate::layout::{setup, style};
 use crate::ui::{UI_STRINGS, chord_chrome_active};
+
+use super::middle::{CONTENTS_LIST_VIRTUALIZE_MIN, contents_list_viewport};
 
 /// Draw the categories (left) pane. `chunks` must have at least 1 element; uses `chunks[0]`.
 pub fn draw_categories_pane(
@@ -76,6 +76,7 @@ fn contents_panel_block(
     state: &setup::UblxState,
     view: &setup::ViewData,
     focused: bool,
+    transparent_page_chrome: bool,
 ) -> Block<'static> {
     let left_title = super::panel_title_line(
         UI_STRINGS.pane.contents,
@@ -91,15 +92,16 @@ fn contents_panel_block(
         })
         .title_style(Style::default())
         .title(left_title)
-        .title_bottom(super::line_for(
-            state.panels.content_state.selected(),
-            view.content_len,
-            state.main_mode,
-            state.panels.content_sort,
-            chord_chrome_active(&state.chrome),
-            state.multiselect.active,
-            state.multiselect.selected.len(),
-        ))
+        .title_bottom(super::line_for(super::MiddlePaneFooterLineCtx {
+            selected_index: state.panels.content_state.selected(),
+            content_len: view.content_len,
+            main_mode: state.main_mode,
+            sort: state.panels.content_sort,
+            chord_mode: chord_chrome_active(&state.chrome),
+            multiselect_active: state.multiselect.active,
+            multiselect_count: state.multiselect.selected.len(),
+            transparent_page_chrome,
+        }))
 }
 
 /// Build list rows for the contents pane; `Some(start)` when the list is windowed for large snapshots.
@@ -168,10 +170,11 @@ pub fn draw_contents_panel(
     all_rows: Option<&[setup::TuiRow]>,
     dir_to_ublx: Option<&std::path::Path>,
     chunks: &[Rect],
+    transparent_page_chrome: bool,
 ) {
     let area = chunks[1];
     let focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
-    let block = contents_panel_block(state, view, focused);
+    let block = contents_panel_block(state, view, focused, transparent_page_chrome);
     let total = view.content_len;
     let global_sel = state
         .panels

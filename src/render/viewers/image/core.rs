@@ -8,13 +8,13 @@ use std::sync::mpsc::{self, TryRecvError};
 use image::imageops::FilterType;
 use ratatui_image::{Resize, StatefulImage, protocol::StatefulProtocol};
 
-use super::raster_policy;
-
 use crate::integrations::ZahirFileType as FileType;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
 use crate::render::viewers::{pdf_preview, video_preview};
 use crate::ui::{UI_GLYPHS, UI_STRINGS};
 use crate::utils::HALF_MIB_BYTES;
+
+use super::raster_policy;
 
 /// Decode + downscale off the UI thread when the file is at least this large (keeps dev/`opt-level=1` snappy too).
 /// Same value as [`crate::utils::HALF_MIB_BYTES`] (viewer read cap).

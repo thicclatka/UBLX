@@ -6,13 +6,13 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use super::utils::{ListPopupParams, render_list_popup};
-
 use crate::layout::style;
 use crate::themes;
 use crate::themes::Palette;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 use crate::utils::StringObjTraits;
+
+use super::utils::{ListPopupParams, render_list_popup};
 
 // --- First-run startup overlays (see [`crate::layout::setup::StartupPromptPhase`]) --------------
 

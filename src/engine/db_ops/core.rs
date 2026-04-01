@@ -9,15 +9,15 @@ use std::time::Duration;
 use log::debug;
 use rusqlite::{Connection, OptionalExtension};
 
-use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
-use super::utils::{self as db_ops_utils, SnapshotPriorContext};
-
 use crate::config::{UblxPaths, UblxSettings, rel_path_is_exact_local_config_toml};
 use crate::integrations::{
     NefaxDiff, NefaxResult, ZahirOutput, ZahirResult, get_zahir_output_by_path,
     zahir_output_to_json_for_path,
 };
 use crate::utils::{canonicalize_dir_to_ublx, get_created_ns, normalize_snapshot_rel_path_str};
+
+use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
+use super::utils::{self as db_ops_utils, SnapshotPriorContext};
 
 /// How long TUI snapshot reads wait on `SQLITE_BUSY` before failing (keeps the event loop responsive while tmp is written).
 pub const SNAPSHOT_TUI_READ_BUSY_MS: u64 = 2;

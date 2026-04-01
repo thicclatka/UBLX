@@ -7,7 +7,7 @@ use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths, first_validation_error_
 use crate::layout::setup::UblxState;
 use crate::themes;
 use crate::ui::{UI_STRINGS, show_operation_toast};
-use crate::utils;
+use crate::utils::{self, sync_osc11_page_background};
 
 /// Window (ms) after we write config ourselves (e.g. theme selector) during which a file-watcher reload is treated as self-caused.
 const CONFIG_SELF_WRITE_WINDOW_MS: u64 = 800;
@@ -36,10 +36,17 @@ pub fn on_first_tick(state_mut: &mut UblxState, params_ref: &RunUblxParams<'_>) 
     }
 }
 
-/// Copy theme / layout from [`UblxOpts`] into [`RunUblxParams`] after reload.
+/// Copy theme / layout / background opacity from [`UblxOpts`] into [`RunUblxParams`] after reload, and refresh OSC 11.
 pub fn sync_run_params_from_opts(params_mut: &mut RunUblxParams<'_>, ublx_opts_ref: &UblxOpts) {
     params_mut.theme.clone_from(&ublx_opts_ref.theme);
     params_mut.layout.clone_from(&ublx_opts_ref.layout);
+    params_mut.bg_opacity = ublx_opts_ref.bg_opacity.unwrap_or(1.0);
+    params_mut.opacity_format = ublx_opts_ref.opacity_format;
+    let _ = sync_osc11_page_background(
+        params_mut.theme.as_deref(),
+        params_mut.bg_opacity,
+        params_mut.opacity_format,
+    );
 }
 
 /// If config watcher fired: optionally clear theme override (if external save), then apply reload and optional toast.

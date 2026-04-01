@@ -5,10 +5,10 @@ use std::path::Path;
 
 use log::warn;
 
-use super::{EnhancePolicy, EnhancePolicyEntry, LayoutOverlay, UblxOverlay};
-
 use crate::config::paths::{UblxPaths, normalize_rel_path_for_policy};
 use crate::config::theme::auto_correct_theme_name;
+
+use super::{EnhancePolicy, EnhancePolicyEntry, LayoutOverlay, UblxOverlay};
 
 /// Creates `path.parent()` when set; logs `could not create {what} …` and returns `false` on failure.
 fn ensure_parent_dir(path: &Path, what: &str) -> bool {

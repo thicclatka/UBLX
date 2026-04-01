@@ -1,6 +1,8 @@
 //! Config overlays: layout TOML, merge, and enhance (zahir batch) policy.
 
-use ublx::config::{EnhancePolicy, EnhancePolicyEntry, LayoutOverlay, UblxOpts, UblxOverlay};
+use ublx::config::{
+    EnhancePolicy, EnhancePolicyEntry, LayoutOverlay, Osc11BackgroundFormat, UblxOpts, UblxOverlay,
+};
 use ublx::integrations::{NefaxOpts, ZahirRuntimeConfig};
 
 #[test]
@@ -57,6 +59,8 @@ fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> Ublx
         config_source: None,
         theme: None,
         layout: LayoutOverlay::default(),
+        bg_opacity: None,
+        opacity_format: Osc11BackgroundFormat::default(),
         editor_path: None,
         enable_enhance_all,
         ask_enhance_on_new_root: true,

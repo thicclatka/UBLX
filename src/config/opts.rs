@@ -11,15 +11,15 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use super::paths::{UblxPaths, normalize_rel_path_for_policy, path_is_under_or_equal};
-use super::toast::OPERATION_NAME;
-use super::validation;
-
 use crate::config::profile;
 use crate::integrations::{
     NefaxDriveType, NefaxOpts, ZahirOutputMode, ZahirRuntimeConfig, pre_opts_for_nefaxer,
 };
 use crate::utils::BumperBuffer;
+
+use super::paths::{UblxPaths, normalize_rel_path_for_policy, path_is_under_or_equal};
+use super::toast::OPERATION_NAME;
+use super::validation;
 
 /// Parameters for config validation and optional bumper when loading opts in [`UblxOpts::for_dir`].
 pub struct UblxOptsForDirExtras<'a> {
@@ -90,6 +90,10 @@ pub struct UblxOpts {
     pub theme: Option<String>,
     /// Left/middle/right pane percentages (0–100). From config [layout]. Hot-reloadable.
     pub layout: profile::LayoutOverlay,
+    /// Page background opacity `0.0`–`1.0` (OSC 11 + main pane reset). `None` = solid (`1.0`). Hot-reloadable.
+    pub bg_opacity: Option<f32>,
+    /// OSC 11 encoding when [`Self::bg_opacity`] is &lt; 1. Hot-reloadable.
+    pub opacity_format: profile::Osc11BackgroundFormat,
     /// Editor for Open (Terminal). When None, use $EDITOR.
     pub editor_path: Option<String>,
     /// When true, run full `ZahirScan` on indexed files; when false, path-only category + space-menu enhance.
@@ -163,6 +167,8 @@ impl UblxOpts {
         if overlay.layout.is_some() {
             self.layout = overlay.layout.clone().unwrap_or_default();
         }
+        self.bg_opacity = overlay.bg_opacity;
+        self.opacity_format = overlay.opacity_format.unwrap_or_default();
         if overlay.editor_path.is_some() {
             self.editor_path.clone_from(&overlay.editor_path);
         }
@@ -255,6 +261,8 @@ impl UblxOpts {
             config_source,
             theme: None,
             layout: profile::LayoutOverlay::default(),
+            bg_opacity: None,
+            opacity_format: profile::Osc11BackgroundFormat::default(),
             editor_path: None,
             enable_enhance_all: false,
             ask_enhance_on_new_root: true,
@@ -319,6 +327,8 @@ impl UblxOpts {
             config_source: None,
             theme: None,
             layout: profile::LayoutOverlay::default(),
+            bg_opacity: None,
+            opacity_format: profile::Osc11BackgroundFormat::default(),
             editor_path: None,
             enable_enhance_all: true,
             ask_enhance_on_new_root: true,

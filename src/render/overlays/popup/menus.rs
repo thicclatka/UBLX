@@ -6,8 +6,6 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 
-use super::utils::{ListPopupParams, POPUP_MENU, render_list_popup, render_text_input_popup};
-
 use crate::layout::{
     setup::{MainMode, SpaceMenuKind},
     style,
@@ -17,6 +15,8 @@ use crate::ui::{
     CTRL_MENU_ROWS, UI_CONSTANTS, UI_STRINGS, label_with_hotkey, space_menu_item_labels,
 };
 use crate::utils::StringObjTraits;
+
+use super::utils::{ListPopupParams, POPUP_MENU, render_list_popup, render_text_input_popup};
 
 const LENS_NAME_INPUT_MAX_WIDTH: u16 = 56;
 const RENAME_INPUT_MAX_WIDTH: u16 = 96;

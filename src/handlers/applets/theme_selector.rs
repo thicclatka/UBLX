@@ -8,7 +8,12 @@ use crate::handlers::applets::settings;
 use crate::layout::setup::UblxState;
 use crate::themes;
 use crate::ui::{UblxAction, show_operation_toast};
-use crate::utils::clamp_selection;
+use crate::utils::{clamp_selection, sync_osc11_page_background};
+
+/// Match [`crate::app::runtime::frame::theme_name_for_tick`] after closing the selector: OSC 11 uses the same theme as the TUI.
+fn sync_osc11_after_selector_change(params: &RunUblxParams<'_>, theme_name: Option<&str>) {
+    let _ = sync_osc11_page_background(theme_name, params.bg_opacity, params.opacity_format);
+}
 
 /// Context for the theme selector: indexed project dir (local `ublx.toml` / `.ublx.toml`) + current theme label.
 #[derive(Clone, Debug)]
@@ -59,13 +64,29 @@ pub fn handle_key(
         UblxAction::Quit | UblxAction::SearchClear => {
             state_mut.theme.override_name = state_mut.theme.before_selector.clone();
             state_mut.theme.selector_visible = false;
+            sync_osc11_after_selector_change(
+                params_mut,
+                state_mut
+                    .theme
+                    .override_name
+                    .as_deref()
+                    .or(params_mut.theme.as_deref()),
+            );
         }
         UblxAction::MoveDown => {
             state_mut.theme.selector_index = clamp_selection(state_mut.theme.selector_index + 1, n);
+            sync_osc11_after_selector_change(
+                params_mut,
+                Some(opts[state_mut.theme.selector_index].name),
+            );
         }
         UblxAction::MoveUp => {
             state_mut.theme.selector_index =
                 clamp_selection(state_mut.theme.selector_index.saturating_sub(1), n);
+            sync_osc11_after_selector_change(
+                params_mut,
+                Some(opts[state_mut.theme.selector_index].name),
+            );
         }
         UblxAction::SearchSubmit => {
             let display_name = opts[state_mut.theme.selector_index].name;

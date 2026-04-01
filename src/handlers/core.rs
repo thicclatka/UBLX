@@ -8,11 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use crossterm::{
-    cursor::Show as ShowCursor,
-    event::{DisableMouseCapture, EnableMouseCapture},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
+use crossterm::{cursor::Show as ShowCursor, event as ct_event, terminal as ct_term};
 use log::debug;
 use notify::{RecursiveMode, Watcher};
 use ratatui::Terminal;
@@ -25,7 +21,7 @@ use crate::handlers::{applets::first_run, snapshot};
 use crate::integrations::NefaxResult;
 use crate::layout::setup;
 use crate::themes::default_theme_for_new_config_file;
-use crate::utils::{BumperBuffer, flush_bumper_to_stderr};
+use crate::utils;
 
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
@@ -34,7 +30,7 @@ pub struct RunAppParams<'a> {
     pub db_path: &'a Path,
     pub ublx_opts: &'a mut config::UblxOpts,
     pub prior_nefax: Option<&'a NefaxResult>,
-    pub bumper: Option<&'a BumperBuffer>,
+    pub bumper: Option<&'a utils::BumperBuffer>,
     pub dev: bool,
     pub start_time: Option<Instant>,
     /// Show first-run welcome when [`crate::config::paths::should_show_initial_prompt`] is true (no `ubli/` DB yet).
@@ -82,7 +78,7 @@ fn run_tui_mode(
     db_path: &Path,
     ublx_opts: &mut config::UblxOpts,
     prior_nefax: Option<&NefaxResult>,
-    bumper: Option<&BumperBuffer>,
+    bumper: Option<&utils::BumperBuffer>,
     dev: bool,
     initial_prompt: bool,
 ) -> std::io::Result<()> {
@@ -121,6 +117,8 @@ fn run_tui_mode(
         display: app::RunUblxDisplayOpts { dev },
         theme: ublx_opts.theme.clone(),
         layout: ublx_opts.layout.clone(),
+        bg_opacity: ublx_opts.bg_opacity.unwrap_or(1.0),
+        opacity_format: ublx_opts.opacity_format,
         duplicate_groups: Vec::new(),
         duplicate_mode: db_ops::DuplicateGroupingMode::NameSize,
         duplicate_groups_rx: None,
@@ -136,16 +134,22 @@ fn run_tui_mode(
     if let Some(b) = bumper
         && dev
     {
-        flush_bumper_to_stderr(b);
+        utils::flush_bumper_to_stderr(b);
     }
     Ok(())
 }
 
 /// Restore terminal to cooked mode, leave alternate screen, show cursor. Used on normal exit and from panic hook.
 pub fn restore_terminal() {
-    let _ = disable_raw_mode();
+    let _ = ct_term::disable_raw_mode();
     let mut out = io::stdout();
-    let _ = crossterm::execute!(out, DisableMouseCapture, LeaveAlternateScreen, ShowCursor);
+    let _ = crossterm::execute!(
+        out,
+        ct_event::DisableMouseCapture,
+        ct_term::LeaveAlternateScreen,
+        ShowCursor
+    );
+    let _ = utils::reset_osc_dynamic_background(&mut out);
 }
 
 /// Replace this process with `ublx` running on `dir` (same as `ublx <dir>` on the command line).
@@ -172,9 +176,14 @@ pub fn relaunch_ublx_indexed_dir(dir: &Path) -> ! {
 ///
 /// Returns [`io::Error`] from crossterm when disabling raw mode or manipulating the terminal.
 pub fn leave_terminal_for_editor() -> io::Result<()> {
-    disable_raw_mode()?;
+    ct_term::disable_raw_mode()?;
     let mut out = io::stdout();
-    crossterm::execute!(out, DisableMouseCapture, LeaveAlternateScreen, ShowCursor)?;
+    crossterm::execute!(
+        out,
+        ct_event::DisableMouseCapture,
+        ct_term::LeaveAlternateScreen,
+        ShowCursor
+    )?;
     Ok(())
 }
 
@@ -184,9 +193,13 @@ pub fn leave_terminal_for_editor() -> io::Result<()> {
 ///
 /// Returns [`io::Error`] from crossterm when enabling raw mode or manipulating the terminal.
 pub fn reapply_terminal_after_editor() -> io::Result<()> {
-    enable_raw_mode()?;
+    ct_term::enable_raw_mode()?;
     let mut out = io::stdout();
-    crossterm::execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
+    crossterm::execute!(
+        out,
+        ct_term::EnterAlternateScreen,
+        ct_event::EnableMouseCapture
+    )?;
     Ok(())
 }
 
@@ -236,9 +249,18 @@ pub fn run_tui_session(
         state.snapshot_bg.done_received = true;
     }
 
-    enable_raw_mode()?;
+    ct_term::enable_raw_mode()?;
     let mut out = io::stdout();
-    crossterm::execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
+    crossterm::execute!(
+        out,
+        ct_term::EnterAlternateScreen,
+        ct_event::EnableMouseCapture
+    )?;
+    let _ = utils::sync_osc11_page_background(
+        params.theme.as_deref(),
+        params.bg_opacity,
+        params.opacity_format,
+    );
     let backend = CrosstermBackend::new(out);
     let mut terminal = Terminal::new(backend)?;
 

@@ -79,8 +79,9 @@ Config is optional. If present, **global** config is applied first, then **local
 | Key                  | Type                 | Allowable values / notes                                                                                                                         |
 | -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `theme`              | string               | See [Themes](src/themes/README.md#allowable-values).                                                                                             |
-| `layout`             | table                | Pane widths: `left_pct`, `middle_pct`, `right_pct` (each 0–100; must sum to 100). Default: `left_pct = 20`, `middle_pct = 30`, `right_pct = 50`. |
-| `transparent`        | bool                 | If `true`, no app background (terminal default/transparency shows).                                                                              |
+| `layout`             | table                | Pane widths: `left_pct`, `middle_pct`, `right_pct` (each 0–100; must sum to 100). Default: `left_pct = 10`, `middle_pct = 30`, `right_pct = 60`. |
+| `bg_opacity`         | float (optional)     | Page background opacity `0.0`–`1.0`: main pane uses terminal default fill (OSC 11) below `1.0` so wallpaper can show through; omitted or `1.0` = solid theme background. Adjustable in Settings. |
+| `opacity_format`     | string (optional)    | When `bg_opacity` &lt; 1: OSC 11 payload style — `rgba` (default) or `hex8` (`#RRGGBBAA`). Some terminals prefer one or the other.                |
 | `show_hidden_files`  | bool                 | If `true`, include hidden files (e.g. `.*`) in the index.                                                                                        |
 | `hash`               | bool                 | If `true`, compute blake3 hash per file (slower; used for duplicate detection and change detection).                                             |
 | `exclude`            | array of strings     | Extra path patterns to exclude from indexing (startup only; not hot-reloadable).                                                                 |

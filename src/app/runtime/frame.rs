@@ -9,6 +9,7 @@ use crate::app::RunUblxParams;
 use crate::layout::setup;
 use crate::render::{DrawFrameArgs, draw_ublx_frame};
 use crate::themes;
+use crate::utils::OPACITY_SOLID_MIN;
 
 /// Inputs for building draw args and drawing one frame. Built once per tick and reused for the normal draw and optional post-editor refresh.
 pub struct DrawInputs<'a> {
@@ -53,6 +54,8 @@ fn build_draw_args<'a>(
         dir_to_ublx: Some(params.dir_to_ublx.as_path()),
         theme_name,
         layout: &params.layout,
+        bg_opacity: params.bg_opacity,
+        transparent_page_chrome: params.bg_opacity < OPACITY_SOLID_MIN,
         latest_snapshot_ns,
         dev: params.display.dev,
         duplicate_groups: if params.duplicate_groups.is_empty() {

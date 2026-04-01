@@ -26,6 +26,10 @@ pub struct UiGlyphs {
     pub github_mark: char,
     /// Settings left pane: prefix when this row is focused (`›` + space).
     pub settings_row_active: &'static str,
+    // Setting note marker (asterisk)
+    pub settings_note_asterisk: &'static str,
+    // Setting note marker (arrow)
+    pub settings_note_arrow: &'static str,
     /// Two-space indent: inactive Settings row prefix and wrapped path continuation lines.
     pub indent_two_spaces: &'static str,
 }
@@ -57,6 +61,8 @@ impl UiGlyphs {
             arrow_down: '\u{2193}',           // ↓
             github_mark: '\u{f09b}',
             settings_row_active: "\u{203a} ", // ›
+            settings_note_asterisk: "* ",     // asterisk
+            settings_note_arrow: "\u{2023} ", // ‣ triangular bullet
             indent_two_spaces: "  ",
         }
     }

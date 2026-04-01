@@ -86,6 +86,8 @@ pub fn perform_session_switch<'a>(
     params.bumper = bumper;
     params.theme.clone_from(&ublx_opts.theme);
     params.layout = ublx_opts.layout.clone();
+    params.bg_opacity = ublx_opts.bg_opacity.unwrap_or(1.0);
+    params.opacity_format = ublx_opts.opacity_format;
     params.duplicate_groups.clear();
     params.duplicate_mode = db_ops::DuplicateGroupingMode::NameSize;
     params.duplicate_groups_rx = None;

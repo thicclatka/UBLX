@@ -4,13 +4,13 @@ use std::path::Path;
 
 use tokio::sync::mpsc::UnboundedSender;
 
-use super::core::{self, NonDirectoryRightPaneBuild};
-
 use crate::app::tokio_rt;
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneAsyncReady, RightPaneContent, TuiRow, UblxState, ViewData,
 };
 use crate::utils;
+
+use super::core::{self, NonDirectoryRightPaneBuild};
 
 struct RightPaneAsyncSpawnJob {
     generation: u64,

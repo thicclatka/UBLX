@@ -104,11 +104,17 @@ pub fn format_selection_counter(current: usize, total: usize) -> String {
 
 /// Styled bottom line for the middle panel: current/total, right-aligned.
 #[must_use]
-pub fn counter_line(current: usize, total: usize, chord_mode: bool) -> Line<'static> {
+pub fn counter_line(
+    current: usize,
+    total: usize,
+    chord_mode: bool,
+    transparent_page_chrome: bool,
+) -> Line<'static> {
     style::node_line(
         &format_selection_counter(current, total),
         HorizontalAlignment::Right,
         chord_mode,
+        transparent_page_chrome,
     )
 }
 
@@ -140,28 +146,41 @@ pub fn node_display_width(content: &str) -> usize {
     content.len() + 4
 }
 
+/// Inputs for [`line_for`]: middle pane title-bottom counter and sort nodes.
+#[derive(Clone, Copy)]
+pub struct MiddlePaneFooterLineCtx {
+    pub selected_index: Option<usize>,
+    pub content_len: usize,
+    pub main_mode: setup::MainMode,
+    pub sort: setup::ContentSort,
+    pub chord_mode: bool,
+    pub multiselect_active: bool,
+    pub multiselect_count: usize,
+    pub transparent_page_chrome: bool,
+}
+
 /// Bottom line for the middle panel from list state: pass selected index (from `content_state.selected()`) and content length.
 #[must_use]
-pub fn line_for(
-    selected_index: Option<usize>,
-    content_len: usize,
-    main_mode: setup::MainMode,
-    sort: setup::ContentSort,
-    chord_mode: bool,
-    multiselect_active: bool,
-    multiselect_count: usize,
-) -> Line<'static> {
-    let current = selected_index.map_or(0, |i| i + 1);
-    let total = content_len;
+pub fn line_for(ctx: MiddlePaneFooterLineCtx) -> Line<'static> {
+    let current = ctx.selected_index.map_or(0, |i| i + 1);
+    let total = ctx.content_len;
     let mut counter = format_selection_counter(current, total);
-    if multiselect_active && multiselect_count > 0 {
-        counter = format!("{counter} · {multiselect_count} sel");
+    if ctx.multiselect_active && ctx.multiselect_count > 0 {
+        counter = format!("{counter} · {} sel", ctx.multiselect_count);
     }
-    if let Some(sort_text) = sort_node_text(main_mode, sort) {
-        style::viewer_footer_line(Some(&counter), None, Some(&sort_text), chord_mode)
-            .unwrap_or_else(|| counter_line(current, total, chord_mode))
+    if let Some(sort_text) = sort_node_text(ctx.main_mode, ctx.sort) {
+        style::viewer_footer_line(
+            Some(&counter),
+            None,
+            Some(&sort_text),
+            ctx.chord_mode,
+            ctx.transparent_page_chrome,
+        )
+        .unwrap_or_else(|| {
+            counter_line(current, total, ctx.chord_mode, ctx.transparent_page_chrome)
+        })
     } else {
-        counter_line(current, total, chord_mode)
+        counter_line(current, total, ctx.chord_mode, ctx.transparent_page_chrome)
     }
 }
 
@@ -178,6 +197,7 @@ pub fn draw_paths_list_with_counter(
     all_rows: Option<&[setup::TuiRow]>,
     dir_to_ublx: Option<&Path>,
     area: Rect,
+    transparent_page_chrome: bool,
 ) {
     let content_focused = matches!(state.panels.focus, setup::PanelFocus::Contents);
     let mid_title = panes::panel_title_line(
@@ -185,16 +205,18 @@ pub fn draw_paths_list_with_counter(
         content_focused,
         chord_chrome_active(&state.chrome),
     );
-    let mid_block =
-        panes::panel_block(mid_title, content_focused).title_bottom(panes::middle::line_for(
-            state.panels.content_state.selected(),
-            view.content_len,
-            state.main_mode,
-            state.panels.content_sort,
-            chord_chrome_active(&state.chrome),
-            state.multiselect.active,
-            state.multiselect.selected.len(),
-        ));
+    let mid_block = panes::panel_block(mid_title, content_focused).title_bottom(
+        panes::middle::line_for(MiddlePaneFooterLineCtx {
+            selected_index: state.panels.content_state.selected(),
+            content_len: view.content_len,
+            main_mode: state.main_mode,
+            sort: state.panels.content_sort,
+            chord_mode: chord_chrome_active(&state.chrome),
+            multiselect_active: state.multiselect.active,
+            multiselect_count: state.multiselect.selected.len(),
+            transparent_page_chrome,
+        }),
+    );
     let total = view.content_len;
     let global_sel = state
         .panels

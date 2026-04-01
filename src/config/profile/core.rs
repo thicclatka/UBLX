@@ -34,6 +34,18 @@ pub enum EnhancePolicy {
     Manual,
 }
 
+/// How to encode OSC 11 background when [`UblxOverlay::bg_opacity`] &lt; 1. `WezTerm` needs **`rgba`**; some
+/// terminals prefer **`hex8`** (`#RRGGBBAA`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Osc11BackgroundFormat {
+    /// `rgba(r,g,b,opacity)` — `WezTerm`, many newer emulators.
+    #[default]
+    Rgba,
+    /// `#RRGGBBAA` — e.g. Kitty-style hex+alpha.
+    Hex8,
+}
+
 /// One `[[enhance_policy]]` row in `ublx.toml` / `.ublx.toml`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EnhancePolicyEntry {
@@ -44,8 +56,8 @@ pub struct EnhancePolicyEntry {
 
 /// Config overlay read from config files. Only present keys override; used for global + local overlay.
 /// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
-/// [theme], [layout], [hash], and [`show_hidden_files`] are hot-reloadable; [exclude] is applied only at startup.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+/// [theme], [layout], [hash], [`show_hidden_files`], and [`UblxOverlay::bg_opacity`] are hot-reloadable; [exclude] is applied only at startup.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UblxOverlay {
     /// Extra paths/patterns to exclude from indexing (appended to nefax [`nefaxer::NefaxOpts::exclude`]). Startup-only; not hot-reloadable.
@@ -75,6 +87,12 @@ pub struct UblxOverlay {
     /// Optional per-path subtree rules for index-time Zahir (`[[enhance_policy]]`). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enhance_policy: Option<Vec<EnhancePolicyEntry>>,
+    /// Page background opacity `0.0`–`1.0` for OSC 11 + transparent main pane (`1.0` = solid, default when omitted).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bg_opacity: Option<f32>,
+    /// OSC 11 payload style when [`Self::bg_opacity`] &lt; 1. Default: [`Osc11BackgroundFormat::Rgba`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opacity_format: Option<Osc11BackgroundFormat>,
 }
 
 impl UblxOverlay {
@@ -106,6 +124,12 @@ impl UblxOverlay {
         }
         if other.enhance_policy.is_some() {
             self.enhance_policy.clone_from(&other.enhance_policy);
+        }
+        if other.bg_opacity.is_some() {
+            self.bg_opacity = other.bg_opacity;
+        }
+        if other.opacity_format.is_some() {
+            self.opacity_format = other.opacity_format;
         }
     }
 

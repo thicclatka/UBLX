@@ -48,6 +48,7 @@ pub struct DrawDeltaPanesParams<'a> {
     pub view: &'a setup::ViewData,
     /// Left, middle, right pane rects (at least 3 elements).
     pub chunks: &'a [Rect],
+    pub transparent_page_chrome: bool,
 }
 
 /// Left-pane labels for Delta: Added / Mod / Removed, with styles.
@@ -89,7 +90,15 @@ pub fn draw_delta_panes(f: &mut Frame, params: DrawDeltaPanesParams<'_>) {
         &mut state.panels.category_state,
     );
 
-    super::draw_paths_list_with_counter(f, state, params.view, None, None, middle);
+    super::draw_paths_list_with_counter(
+        f,
+        state,
+        params.view,
+        None,
+        None,
+        middle,
+        params.transparent_page_chrome,
+    );
 
     let right_block = Block::default()
         .borders(Borders::ALL)

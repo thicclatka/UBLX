@@ -54,6 +54,7 @@ pub fn visible_tabs(right_content: &RightPaneContent) -> Vec<(RightPaneMode, &'s
 pub fn right_pane_footer_line(
     state: &mut UblxState,
     right_content: &RightPaneContent,
+    transparent_page_chrome: bool,
 ) -> Option<Line<'static>> {
     viewer_image::sync_pdf_selection_state(state, right_content);
     let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
@@ -69,6 +70,7 @@ pub fn right_pane_footer_line(
                 right_content.snap_meta.mtime_ns,
                 pdf_footer.as_deref(),
                 chord_chrome_active(&state.chrome),
+                transparent_page_chrome,
             )
         })
         .flatten()
@@ -76,7 +78,10 @@ pub fn right_pane_footer_line(
 
 /// Find in `title_bottom`: same span strip as catalog search ([`crate::layout::style::popup_input_line_spans`]) plus optional match count.
 /// One line only — full bordered popup height does not fit `title_bottom`.
-fn find_title_bottom_spans(state: &UblxState) -> Option<Vec<Span<'static>>> {
+fn find_title_bottom_spans(
+    state: &UblxState,
+    transparent_page_chrome: bool,
+) -> Option<Vec<Span<'static>>> {
     let vf = &state.viewer_find;
     if !vf.title_bottom_visible() {
         return None;
@@ -86,10 +91,15 @@ fn find_title_bottom_spans(state: &UblxState) -> Option<Vec<Span<'static>>> {
         UI_STRINGS.search.find_label.to_string(),
         vf.query.clone(),
         submitted,
+        transparent_page_chrome,
     );
     let total = vf.ranges.len();
     if total > 0 {
-        let bg = themes::current().popup_bg;
+        let bg = if transparent_page_chrome {
+            style::chrome_page_background(true)
+        } else {
+            themes::current().popup_bg
+        };
         let count_fg = style::popup_input_accent_color(submitted);
         let cur = vf.current + 1;
         spans.push(Span::styled("  ", Style::default().bg(bg)));
@@ -124,9 +134,10 @@ pub fn right_pane_bottom_line(
     state: &mut UblxState,
     right_content: &RightPaneContent,
     inner_width: u16,
+    transparent_page_chrome: bool,
 ) -> Option<Line<'static>> {
-    let find_spans = find_title_bottom_spans(state);
-    let viewer_line = right_pane_footer_line(state, right_content);
+    let find_spans = find_title_bottom_spans(state, transparent_page_chrome);
+    let viewer_line = right_pane_footer_line(state, right_content, transparent_page_chrome);
     match (find_spans, viewer_line) {
         (None, None) => None,
         (Some(l), None) => Some(Line::from(l)),
@@ -171,19 +182,22 @@ pub fn right_pane_footer_line_fullscreen(
     right_content: &RightPaneContent,
     view: &ViewData,
     inner_width: u16,
+    transparent_page_chrome: bool,
 ) -> Line<'static> {
-    let find_spans = find_title_bottom_spans(state);
-    let mut right_spans = panes::middle::line_for(
-        state.panels.content_state.selected(),
-        view.content_len,
-        state.main_mode,
-        state.panels.content_sort,
-        chord_chrome_active(&state.chrome),
-        state.multiselect.active,
-        state.multiselect.selected.len(),
-    )
+    let find_spans = find_title_bottom_spans(state, transparent_page_chrome);
+    let mut right_spans = panes::middle::line_for(panes::middle::MiddlePaneFooterLineCtx {
+        selected_index: state.panels.content_state.selected(),
+        content_len: view.content_len,
+        main_mode: state.main_mode,
+        sort: state.panels.content_sort,
+        chord_mode: chord_chrome_active(&state.chrome),
+        multiselect_active: state.multiselect.active,
+        multiselect_count: state.multiselect.selected.len(),
+        transparent_page_chrome,
+    })
     .spans;
-    if let Some(viewer_line) = right_pane_footer_line(state, right_content) {
+    if let Some(viewer_line) = right_pane_footer_line(state, right_content, transparent_page_chrome)
+    {
         right_spans.extend(viewer_line.spans);
     }
     match find_spans {

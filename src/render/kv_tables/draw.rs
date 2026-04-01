@@ -2,14 +2,14 @@
 
 use ratatui::layout::Rect;
 
+use crate::handlers::applets::viewer_find;
+use crate::layout::{setup::UblxState, style};
+use crate::ui::UI_STRINGS;
+
 use super::consts::TABLE_GAP;
 use super::ratatui_table;
 use super::sections;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
-
-use crate::handlers::applets::viewer_find;
-use crate::layout::{setup::UblxState, style};
-use crate::ui::UI_STRINGS;
 
 /// Visible line range for a section: (`skip_lines`, `take_lines`) or None if section is off-screen.
 #[must_use]

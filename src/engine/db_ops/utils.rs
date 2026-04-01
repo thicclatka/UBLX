@@ -8,14 +8,14 @@ use rayon::prelude::*;
 use rusqlite::types::Value;
 use rusqlite::{Connection, Statement, Transaction, params_from_iter};
 
-use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
-
 use crate::config::{PARALLEL, UblxOpts, UblxPaths};
 use crate::integrations::{
     NefaxDiff, NefaxPathMeta, NefaxResult, ZahirOutput, zahir_metadata_name_from_indexed_file,
     zahir_output_to_json_for_path,
 };
 use crate::utils::snapshot_rel_path_buf;
+
+use super::consts::{DeltaType, UblxDbCategory, UblxDbSchema, UblxDbStatements};
 
 /// How often to emit [`debug_snapshot_write_progress`] (also logs the first step, and the last when `total` is known).
 pub const SNAPSHOT_DB_WRITE_PROGRESS_LOG_EVERY: u64 = 10_000;

@@ -5,7 +5,7 @@ use std::sync::mpsc;
 
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::config::LayoutOverlay;
+use crate::config::{LayoutOverlay, Osc11BackgroundFormat};
 use crate::engine::db_ops::{DuplicateGroup, DuplicateGroupingMode};
 use crate::layout::setup::RightPaneAsyncReady;
 use crate::utils;
@@ -36,6 +36,10 @@ pub struct RunUblxParams<'a> {
     pub theme: Option<String>,
     /// Left/middle/right pane percentages (0–100). Hot-reloadable from config [layout].
     pub layout: LayoutOverlay,
+    /// Effective page background opacity (`1.0` = solid). From [`crate::config::UblxOpts::bg_opacity`].
+    pub bg_opacity: f32,
+    /// OSC 11 payload style. From [`crate::config::UblxOpts::opacity_format`].
+    pub opacity_format: Osc11BackgroundFormat,
     /// Duplicate groups (lazy-loaded when user switches to Duplicates tab). Empty until load completes.
     pub duplicate_groups: Vec<DuplicateGroup>,
     /// Grouping mode backing `duplicate_groups` (Hash vs Name+Size fallback label).

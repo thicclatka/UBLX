@@ -106,6 +106,7 @@ pub fn draw_right_pane(
     state: &mut UblxState,
     right_content: &RightPaneContent,
     chunks: &[Rect],
+    transparent_page_chrome: bool,
 ) {
     let area = chunks[2];
     let inner_w = chrome::right_pane_inner_content_width(area);
@@ -113,7 +114,8 @@ pub fn draw_right_pane(
         .panels
         .right_pane_text_w
         .unwrap_or_else(|| inner_w.saturating_sub(4));
-    let footer_line = chrome::right_pane_bottom_line(state, right_content, inner_w);
+    let footer_line =
+        chrome::right_pane_bottom_line(state, right_content, inner_w, transparent_page_chrome);
     let right_block = chrome::right_pane_block(None, footer_line.as_ref());
     let tabs = chrome::visible_tabs(right_content);
     if !tabs.is_empty() && !tabs.iter().any(|(m, _)| *m == state.right_pane_mode) {
@@ -145,10 +147,16 @@ pub fn draw_right_pane_fullscreen(
     right_content: &RightPaneContent,
     view: &crate::layout::setup::ViewData,
     area: Rect,
+    transparent_page_chrome: bool,
 ) {
     let inner_w = chrome::right_pane_inner_content_width(area);
-    let footer_line =
-        chrome::right_pane_footer_line_fullscreen(state, right_content, view, inner_w);
+    let footer_line = chrome::right_pane_footer_line_fullscreen(
+        state,
+        right_content,
+        view,
+        inner_w,
+        transparent_page_chrome,
+    );
     let fullscreen_title = format!(
         "{} {}",
         chrome::title(state),

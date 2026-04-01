@@ -110,6 +110,8 @@ fn draw_one_snapshot_frame_renders_main_chrome() {
     let right = RightPaneContent::empty();
     let layout = LayoutOverlay::default();
     let args = DrawFrameArgs {
+        bg_opacity: 1.0,
+        transparent_page_chrome: false,
         delta_data: None,
         all_rows: None,
         dir_to_ublx: None,

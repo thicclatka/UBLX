@@ -12,12 +12,12 @@ use std::time::Instant;
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
 
-use super::style;
-
 use crate::engine::{cache, db_ops::DeltaType};
 use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
 use crate::render::viewers::pdf_preview::PDFPrefetch;
 use crate::utils::{ClipboardCopyCommand, ToastSlot};
+
+use super::style;
 
 /// Re-export snapshot row type for layout/view/render (`path`, category, size).
 pub use crate::engine::db_ops::SnapshotTuiRow as TuiRow;
@@ -694,6 +694,8 @@ pub struct SettingsPaneState {
     pub layout_left_buf: String,
     pub layout_mid_buf: String,
     pub layout_right_buf: String,
+    pub opacity_unlocked: bool,
+    pub opacity_buf: String,
     /// Resolved path for the active scope (refreshed on enter / scope change).
     pub editing_path: Option<std::path::PathBuf>,
 }
@@ -708,6 +710,8 @@ impl Default for SettingsPaneState {
             layout_left_buf: String::new(),
             layout_mid_buf: String::new(),
             layout_right_buf: String::new(),
+            opacity_unlocked: false,
+            opacity_buf: String::new(),
             editing_path: None,
         }
     }

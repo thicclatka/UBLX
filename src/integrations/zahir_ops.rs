@@ -11,9 +11,9 @@ use log::debug;
 use serde_json::Value;
 use zahirscan;
 
-use super::nefax_ops;
-
 use crate::config::UblxOpts;
+
+use super::nefax_ops;
 
 pub type ZahirResult = zahirscan::ZahirScanResult;
 pub type ZahirOutput = zahirscan::Output;

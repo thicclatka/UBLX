@@ -18,6 +18,7 @@ fn draw_user_selected_mode_panes(
     right_content: &setup::RightPaneContent,
     chunks: &[Rect],
     left_title_label: &str,
+    transparent_page_chrome: bool,
 ) {
     let left = chunks[0];
     let middle = chunks[1];
@@ -55,9 +56,17 @@ fn draw_user_selected_mode_panes(
         left,
     );
 
-    super::draw_paths_list_with_counter(f, state, view, None, None, middle);
+    super::draw_paths_list_with_counter(
+        f,
+        state,
+        view,
+        None,
+        None,
+        middle,
+        transparent_page_chrome,
+    );
 
-    super::draw_right_pane(f, state, right_content, chunks);
+    super::draw_right_pane(f, state, right_content, chunks, transparent_page_chrome);
 }
 
 /// Draw Duplicates mode panes: left = group names, middle = paths in selected group, right = viewer.
@@ -67,6 +76,7 @@ pub fn draw_duplicates_panes(
     view: &setup::ViewData,
     right_content: &setup::RightPaneContent,
     chunks: &[Rect],
+    transparent_page_chrome: bool,
 ) {
     draw_user_selected_mode_panes(
         f,
@@ -75,6 +85,7 @@ pub fn draw_duplicates_panes(
         right_content,
         chunks,
         UI_STRINGS.paths.duplicate_group,
+        transparent_page_chrome,
     );
 }
 
@@ -85,6 +96,7 @@ pub fn draw_lenses_panes(
     view: &setup::ViewData,
     right_content: &setup::RightPaneContent,
     chunks: &[Rect],
+    transparent_page_chrome: bool,
 ) {
     draw_user_selected_mode_panes(
         f,
@@ -93,5 +105,6 @@ pub fn draw_lenses_panes(
         right_content,
         chunks,
         UI_STRINGS.paths.lens_group,
+        transparent_page_chrome,
     );
 }

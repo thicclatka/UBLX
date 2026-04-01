@@ -8,16 +8,16 @@ use ratatui::text::Line;
 use ratatui::widgets::{Cell, Row, Table};
 use rayon::prelude::*;
 
-use super::{
-    format,
-    sections::{ContentsSection, KvSection, SingleColumnListSection},
-};
-
 use crate::config::PARALLEL;
 use crate::handlers::applets::viewer_find;
 use crate::layout::style;
 use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;
+
+use super::{
+    format,
+    sections::{ContentsSection, KvSection, SingleColumnListSection},
+};
 
 const COLUMN_SPACING: usize = 1;
 const KEY_WIDTH_FALLBACK: usize = 4;

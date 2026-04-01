@@ -2,21 +2,19 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
-
-use super::overlays;
-use super::panes;
 
 use crate::config::{LayoutOverlay, TOAST_CONFIG};
 use crate::engine::db_ops::{DuplicateGroup, DuplicateGroupingMode};
 use crate::layout;
 use crate::themes;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS, chord_chrome_active, main_tab_bar_modes_and_labels};
-use crate::utils::{
-    canonicalize_dir_to_ublx, format_timestamp_ns, toast_content_line_count, truncate_middle,
-};
+use crate::utils;
+
+use super::overlays;
+use super::panes;
 
 /// Arguments for [`draw_ublx_frame`] that vary per frame (keeps arg count under clippy limit).
 pub struct DrawFrameArgs<'a> {
@@ -29,6 +27,10 @@ pub struct DrawFrameArgs<'a> {
     pub theme_name: Option<&'a str>,
     /// Left/middle/right pane percentages (0–100). Hot-reloadable from config [layout].
     pub layout: &'a LayoutOverlay,
+    /// `1.0` = solid theme background; `< 1` uses default bg (OSC 11) for the main fill.
+    pub bg_opacity: f32,
+    /// When true, powerline status/footer nodes use [`Color::Reset`] for page-adjacent cell backgrounds (matches [`Self::bg_opacity`] &lt; ~1).
+    pub transparent_page_chrome: bool,
     /// Latest snapshot timestamp from `delta_log` (for categories panel footer). Set in Snapshot mode.
     pub latest_snapshot_ns: Option<i64>,
     /// When true, show dev-mode toast notifications.
@@ -213,8 +215,12 @@ fn draw_popups(
     }
 }
 
-fn draw_background(f: &mut Frame, area: Rect, _args: &DrawFrameArgs<'_>) {
-    let bg = themes::current().background;
+fn draw_background(f: &mut Frame, area: Rect, args: &DrawFrameArgs<'_>) {
+    let bg = if args.bg_opacity < utils::OPACITY_SOLID_MIN {
+        Color::Reset
+    } else {
+        themes::current().background
+    };
     f.render_widget(Block::default().style(Style::default().bg(bg)), area);
 }
 
@@ -226,10 +232,10 @@ fn draw_indexed_dir_path_line(f: &mut Frame, gap: Rect, args: &DrawFrameArgs<'_>
     if gap.width == 0 || gap.height == 0 {
         return;
     }
-    let abs = canonicalize_dir_to_ublx(dir);
+    let abs = utils::canonicalize_dir_to_ublx(dir);
     let s = abs.to_string_lossy();
     let max_chars = usize::from(gap.width).max(1);
-    let display = truncate_middle(&s, max_chars);
+    let display = utils::truncate_middle(&s, max_chars);
     let style = Style::default().fg(themes::current().hint);
     f.render_widget(
         Paragraph::new(display)
@@ -263,14 +269,19 @@ fn compute_body_areas(body_area: Rect, layout: &LayoutOverlay) -> BodyAreas {
     }
 }
 
+struct UserSelectedModeContentArgs<'a> {
+    body: &'a BodyAreas,
+    has_data: bool,
+    transparent_page_chrome: bool,
+}
+
 /// Shared path for Duplicates and Lenses: fullscreen right pane, or draw panes when data present, else placeholder.
 fn draw_user_selected_mode_content<F>(
     f: &mut Frame,
     state: &mut layout::setup::UblxState,
     view: &layout::setup::ViewData,
     right_content: &layout::setup::RightPaneContent,
-    body: &BodyAreas,
-    has_data: bool,
+    mode: &UserSelectedModeContentArgs<'_>,
     draw_panes: F,
 ) where
     F: FnOnce(
@@ -279,13 +290,28 @@ fn draw_user_selected_mode_content<F>(
         &layout::setup::ViewData,
         &layout::setup::RightPaneContent,
         &[Rect],
+        bool,
     ),
 {
-    let chunks = &body.chunks[..];
+    let chunks = &mode.body.chunks[..];
     if state.chrome.viewer_fullscreen {
-        panes::draw_right_pane_fullscreen(f, state, right_content, view, body.main_area);
-    } else if has_data {
-        draw_panes(f, state, view, right_content, chunks);
+        panes::draw_right_pane_fullscreen(
+            f,
+            state,
+            right_content,
+            view,
+            mode.body.main_area,
+            mode.transparent_page_chrome,
+        );
+    } else if mode.has_data {
+        draw_panes(
+            f,
+            state,
+            view,
+            right_content,
+            chunks,
+            mode.transparent_page_chrome,
+        );
     } else {
         panes::delta_mode::draw_delta_placeholder(f, chunks);
     }
@@ -299,11 +325,30 @@ fn draw_main_content(
     args: &DrawFrameArgs<'_>,
     body: &BodyAreas,
 ) {
+    draw_main_mode_panes(f, state, view, right_content, args, body);
+    draw_main_content_status_or_input_popups(f, state, args, body);
+}
+
+fn draw_main_mode_panes(
+    f: &mut Frame,
+    state: &mut layout::setup::UblxState,
+    view: &layout::setup::ViewData,
+    right_content: &layout::setup::RightPaneContent,
+    args: &DrawFrameArgs<'_>,
+    body: &BodyAreas,
+) {
     let chunks = &body.chunks[..];
     match state.main_mode {
         layout::setup::MainMode::Snapshot => {
             if state.chrome.viewer_fullscreen {
-                panes::draw_right_pane_fullscreen(f, state, right_content, view, body.main_area);
+                panes::draw_right_pane_fullscreen(
+                    f,
+                    state,
+                    right_content,
+                    view,
+                    body.main_area,
+                    args.transparent_page_chrome,
+                );
             } else {
                 panes::snapshot_mode::draw_categories_pane(f, state, view, chunks);
                 panes::snapshot_mode::draw_contents_panel(
@@ -313,8 +358,15 @@ fn draw_main_content(
                     args.all_rows,
                     args.dir_to_ublx,
                     chunks,
+                    args.transparent_page_chrome,
                 );
-                panes::draw_right_pane(f, state, right_content, chunks);
+                panes::draw_right_pane(
+                    f,
+                    state,
+                    right_content,
+                    chunks,
+                    args.transparent_page_chrome,
+                );
             }
         }
         layout::setup::MainMode::Delta => {
@@ -326,6 +378,7 @@ fn draw_main_content(
                         delta,
                         view,
                         chunks,
+                        transparent_page_chrome: args.transparent_page_chrome,
                     },
                 );
             } else {
@@ -337,8 +390,11 @@ fn draw_main_content(
             state,
             view,
             right_content,
-            body,
-            args.duplicate_groups.is_some_and(|g| !g.is_empty()),
+            &UserSelectedModeContentArgs {
+                body,
+                has_data: args.duplicate_groups.is_some_and(|g| !g.is_empty()),
+                transparent_page_chrome: args.transparent_page_chrome,
+            },
             panes::draw_duplicates_panes,
         ),
         layout::setup::MainMode::Lenses => draw_user_selected_mode_content(
@@ -346,8 +402,11 @@ fn draw_main_content(
             state,
             view,
             right_content,
-            body,
-            args.lens_names.is_some_and(|n| !n.is_empty()),
+            &UserSelectedModeContentArgs {
+                body,
+                has_data: args.lens_names.is_some_and(|n| !n.is_empty()),
+                transparent_page_chrome: args.transparent_page_chrome,
+            },
             panes::draw_lenses_panes,
         ),
         layout::setup::MainMode::Settings => {
@@ -356,6 +415,14 @@ fn draw_main_content(
             }
         }
     }
+}
+
+fn draw_main_content_status_or_input_popups(
+    f: &mut Frame,
+    state: &mut layout::setup::UblxState,
+    args: &DrawFrameArgs<'_>,
+    body: &BodyAreas,
+) {
     if state.lens_menu.name_input.is_some() {
         let middle = body.chunks[1];
         let content_sel = state.panels.content_state.selected().unwrap_or(0);
@@ -381,6 +448,7 @@ fn draw_main_content(
             state.search.active,
             &state.search.query,
             chord_chrome_active(&state.chrome),
+            args.transparent_page_chrome,
         );
     }
 }
@@ -403,7 +471,7 @@ fn draw_toast_if_visible(
     let gap = TOAST_CONFIG.toast_stack_gap;
     let mut bottom = area.y + area.height.saturating_sub(TOAST_CONFIG.vt_padding);
     for slot in state.toasts.slots.iter().rev() {
-        let content_lines = toast_content_line_count(slot);
+        let content_lines = utils::toast_content_line_count(slot);
         let max_h = TOAST_CONFIG.height_for(args.dev) as usize;
         let h = (TOAST_CONFIG.toast_height_offset as usize + content_lines)
             .clamp(TOAST_CONFIG.toast_height_min as usize, max_h) as u16;
@@ -434,7 +502,11 @@ fn draw_main_tabs(
         main_tab_bar_modes_and_labels(has_lenses, has_duplicates, args.duplicate_mode);
     let mut segments: Vec<Span> = Vec::new();
     let chord = chord_chrome_active(&state.chrome);
-    let gap_bg = themes::current().background;
+    let gap_bg = if args.bg_opacity < utils::OPACITY_SOLID_MIN {
+        Color::Reset
+    } else {
+        themes::current().background
+    };
     let gap_style = Style::default().bg(gap_bg);
     let gap_n = usize::from(UI_CONSTANTS.main_tab_node_gap_cells);
     for (i, (mode, title)) in modes.iter().zip(titles.iter()).enumerate() {
@@ -469,6 +541,7 @@ pub fn draw_status_line(
     search_active: bool,
     search_query: &str,
     chord_mode: bool,
+    transparent_page_chrome: bool,
 ) {
     let search_replaces_snapshot = search_active || !search_query.trim().is_empty();
     let mut spans: Vec<Span<'static>> = Vec::new();
@@ -478,11 +551,19 @@ pub fn draw_status_line(
         let node_content = format!(
             "{}: {}",
             UI_STRINGS.search.latest_snapshot,
-            format_timestamp_ns(ns)
+            utils::format_timestamp_ns(ns)
         );
-        spans.extend(layout::style::status_node_spans(&node_content, chord_mode));
+        spans.extend(layout::style::status_node_spans(
+            &node_content,
+            chord_mode,
+            transparent_page_chrome,
+        ));
     }
-    if let Some(popup) = layout::style::search_catalog_popup_spans(search_active, search_query) {
+    if let Some(popup) = layout::style::search_catalog_popup_spans(
+        search_active,
+        search_query,
+        transparent_page_chrome,
+    ) {
         spans.extend(popup);
     }
     let line = Line::from(spans);

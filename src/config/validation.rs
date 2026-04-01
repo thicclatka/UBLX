@@ -92,6 +92,15 @@ pub fn validate_hot_reload_overlay(
         }
     }
 
+    if let Some(a) = overlay.bg_opacity
+        && (!a.is_finite() || !(0.0..=1.0).contains(&a))
+    {
+        errors.push(HotReloadError {
+            field: "bg_opacity",
+            message: format!("must be between 0.0 and 1.0 (got {a})"),
+        });
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {

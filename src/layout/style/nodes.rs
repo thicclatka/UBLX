@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use crate::themes;
 use crate::ui::{UI_GLYPHS, UI_STRINGS};
 
-use super::{CurrentTheme, ThemeStyles, tab_active, tab_inactive};
+use super::{CurrentTheme, ThemeStyles, chrome_page_background, tab_active, tab_inactive};
 
 /// One tab as a powerline-style node: round + " label " + round. No separator.
 /// Used for right-pane tabs and main (Snapshot/Delta) tabs.
@@ -34,18 +34,20 @@ pub fn tab_node_segment(label: &str, active: bool, chord_mode: bool) -> Vec<Span
     ]
 }
 
-fn node_color() -> (ratatui::style::Color, Style, Style) {
+fn node_color(transparent_page: bool) -> (ratatui::style::Color, Style, Style) {
     let t = CurrentTheme::palette();
     let pill_bg = themes::node_pill_background(t);
-    let circle_style = Style::default().fg(pill_bg).bg(t.background);
+    let page_bg = chrome_page_background(transparent_page);
+    let circle_style = Style::default().fg(pill_bg).bg(page_bg);
     let node_style = Style::default().fg(t.text).bg(pill_bg);
     (pill_bg, circle_style, node_style)
 }
 
-fn chord_node_color() -> (Style, Style) {
+fn chord_node_color(transparent_page: bool) -> (Style, Style) {
     let t = CurrentTheme::palette();
     let pill_bg = t.hint;
-    let circle_style = Style::default().fg(pill_bg).bg(t.background);
+    let page_bg = chrome_page_background(transparent_page);
+    let circle_style = Style::default().fg(pill_bg).bg(page_bg);
     let node_style = Style::default().fg(t.background).bg(pill_bg);
     (circle_style, node_style)
 }
@@ -60,11 +62,16 @@ fn node_spans(content: &str, circle_style: Style, node_style: Style) -> Vec<Span
 
 /// Single-node footer line with the given alignment (e.g. viewer size = Right, categories "Latest Snapshot" = Left).
 #[must_use]
-pub fn node_line(text: &str, alignment: HorizontalAlignment, chord_mode: bool) -> Line<'static> {
+pub fn node_line(
+    text: &str,
+    alignment: HorizontalAlignment,
+    chord_mode: bool,
+    transparent_page_chrome: bool,
+) -> Line<'static> {
     let (circle_style, node_style) = if chord_mode {
-        chord_node_color()
+        chord_node_color(transparent_page_chrome)
     } else {
-        let (_, c, n) = node_color();
+        let (_, c, n) = node_color(transparent_page_chrome);
         (c, n)
     };
     Line::from(node_spans(text, circle_style, node_style)).alignment(alignment)
@@ -72,11 +79,15 @@ pub fn node_line(text: &str, alignment: HorizontalAlignment, chord_mode: bool) -
 
 /// Powerline-style node spans for use in a combined status line (e.g. Latest Snapshot, not in a border).
 #[must_use]
-pub fn status_node_spans(content: &str, chord_mode: bool) -> Vec<Span<'static>> {
+pub fn status_node_spans(
+    content: &str,
+    chord_mode: bool,
+    transparent_page_chrome: bool,
+) -> Vec<Span<'static>> {
     let (circle_style, node_style) = if chord_mode {
-        chord_node_color()
+        chord_node_color(transparent_page_chrome)
     } else {
-        let (_, c, n) = node_color();
+        let (_, c, n) = node_color(transparent_page_chrome);
         (c, n)
     };
     node_spans(content, circle_style, node_style)
@@ -98,9 +109,14 @@ pub fn popup_input_line_spans(
     label: impl Into<String>,
     query: impl Into<String>,
     submitted: bool,
+    transparent_page_chrome: bool,
 ) -> Vec<Span<'static>> {
     let t = themes::current();
-    let bg = t.popup_bg;
+    let bg = if transparent_page_chrome {
+        chrome_page_background(true)
+    } else {
+        t.popup_bg
+    };
     let accent = popup_input_accent_color(submitted);
     vec![
         Span::styled(" ", Style::default().bg(accent).fg(accent)),
@@ -115,6 +131,7 @@ pub fn popup_input_line_spans(
 pub fn search_catalog_popup_spans(
     search_active: bool,
     search_query: &str,
+    transparent_page_chrome: bool,
 ) -> Option<Vec<Span<'static>>> {
     let show = search_active || !search_query.trim().is_empty();
     if !show {
@@ -124,6 +141,7 @@ pub fn search_catalog_popup_spans(
         UI_STRINGS.search.search_label.to_string(),
         search_query.to_string(),
         !search_active,
+        transparent_page_chrome,
     ))
 }
 
@@ -134,12 +152,13 @@ pub fn viewer_footer_line(
     mtime_ns: Option<i64>,
     pdf_page_line: Option<&str>,
     chord_mode: bool,
+    transparent_page_chrome: bool,
 ) -> Option<Line<'static>> {
     use crate::utils::format_timestamp_ns;
     let (circle_style, node_style) = if chord_mode {
-        chord_node_color()
+        chord_node_color(transparent_page_chrome)
     } else {
-        let (_, c, n) = node_color();
+        let (_, c, n) = node_color(transparent_page_chrome);
         (c, n)
     };
     let mut spans: Vec<Span<'static>> = Vec::new();

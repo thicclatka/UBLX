@@ -5,10 +5,14 @@
 mod color_utils;
 mod palettes;
 
-pub use color_utils::{adjust_surface_rgb, darken_rgb, lighten_rgb, rgb_euclidean_sq};
-
 use ratatui::style::Color;
 use std::cell::RefCell;
+
+pub use color_utils::{
+    adjust_surface_rgb, color_rgb_to_hex6, color_to_osc11_hex8, color_to_osc11_rgba_payload,
+    darken_rgb, lighten_rgb, rgb_euclidean_sq, rgb_to_hex6, rgb_to_osc11_hex8,
+    rgb_to_osc11_rgba_payload,
+};
 
 pub use palettes::{DEFAULT_COLORS, OBLIVION_INK, theme_ordered_list, theme_selector_entries};
 

@@ -167,7 +167,7 @@ pub struct UiStringsFile {
     pub delete_confirm_title: &'static str,
 }
 
-/// Settings tab: bool row labels (TOML key names). For `show_hidden_files` / `hash` / `enable_enhance_all` in the left pane, use [`append_settings_bool_snapshot_footnote`].
+/// Settings tab: bool row labels (TOML key names).
 pub struct UiStringsSettingsBool {
     pub show_hidden_files: &'static str,
     pub hash: &'static str,
@@ -176,12 +176,38 @@ pub struct UiStringsSettingsBool {
     pub unknown_row: &'static str,
 }
 
-/// Suffix for Settings left-pane rows whose values apply on the next snapshot (same `*` as the footnote under External apps).
-pub const SETTINGS_BOOL_SNAPSHOT_FOOTNOTE_SUFFIX: &str = " *";
-
-#[must_use]
-pub fn append_settings_bool_snapshot_footnote(base: &'static str) -> String {
-    format!("{base}{SETTINGS_BOOL_SNAPSHOT_FOOTNOTE_SUFFIX}")
+/// Settings tab left/right panes ([`crate::render::panes::settings_mode`]).
+pub struct UiStringsSettingsPane {
+    pub global_careful_title: &'static str,
+    pub global_careful_detail: &'static str,
+    pub opacity_format_label: &'static str,
+    pub rgba_toggle: &'static str,
+    pub hex8_toggle: &'static str,
+    pub edit_enter_save_lock: &'static str,
+    pub edit_enter_unlock: &'static str,
+    /// `format!` with one `{}` for the primary hint (`edit_enter_*`).
+    pub edit_layout_template: &'static str,
+    pub layout_left_pct: &'static str,
+    pub layout_middle_pct: &'static str,
+    pub layout_right_pct: &'static str,
+    /// `format!` with one `{}` for the primary hint.
+    pub edit_opacity_template: &'static str,
+    pub opacity_value_label: &'static str,
+    pub opacity_format_footnote: &'static str,
+    pub external_apps_title: &'static str,
+    pub ffmpeg_label: &'static str,
+    pub tool_available: &'static str,
+    pub tool_not_found: &'static str,
+    pub pdf_label: &'static str,
+    pub pdf_backends_poppler_and_mupdf: &'static str,
+    pub pdf_backends_poppler_only: &'static str,
+    pub pdf_backends_mupdf_only: &'static str,
+    pub snapshot_applied_footnote: &'static str,
+    pub yn_yes: &'static str,
+    pub yn_no: &'static str,
+    pub right_pane_title: &'static str,
+    pub path_global_unavailable: &'static str,
+    pub path_local_missing: &'static str,
 }
 
 /// First launch: no local `ublx.toml` yet.
@@ -245,6 +271,7 @@ pub struct UiStrings {
     pub file: UiStringsFile,
     pub first_run: UiStringsFirstRun,
     pub settings_bool: UiStringsSettingsBool,
+    pub settings_pane: UiStringsSettingsPane,
 }
 
 impl Default for UiStrings {
@@ -459,6 +486,39 @@ impl UiStrings {
         }
     }
 
+    const fn settings_pane() -> UiStringsSettingsPane {
+        UiStringsSettingsPane {
+            global_careful_title: "BE CAREFUL: CHANGING GLOBAL SETTINGS",
+            global_careful_detail: "Any change here affects values not set in local",
+            opacity_format_label: "opacity_format: ",
+            rgba_toggle: " rgba ",
+            hex8_toggle: " hex8 ",
+            edit_enter_save_lock: "Enter to save and lock",
+            edit_enter_unlock: "Enter to unlock",
+            edit_layout_template: "Edit layout ({})",
+            layout_left_pct: "left_pct ",
+            layout_middle_pct: "middle_pct ",
+            layout_right_pct: "right_pct ",
+            edit_opacity_template: "Edit background opacity ({})",
+            opacity_value_label: "value ",
+            opacity_format_footnote: "select format to achieve desired background opacity. May require full restart",
+            external_apps_title: "External apps",
+            ffmpeg_label: "FFmpeg: ",
+            tool_available: "available",
+            tool_not_found: "not found",
+            pdf_label: "PDF: ",
+            pdf_backends_poppler_and_mupdf: "Poppler (pdftoppm) · MuPDF (mutool)",
+            pdf_backends_poppler_only: "Poppler (pdftoppm) only",
+            pdf_backends_mupdf_only: "MuPDF (mutool) only",
+            snapshot_applied_footnote: "* settings applied on next snapshot",
+            yn_yes: " Yes ",
+            yn_no: " No ",
+            right_pane_title: " File ",
+            path_global_unavailable: "(global config path unavailable)",
+            path_local_missing: "(no local ublx.toml / .ublx.toml)",
+        }
+    }
+
     const fn first_run() -> UiStringsFirstRun {
         UiStringsFirstRun {
             welcome_title: "Welcome to UBLX",
@@ -497,6 +557,7 @@ impl UiStrings {
             file: Self::file_strings(),
             first_run: Self::first_run(),
             settings_bool: Self::settings_bool(),
+            settings_pane: Self::settings_pane(),
         }
     }
 

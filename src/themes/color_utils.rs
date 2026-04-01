@@ -103,6 +103,53 @@ fn hsl_to_rgb_u8(hue: f32, sat: f32, light: f32) -> (u8, u8, u8) {
     )
 }
 
+/// `#RRGGBB` (uppercase) for an sRGB triple.
+#[must_use]
+pub fn rgb_to_hex6(r: u8, g: u8, b: u8) -> String {
+    format!("#{r:02X}{g:02X}{b:02X}")
+}
+
+/// [`Color::Rgb`] → `#RRGGBB`; other variants → [`None`].
+#[must_use]
+pub fn color_rgb_to_hex6(color: Color) -> Option<String> {
+    let Color::Rgb(r, g, b) = color else {
+        return None;
+    };
+    Some(rgb_to_hex6(r, g, b))
+}
+
+/// `#RRGGBBAA` for OSC 11 (some emulators). `opacity` 0.0–1.0 → alpha byte `round(opacity * 255)`.
+#[must_use]
+pub fn rgb_to_osc11_hex8(r: u8, g: u8, b: u8, opacity: f32) -> String {
+    let a = (opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!("{}{a:02X}", rgb_to_hex6(r, g, b))
+}
+
+/// [`Color::Rgb`] + opacity → `#RRGGBBAA` for OSC 11; other color variants → [`None`].
+#[must_use]
+pub fn color_to_osc11_hex8(color: Color, opacity: f32) -> Option<String> {
+    let Color::Rgb(r, g, b) = color else {
+        return None;
+    };
+    Some(rgb_to_osc11_hex8(r, g, b, opacity))
+}
+
+/// `rgba(r,g,b,opacity)` payload for OSC 11 (`WezTerm` and others; `#RRGGBBAA` is often ignored there).
+#[must_use]
+pub fn rgb_to_osc11_rgba_payload(r: u8, g: u8, b: u8, opacity: f32) -> String {
+    let a = opacity.clamp(0.0, 1.0);
+    format!("rgba({r},{g},{b},{a})")
+}
+
+/// [`Color::Rgb`] → OSC 11 `rgba(...)` payload; other variants → [`None`].
+#[must_use]
+pub fn color_to_osc11_rgba_payload(color: Color, opacity: f32) -> Option<String> {
+    let Color::Rgb(r, g, b) = color else {
+        return None;
+    };
+    Some(rgb_to_osc11_rgba_payload(r, g, b, opacity))
+}
+
 /// Squared Euclidean distance in sRGB 0–255. [`None`] if either color is not [`Color::Rgb`].
 #[must_use]
 pub fn rgb_euclidean_sq(a: Color, b: Color) -> Option<u32> {

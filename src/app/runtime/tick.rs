@@ -7,9 +7,6 @@ use ratatui::Terminal;
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
 
-use super::frame::{DrawInputs, draw_one_frame, theme_name_for_tick};
-use super::view_build::build_view_and_right_content;
-
 use crate::app::{RunUblxParams, load_snapshot_for_tui};
 use crate::config::{LayoutOverlay, UblxOpts};
 use crate::engine::{db_ops, orchestrator};
@@ -18,6 +15,9 @@ use crate::layout::setup;
 use crate::render::marquee;
 use crate::ui;
 use crate::utils;
+
+use super::frame::{DrawInputs, draw_one_frame, theme_name_for_tick};
+use super::view_build::build_view_and_right_content;
 
 const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 

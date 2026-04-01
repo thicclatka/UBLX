@@ -6,9 +6,9 @@ use std::time::UNIX_EPOCH;
 
 use rusqlite::Connection;
 
-use super::consts::UblxDbStatements;
-
 use crate::utils::{get_created_ns, snapshot_rel_path_buf};
+
+use super::consts::UblxDbStatements;
 
 fn mtime_ns_from_meta(meta: &fs::Metadata) -> i64 {
     meta.modified()

@@ -1,7 +1,7 @@
 //! Layout constants, splits, theme-derived style trait and wrappers.
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation};
 use std::rc::Rc;
 
@@ -14,6 +14,16 @@ pub fn viewer_scrollbar() -> Scrollbar<'static> {
     Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(None)
         .end_symbol(None)
+}
+
+/// Background behind powerline “shoulders” and status/footer chrome. Use [`Color::Reset`] when the page uses OSC 11 + transparent main fill (`bg_opacity` &lt; ~1).
+#[must_use]
+pub fn chrome_page_background(transparent_page: bool) -> Color {
+    if transparent_page {
+        Color::Reset
+    } else {
+        themes::current().background
+    }
 }
 
 /// Split a tab row area into [left pad, content, right pad] using [`UI_CONSTANTS`](super::UI_CONSTANTS).`h_pad`.

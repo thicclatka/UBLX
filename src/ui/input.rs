@@ -147,7 +147,8 @@ fn handle_post_modal_chrome_keys(
     action: keymap::UblxAction,
 ) -> bool {
     if state_mut.main_mode == MainMode::Settings
-        && applets::settings::handle_layout_text_key(state_mut, e)
+        && (applets::settings::handle_layout_text_key(state_mut, e)
+            || applets::settings::handle_opacity_text_key(state_mut, e))
     {
         return true;
     }

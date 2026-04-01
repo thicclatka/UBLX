@@ -8,7 +8,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::config::{UblxOverlay, UblxPaths, load_ublx_toml};
+use crate::config::{Osc11BackgroundFormat, UblxOverlay, UblxPaths, load_ublx_toml};
 use crate::handlers::applets::settings;
 use crate::layout::setup::{SettingsConfigScope, UblxState};
 use crate::layout::style;
@@ -21,6 +21,34 @@ fn row_prefix(active: bool) -> &'static str {
         UI_GLYPHS.settings_row_active
     } else {
         UI_GLYPHS.indent_two_spaces
+    }
+}
+
+/// `*` before the key when the row is inactive (`show_hidden_files`, `hash`, `enable_enhance_all`); focused rows use [`row_prefix`] only (matches “* — settings applied on next snapshot”).
+fn settings_snapshot_star_if_inactive(
+    row_active: bool,
+    scope: SettingsConfigScope,
+    idx: usize,
+) -> &'static str {
+    if row_active {
+        return "";
+    }
+    match settings::bool_key(scope, idx) {
+        Some(
+            settings::SettingsBoolKey::ShowHiddenFiles
+            | settings::SettingsBoolKey::Hash
+            | settings::SettingsBoolKey::EnableEnhanceAll,
+        ) => UI_GLYPHS.settings_note_asterisk,
+        _ => "",
+    }
+}
+
+/// `‣` before `opacity_format` when the row is inactive; focused rows use [`row_prefix`] only.
+fn settings_opacity_note_mark_if_inactive(row_active: bool) -> &'static str {
+    if row_active {
+        ""
+    } else {
+        UI_GLYPHS.settings_note_arrow
     }
 }
 
@@ -92,11 +120,11 @@ fn push_scope_path_header(
                 style::hint_text(),
             ));
             left_lines.push(Line::from(Span::styled(
-                "BE CAREFUL: CHANGING GLOBAL SETTINGS",
+                UI_STRINGS.settings_pane.global_careful_title,
                 style::delta_removed().add_modifier(Modifier::BOLD),
             )));
             left_lines.push(Line::from(Span::styled(
-                "Any change here affects values not set in local",
+                UI_STRINGS.settings_pane.global_careful_detail,
                 style::hint_text(),
             )));
         }
@@ -133,9 +161,10 @@ fn push_bool_rows(
         };
         let row_active = cur == i;
         let label_st = label_style(row_active, dimmed);
+        let star = settings_snapshot_star_if_inactive(row_active, scope, i);
         let mut spans = vec![Span::styled(
             format!(
-                "{}{}: ",
+                "{}{star}{}: ",
                 row_prefix(row_active),
                 settings::bool_row_label(scope, i, true)
             ),
@@ -148,25 +177,80 @@ fn push_bool_rows(
     }
 }
 
-fn push_layout_edit_section(
+fn format_rgba_cell(is_rgba_cell: bool, value_is_rgba: bool, dimmed: bool) -> Span<'static> {
+    let chosen = if is_rgba_cell {
+        value_is_rgba
+    } else {
+        !value_is_rgba
+    };
+    let label = if is_rgba_cell {
+        UI_STRINGS.settings_pane.rgba_toggle
+    } else {
+        UI_STRINGS.settings_pane.hex8_toggle
+    };
+    let st = if dimmed {
+        if chosen {
+            style::hint_text().add_modifier(Modifier::BOLD)
+        } else {
+            style::hint_text()
+        }
+    } else if chosen {
+        style::tab_active()
+    } else {
+        style::tab_inactive()
+    };
+    Span::styled(label.to_string(), st)
+}
+
+fn push_opacity_format_row(
     left_lines: &mut Vec<Line>,
-    state: &UblxState,
-    n_bool: usize,
-    layout_dimmed: bool,
+    scope: SettingsConfigScope,
+    cur: usize,
+    local_ctx: Option<&(Option<UblxOverlay>, UblxOverlay)>,
+    overlay: Option<&UblxOverlay>,
+    format_dimmed: bool,
 ) {
-    let btn = n_bool;
+    let row_idx = settings::bool_row_count(scope);
+    let value_is_rgba = if let Some((_local_o, merged)) = local_ctx {
+        merged.opacity_format.unwrap_or_default() == Osc11BackgroundFormat::Rgba
+    } else {
+        overlay.is_none_or(|o| o.opacity_format.unwrap_or_default() == Osc11BackgroundFormat::Rgba)
+    };
+    let dimmed = format_dimmed;
+    let row_active = cur == row_idx;
+    let label_st = label_style(row_active, dimmed);
+    let note_mark = settings_opacity_note_mark_if_inactive(row_active);
+    let mut spans = vec![Span::styled(
+        format!(
+            "{}{note_mark}{}",
+            row_prefix(row_active),
+            UI_STRINGS.settings_pane.opacity_format_label
+        ),
+        label_st,
+    )];
+    spans.push(format_rgba_cell(true, value_is_rgba, dimmed));
+    spans.push(Span::raw(" "));
+    spans.push(format_rgba_cell(false, value_is_rgba, dimmed));
+    left_lines.push(Line::from(spans));
+}
+
+fn push_layout_edit_section(left_lines: &mut Vec<Line>, state: &UblxState, layout_dimmed: bool) {
+    let scope = state.settings.scope;
+    let btn = settings::layout_button_index(scope);
     let cur = state.settings.left_cursor;
     let layout_btn_active = cur == btn;
+    let s = &UI_STRINGS.settings_pane;
     let edit_primary = if state.settings.layout_unlocked {
-        "Enter to save and lock"
+        s.edit_enter_save_lock
     } else {
-        "Enter to unlock"
+        s.edit_enter_unlock
     };
     let edit_line_st = layout_edit_line_style(layout_btn_active, layout_dimmed);
     left_lines.push(Line::from(vec![Span::styled(
         format!(
-            "{}Edit layout ({edit_primary})",
-            row_prefix(layout_btn_active)
+            "{}{}",
+            row_prefix(layout_btn_active),
+            s.edit_layout_template.replacen("{}", edit_primary, 1)
         ),
         edit_line_st,
     )]));
@@ -180,9 +264,9 @@ fn push_layout_edit_section(
             let field_cur = btn + 1 + fi;
             let active = cur == field_cur;
             let label = match fi {
-                0 => "left_pct ",
-                1 => "middle_pct ",
-                _ => "right_pct ",
+                0 => UI_STRINGS.settings_pane.layout_left_pct,
+                1 => UI_STRINGS.settings_pane.layout_middle_pct,
+                _ => UI_STRINGS.settings_pane.layout_right_pct,
             };
             let label_st = label_style(active, layout_dimmed);
             let val_st = layout_value_style(active, layout_dimmed);
@@ -201,21 +285,84 @@ fn push_layout_edit_section(
     }
 }
 
+fn push_opacity_edit_section(left_lines: &mut Vec<Line>, state: &UblxState, opacity_dimmed: bool) {
+    let scope = state.settings.scope;
+    let op_btn = settings::opacity_button_index(&state.settings, scope);
+    let cur = state.settings.left_cursor;
+    let op_btn_active = cur == op_btn;
+    let s = &UI_STRINGS.settings_pane;
+    let edit_primary = if state.settings.opacity_unlocked {
+        s.edit_enter_save_lock
+    } else {
+        s.edit_enter_unlock
+    };
+    let edit_line_st = layout_edit_line_style(op_btn_active, opacity_dimmed);
+    left_lines.push(Line::from(vec![Span::styled(
+        format!(
+            "{}{}",
+            row_prefix(op_btn_active),
+            s.edit_opacity_template.replacen("{}", edit_primary, 1)
+        ),
+        edit_line_st,
+    )]));
+
+    if state.settings.opacity_unlocked {
+        let field_cur = op_btn + 1;
+        let active = cur == field_cur;
+        let label_st = label_style(active, opacity_dimmed);
+        let val_st = layout_value_style(active, opacity_dimmed);
+        let buf = state.settings.opacity_buf.as_str();
+        left_lines.push(Line::from(vec![
+            Span::styled(
+                format!("{}{}", row_prefix(active), s.opacity_value_label),
+                label_st,
+            ),
+            Span::styled(
+                if buf.is_empty() {
+                    " ".to_string()
+                } else {
+                    buf.to_string()
+                },
+                val_st,
+            ),
+        ]));
+    }
+}
+
+fn push_wrapped_hint_footnote(left_lines: &mut Vec<Line>, hint_wrap: usize, message: &str) {
+    let first = UI_GLYPHS.settings_note_asterisk;
+    let cont = UI_GLYPHS.indent_two_spaces;
+    let w = hint_wrap.saturating_sub(first.chars().count()).max(1);
+    let wrapped = utils::wrap_text_to_width(message, w);
+    for (i, line) in wrapped.lines().enumerate() {
+        let p = if i == 0 { first } else { cont };
+        left_lines.push(Line::from(Span::styled(
+            format!("{p}{line}"),
+            style::hint_text(),
+        )));
+    }
+}
+
 /// `FFmpeg` + PDF raster backends (same binaries as video / PDF preview).
-fn push_external_apps_section(left_lines: &mut Vec<Line>) {
+fn push_external_apps_section(left_lines: &mut Vec<Line>, hint_wrap: usize) {
+    let s = &UI_STRINGS.settings_pane;
     left_lines.push(Line::from(""));
     left_lines.push(Line::from(Span::styled(
-        "External apps",
+        s.external_apps_title,
         style::hint_text().add_modifier(Modifier::BOLD),
     )));
     let ffmpeg_ok = crate::utils::ffmpeg_available();
     left_lines.push(Line::from(vec![
         Span::styled(
-            format!("{}FFmpeg: ", UI_GLYPHS.indent_two_spaces),
+            format!("{}{}", UI_GLYPHS.indent_two_spaces, s.ffmpeg_label),
             style::text_style(),
         ),
         Span::styled(
-            if ffmpeg_ok { "available" } else { "not found" },
+            if ffmpeg_ok {
+                s.tool_available
+            } else {
+                s.tool_not_found
+            },
             if ffmpeg_ok {
                 style::tab_active()
             } else {
@@ -226,10 +373,10 @@ fn push_external_apps_section(left_lines: &mut Vec<Line>) {
     let pop = utils::poppler_pdftoppm_available();
     let mu = utils::mutool_available();
     let pdf_detail: &'static str = match (pop, mu) {
-        (true, true) => "Poppler (pdftoppm) · MuPDF (mutool)",
-        (true, false) => "Poppler (pdftoppm) only",
-        (false, true) => "MuPDF (mutool) only",
-        (false, false) => "not found",
+        (true, true) => s.pdf_backends_poppler_and_mupdf,
+        (true, false) => s.pdf_backends_poppler_only,
+        (false, true) => s.pdf_backends_mupdf_only,
+        (false, false) => s.tool_not_found,
     };
     let pdf_st = if pop || mu {
         style::tab_active()
@@ -238,7 +385,7 @@ fn push_external_apps_section(left_lines: &mut Vec<Line>) {
     };
     left_lines.push(Line::from(vec![
         Span::styled(
-            format!("{}PDF: ", UI_GLYPHS.indent_two_spaces),
+            format!("{}{}", UI_GLYPHS.indent_two_spaces, s.pdf_label),
             style::text_style(),
         ),
         Span::styled(pdf_detail, pdf_st),
@@ -246,9 +393,10 @@ fn push_external_apps_section(left_lines: &mut Vec<Line>) {
     left_lines.push(Line::from(""));
     left_lines.push(Line::from(""));
     left_lines.push(Line::from(Span::styled(
-        "* — settings applied on next snapshot",
+        s.snapshot_applied_footnote,
         style::hint_text(),
     )));
+    push_wrapped_hint_footnote(left_lines, hint_wrap, s.opacity_format_footnote);
 }
 
 fn render_settings_toml_preview(
@@ -286,7 +434,11 @@ fn render_settings_toml_preview(
 
 fn yn_cell(is_yes_cell: bool, value_yes: bool, dimmed: bool) -> Span<'static> {
     let chosen = if is_yes_cell { value_yes } else { !value_yes };
-    let label = if is_yes_cell { " Yes " } else { " No " };
+    let label = if is_yes_cell {
+        UI_STRINGS.settings_pane.yn_yes
+    } else {
+        UI_STRINGS.settings_pane.yn_no
+    };
     let st = if dimmed {
         if chosen {
             style::hint_text().add_modifier(Modifier::BOLD)
@@ -318,7 +470,7 @@ pub fn draw_settings_pane(f: &mut Frame, area: Rect, state: &mut UblxState, dir_
         .title_style(style::panel_title_style(true));
     let right_block = Block::default()
         .borders(Borders::ALL)
-        .title(" File ")
+        .title(UI_STRINGS.settings_pane.right_pane_title)
         .border_style(style::panel_unfocused())
         .title_style(style::panel_title_style(false));
 
@@ -331,11 +483,11 @@ pub fn draw_settings_pane(f: &mut Frame, area: Rect, state: &mut UblxState, dir_
     let scope_spans = scope_tab_spans(scope, global_label, local_label);
 
     let global_path_str = paths.global_config().map_or_else(
-        || "(global config path unavailable)".to_owned(),
+        || UI_STRINGS.settings_pane.path_global_unavailable.to_owned(),
         |p| p.display().to_string(),
     );
     let local_path_str = paths.toml_path().map_or_else(
-        || "(no local ublx.toml / .ublx.toml)".to_owned(),
+        || UI_STRINGS.settings_pane.path_local_missing.to_owned(),
         |p| p.display().to_string(),
     );
 
@@ -350,6 +502,14 @@ pub fn draw_settings_pane(f: &mut Frame, area: Rect, state: &mut UblxState, dir_
     let layout_dimmed = local_ctx
         .as_ref()
         .is_some_and(|(loc, _)| !settings::local_layout_is_explicit(loc.as_ref()));
+
+    let opacity_dimmed = local_ctx
+        .as_ref()
+        .is_some_and(|(loc, _)| !settings::local_opacity_is_explicit(loc.as_ref()));
+
+    let opacity_format_dimmed = local_ctx
+        .as_ref()
+        .is_some_and(|(loc, _)| !settings::local_opacity_format_is_explicit(loc.as_ref()));
 
     let path_wrap = usize::from(left_inner.width).max(1);
 
@@ -371,9 +531,18 @@ pub fn draw_settings_pane(f: &mut Frame, area: Rect, state: &mut UblxState, dir_
         local_ctx.as_ref(),
         overlay.as_ref(),
     );
+    push_opacity_format_row(
+        &mut left_lines,
+        scope,
+        state.settings.left_cursor,
+        local_ctx.as_ref(),
+        overlay.as_ref(),
+        opacity_format_dimmed,
+    );
     left_lines.push(Line::from(""));
-    push_layout_edit_section(&mut left_lines, state, n_bool, layout_dimmed);
-    push_external_apps_section(&mut left_lines);
+    push_layout_edit_section(&mut left_lines, state, layout_dimmed);
+    push_opacity_edit_section(&mut left_lines, state, opacity_dimmed);
+    push_external_apps_section(&mut left_lines, path_wrap);
 
     f.render_widget(
         Paragraph::new(left_lines).style(style::text_style()),
