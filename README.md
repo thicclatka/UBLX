@@ -22,7 +22,7 @@ cargo build --release
 
 - **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes a per-root SQLite file under your user cache (`ubli/`; stem is sanitized dir name plus path hash, extension matches the `ublx` package name). Config: `ublx.toml` or `.ublx.toml`.
 - **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), **Space** then a letter for **Open** / **Lens** / … (see in-app help), stacked toasts. **Shift+S** viewer search, **Shift+F** viewer fullscreen. `q` / Esc quit.
-- **Snapshot-only** — `ublx --snapshot-only [DIR]` (`-s`) indexes in headless mode. Writes `.ublx.toml` with `enable_enhance_all = false` when the directory has no local config yet. Use `--enhance-all` (`-e`) or `--full-snapshot` (`-f`) for full index-time Zahir.
+- **Snapshot-only** — Headless index without the TUI (`-s` / `--snapshot-only`); flags `-e`/`-f` control index-time Zahir when creating local config. See **Usage** below for exact behavior.
 
 ## Modes (tabs)
 
@@ -47,7 +47,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 
 | Tab           | Content                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Viewer**    | Images, pretty tables for CSV-style files, Markdown, raw text, `tree` for directories; footer shows size and last-modified when available.                                                                                                                                                                                    |
+| **Viewer**    | Previews for the selected file — details in [Viewer](#viewer). Footer: size and last-modified when available.                                                                                                                                                                                                                 |
 | **Templates** | Extracted template/structure snippet (e.g. document outline) when zahirscan provides it.                                                                                                                                                                                                                                      |
 | **Metadata**  | Enrichment metadata as **tables**: key/value pairs, and for supported types things like CSV column metadata, XLSX sheet stats (rows/columns per sheet), SQLite schema/table info, zip/archive “Contents” tables, and schema trees. Sections are parsed from the stored zahirscan result and rendered with headers and scroll. |
 | **Writing**   | **Writing stats** (writing footprint): word count, character counts, and similar stats when zahirscan has computed them. Shown in the same table layout as Metadata.                                                                                                                                                          |
@@ -57,6 +57,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 - **Markdown** — formatted preview (headings, lists, code blocks, tables inside the doc).
 - **CSV-style files** — pretty table layout for `.csv`, `.tsv`, `.tab`, `.psv` when the index says so or the path matches (so previews still work if a row’s category label is off).
 - **Images** — terminal preview via [ratatui-image](https://github.com/ratatui-org/ratatui-image) (downscaled for the pane; larger files may decode off the UI thread; recent previews cached for quick navigation).
+- **Code and structured text** — [syntect](https://github.com/trishume/syntect) highlighting via [`sublime_syntaxes`](https://crates.io/crates/sublime_syntaxes); grammar from path/extension; colors match theme light/dark. Large buffers are cached for smooth scrolling.
 - **Other text** — raw text (length-capped).
 - **Binaries** — short label instead of dumping bytes.
 - **Directories** — `tree` when available.
@@ -72,9 +73,9 @@ Config is optional. If present, **global** config is applied first, then **local
 | macOS / Linux | `~/.config/ublx/ublx.toml` | `~/.local/share/ublx/configs/` |
 | Windows       | `%APPDATA%\ublx\ublx.toml` | `%LOCALAPPDATA%\ublx\configs\` |
 
-**Local** config (same on all platforms): `.ublx.toml` (preferred when creating new files) or `ublx.toml` in the directory you index; if both exist, `.ublx.toml` wins. Only keys present in each file override defaults. Choosing a theme in the theme selector (Ctrl+t) and pressing Enter saves it to the local config.
+**Local** config (same on all platforms): `.ublx.toml` (default) or `ublx.toml` in the directory you index. Only keys present in each file override defaults. Choosing a theme in the theme selector (Ctrl+t) and confirming choice with Enter saves it to the local config.
 
-**Configurable keys** (in `ublx.toml` / `.ublx.toml`):
+**Configurable keys**:
 
 | Key                  | Type                 | Allowable values / notes                                                                                                                                                                         |
 | -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -98,16 +99,23 @@ All of the above except **`exclude`** are **hot-reloadable**.
 
 The **longest** `path` prefix that matches a file wins. If no row matches, **`enable_enhance_all`** applies globally.
 
-**Live reload** — UBLX watches the config file. If you edit it (inside the TUI or in an external editor), a successful parse applies the new settings immediately; valid merged overlay is written to the per-directory config cache. If the file is invalid, an error is shown and the last successful config is used (loaded from cache for that directory).
+**Live reload** — UBLX watches the config file. If you edit it (inside the TUI or in an external editor), a successful parse applies the new settings immediately; valid merged overlay is written to the per-directory config cache. If the file is invalid, an error is shown and the last successful config saved in cache is used.
 
 ## Usage
 
 ```bash
-ublx [DIR]                    # index DIR (default: .), then TUI
-ublx -s [DIR]                 # headless index (`--snapshot-only`); writes `.ublx.toml` if missing
-ublx -s -e [DIR]              # snapshot-only + full index-time Zahir (`--enhance-all`)
-ublx -f [DIR]                 # same as `-s -e` (`--full-snapshot`)
-ublx --dev [DIR]              # dev mode: in-app log viewer, trace-level default; RUST_LOG overrides
+Usage: ublx [OPTIONS] <DIR>
+
+Arguments:
+  <DIR>  Directory to index (default: current directory)
+
+Options:
+  -s, --snapshot-only  Headless snapshot then exit (no TUI). Writes a local config file when this dir has none
+  -e, --enhance-all    With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run. Incompatible with `--full-snapshot`
+  -f, --full-snapshot  Same as `--snapshot-only --enhance-all`
+      --dev            Dev mode: tui-logger drain + `move_events` + trace-level default filter
+      --themes         Print available themes grouped by appearance
+  -h, --help           Print help
 ```
 
 ## License

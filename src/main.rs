@@ -15,24 +15,13 @@ use ublx::integrations::load_prior_nefax_or_exit;
 use ublx::themes;
 use ublx::utils;
 
-/// Headless indexing flag
 #[derive(Parser)]
-struct HeadlessCli {
-    /// Headless snapshot then exit (no TUI). Writes `.ublx.toml` when this dir has no local config yet.
-    #[arg(long = "snapshot-only", short = 's')]
-    snapshot_only: bool,
-    /// With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run. Incompatible with `--full-snapshot`.
-    #[arg(long = "enhance-all", short = 'e', conflicts_with = "full_snapshot")]
-    enhance_all: bool,
-    /// Same as `--snapshot-only --enhance-all`.
-    #[arg(long = "full-snapshot", short = 'f')]
-    full_snapshot: bool,
-}
-
-#[derive(Parser)]
-#[command(name = "ublx")]
+#[command(
+    name = "ublx",
+    about = "UBLX is a TUI to index once, enrich with metadata, and browse a flat snapshot in a 3-pane layout with multiple modes."
+)]
 struct Args {
-    /// Directory to index (default: current directory)
+    /// Directory to index
     #[arg(value_name = "DIR", default_value = ".")]
     dir_to_ublx: PathBuf,
     #[command(flatten)]
@@ -43,6 +32,20 @@ struct Args {
     /// Print available themes grouped by appearance
     #[arg(long = "themes")]
     themes: bool,
+}
+
+/// Headless indexing flag
+#[derive(Parser)]
+struct HeadlessCli {
+    /// Headless snapshot then exit (no TUI). Writes a local config file when this dir has none.
+    #[arg(long = "snapshot-only", short = 's')]
+    snapshot_only: bool,
+    /// With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run. Incompatible with `--full-snapshot`.
+    #[arg(long = "enhance-all", short = 'e', conflicts_with = "full_snapshot")]
+    enhance_all: bool,
+    /// Same as `--snapshot-only --enhance-all`.
+    #[arg(long = "full-snapshot", short = 'f')]
+    full_snapshot: bool,
 }
 
 fn print_available_themes() {
