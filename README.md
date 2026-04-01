@@ -25,6 +25,7 @@ cargo build --release
 - **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes a per-root SQLite file under your user cache (`ubli/`; stem is sanitized dir name plus path hash, extension matches the `ublx` package name). Config: `ublx.toml` or `.ublx.toml`.
 - **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), **Space** then a letter for **Open** / **Lens** / … (see in-app help), stacked toasts. **Shift+S** viewer search, **Shift+F** viewer fullscreen. `q` / Esc quit.
 - **Snapshot-only** — Headless index without the TUI (`-s` / `--snapshot-only`); flags `-e`/`-f` control index-time Zahir when creating local config. See **Usage** below for exact behavior.
+- **Export** — Headless `--export` / `-x` writes pretty-printed Zahir JSON from the snapshot DB into `ublx-export/` as flat `{path}.json` files. Use `-x` alone to dump the current DB, or combine with `-f` to snapshot first, then export.
 
 ## Use case
 
@@ -121,9 +122,10 @@ Arguments:
   <DIR>  Directory to index (default: current directory)
 
 Options:
-  -s, --snapshot-only  Headless snapshot then exit (no TUI). Writes a local config file when this dir has none
-  -e, --enhance-all    With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run. Incompatible with `--full-snapshot`
+  -s, --snapshot-only  Headless snapshot. Writes a local config file when this dir has none
+  -e, --enhance-all    With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run
   -f, --full-snapshot  Same as `--snapshot-only --enhance-all`
+  -x, --export         Headless: write each Zahir JSON to `ublx-export/` as flat `{path}.json` files. Recommended to run with "--full-snapshot" to get most complete & recent results. Adjust enhance policy in config to fine-tune which paths get ZahirScan
       --dev            Dev mode: tui-logger drain + `move_events` + trace-level default filter
       --themes         Print available themes grouped by appearance
   -h, --help           Print help

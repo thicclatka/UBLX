@@ -7,7 +7,7 @@ Small, named features used from handlers and UI: their own state and/or key hand
 | **theme_selector** | Open selector (Ctrl+t), handle j/k/Enter/Esc, apply theme, toast.                           |
 | **settings**       | First-tick toast, config watcher for hot reload (`settings/`).                              |
 | **first_run**      | First-run prompt to choose default `enable_enhance_all` and write local config.             |
-| **enhance_policy** | Space-menu flow to set per-subtree `[[enhance_policy]]` (auto vs manual batch Zahir).       |
+| **enhance_policy** | Quick actions (spacebar) flow to set per-subtree `[[enhance_policy]]` (auto vs manual batch Zahir). |
 | **enhance**        | Per-file “Enhance with ZahirScan” when global enhance is off.                               |
 | **dupe_finder**    | Spawn duplicate detection in background; on result, toast or switch to Duplicates tab.      |
 | **opener**         | Open (Terminal) / Open (GUI) from context menu.                                             |
