@@ -4,11 +4,9 @@ use crossterm::event::KeyCode;
 
 use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
-use crate::handlers::{
-    applets::{file_ops as file_ops_applet, opener},
-    leave_terminal_for_editor,
-};
+use crate::handlers::leave_terminal_for_editor;
 use crate::layout::setup::{MainMode, UblxState};
+use crate::modules::{file_ops as file_ops_applet, opener};
 use crate::ui::{UI_STRINGS, keymap::UblxAction, show_operation_toast};
 
 /// True while a file rename/delete modal is active (blocks opening other menus).

@@ -1,11 +1,11 @@
-#[macro_export]
-macro_rules! mod_pub {
-    [ $( $name:ident $(,)? )+ ] => {
-        $(
-            pub mod $name;
-        )+
-    };
-}
+// #[macro_export]
+// macro_rules! mod_pub {
+//     [ $( $name:ident $(,)? )+ ] => {
+//         $(
+//             pub mod $name;
+//         )+
+//     };
+// }
 
 /// If `$result` is `Err(e)`, log with `log::error!($($msg)*, e)` and exit with [`crate::utils::EXIT_ERROR`]. Otherwise unwrap the `Ok` value.
 #[macro_export]
@@ -21,11 +21,11 @@ macro_rules! fatal {
     };
 }
 
-#[macro_export]
-macro_rules! mod_priv {
-    [ $( $name:ident $(,)? )+ ] => {
-        $(
-            mod $name;
-        )+
-    };
-}
+// #[macro_export]
+// macro_rules! mod_priv {
+//     [ $( $name:ident $(,)? )+ ] => {
+//         $(
+//             mod $name;
+//         )+
+//     };
+// }

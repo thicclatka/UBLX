@@ -1,17 +1,17 @@
-pub mod consts;
-pub mod core;
-pub mod delta_log;
-pub mod duplicates;
-pub mod lens;
-pub mod reader;
-pub mod snapshot_live;
-pub mod utils;
+mod consts;
+mod core;
+mod delta_log;
+mod extract_duplicates;
+mod lens;
+mod live_snapshot;
+mod path_resolver;
+mod utils;
 
 pub use consts::*;
 pub use core::*;
 pub use delta_log::*;
-pub use duplicates::*;
+pub use extract_duplicates::*;
 pub use lens::*;
-pub use reader::*;
-pub use snapshot_live::*;
+pub use live_snapshot::*;
+pub use path_resolver::*;
 pub use utils::*;

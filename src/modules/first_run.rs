@@ -4,12 +4,14 @@
 use std::fs;
 use std::process;
 
+use super::settings;
+
 use crate::app::RunUblxParams;
 use crate::config::{
     UblxOpts, UblxOverlay, UblxPaths, prior_indexed_roots_recent, record_prior_root_selected,
     remember_indexed_root_path, write_local_enhance_only_toml, write_ublx_overlay_at,
 };
-use crate::handlers::{applets::settings, core, snapshot};
+use crate::handlers;
 use crate::layout::setup::{StartupPromptPhase, StartupPromptState, UblxState};
 use crate::ui::UblxAction;
 
@@ -39,7 +41,7 @@ fn first_run_reload_and_maybe_snapshot(
 ) {
     settings::apply_config_reload(params_mut, ublx_opts_mut, state_mut, Option::<&str>::None);
     if params_mut.startup.defer_first_snapshot {
-        snapshot::spawn_snapshot_from_dir_db(
+        handlers::spawn_snapshot_from_dir_db(
             &params_mut.dir_to_ublx,
             &params_mut.db_path,
             params_mut.snapshot_done_tx.as_ref(),
@@ -131,12 +133,12 @@ pub fn handle_startup_prompt(
                     }
                 } else if let Some(dir) = roots.get(*selected_index - 1).cloned() {
                     let _ = record_prior_root_selected(&dir);
-                    core::relaunch_ublx_indexed_dir(&dir);
+                    handlers::relaunch_ublx_indexed_dir(&dir);
                 }
                 true
             }
             UblxAction::Quit | UblxAction::SearchClear => {
-                core::restore_terminal();
+                handlers::restore_terminal();
                 process::exit(0);
             }
             _ => true,

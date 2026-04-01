@@ -10,15 +10,12 @@ use log::debug;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::config::{UblxPaths, UblxSettings, rel_path_is_exact_local_config_toml};
-use crate::integrations::{
-    NefaxDiff, NefaxResult, ZahirOutput, ZahirResult, get_zahir_output_by_path,
-    zahir_output_to_json_for_path,
-};
-use crate::utils::{canonicalize_dir_to_ublx, get_created_ns, normalize_snapshot_rel_path_str};
+use crate::integrations;
+use crate::utils;
 
 use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
 use super::lens::load_lens_names_from_conn;
-use super::reader::{SnapshotReaderPreference, snapshot_reader_path_with};
+use super::path_resolver::{SnapshotReaderPreference, snapshot_reader_path_with};
 use super::utils::{self as db_ops_utils, SnapshotPriorContext};
 
 /// How long TUI snapshot reads wait on `SQLITE_BUSY` before failing (keeps the event loop responsive while tmp is written).
@@ -29,7 +26,7 @@ pub type SnapshotTuiRow = (String, String, u64);
 
 /// Result of [`load_tui_start_data`]: prior index state, cached settings, and TUI list data in one DB pass.
 pub struct TuiStartLoad {
-    pub prior_nefax: Option<NefaxResult>,
+    pub prior_nefax: Option<integrations::NefaxResult>,
     /// From `settings` row (same connection as snapshot — avoids a second open on startup).
     pub cached_settings: Option<UblxSettings>,
     pub categories: Vec<String>,
@@ -47,7 +44,13 @@ pub struct TuiStartPreload {
 impl TuiStartLoad {
     /// Split into prior Nefax, preload payload, and cached settings for [`UblxOpts::for_dir`].
     #[must_use]
-    pub fn split_for_app(self) -> (Option<NefaxResult>, TuiStartPreload, Option<UblxSettings>) {
+    pub fn split_for_app(
+        self,
+    ) -> (
+        Option<integrations::NefaxResult>,
+        TuiStartPreload,
+        Option<UblxSettings>,
+    ) {
         let TuiStartLoad {
             prior_nefax,
             cached_settings,
@@ -145,7 +148,7 @@ pub fn load_tui_start_data(db_path: &Path) -> Result<TuiStartLoad, anyhow::Error
         ))
     })?;
 
-    let mut nefax = NefaxResult::new();
+    let mut nefax = integrations::NefaxResult::new();
     let mut all_rows: Vec<SnapshotTuiRow> = Vec::new();
     let mut category_set = BTreeSet::new();
 
@@ -223,8 +226,8 @@ fn write_settings_copy_previous_write_delta_log(
     conn: &mut Connection,
     live_db_path: &Path,
     settings: &UblxSettings,
-    nefax: &NefaxResult,
-    diff: &NefaxDiff,
+    nefax: &integrations::NefaxResult,
+    diff: &integrations::NefaxDiff,
 ) -> Result<(), anyhow::Error> {
     in_transaction(conn, |tx| {
         write_settings(tx, settings)?;
@@ -245,9 +248,9 @@ fn write_settings_copy_previous_write_delta_log(
 /// Returns [`anyhow::Error`] on `SQLite` I/O, query/prepare errors, or filesystem errors when replacing the DB file.
 pub fn write_snapshot_to_db(
     dir_to_ublx: &Path,
-    nefax: &NefaxResult,
-    zahir_result: Option<&ZahirResult>,
-    diff: &NefaxDiff,
+    nefax: &integrations::NefaxResult,
+    zahir_result: Option<&integrations::ZahirResult>,
+    diff: &integrations::NefaxDiff,
     settings: &UblxSettings,
     prior: &SnapshotPriorContext<'_>,
 ) -> Result<(), anyhow::Error> {
@@ -255,9 +258,9 @@ pub fn write_snapshot_to_db(
     let tmp_path = ublx_paths.tmp();
     let db_path = ublx_paths.db();
 
-    let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
+    let dir_to_ublx_abs = utils::canonicalize_dir_to_ublx(dir_to_ublx);
     let zahir_output_by_path = zahir_result
-        .map(|z| get_zahir_output_by_path(z, Some(&dir_to_ublx_abs)))
+        .map(|z| integrations::get_zahir_output_by_path(z, Some(&dir_to_ublx_abs)))
         .unwrap_or_default();
 
     debug!(
@@ -310,13 +313,13 @@ pub fn write_snapshot_to_db(
 /// Returns [`anyhow::Error`] on `SQLite` I/O, query/prepare errors, or filesystem errors when replacing the DB file.
 pub fn write_snapshot_to_db_streaming(
     dir_to_ublx: &Path,
-    nefax: &NefaxResult,
-    diff: &NefaxDiff,
+    nefax: &integrations::NefaxResult,
+    diff: &integrations::NefaxDiff,
     settings: &UblxSettings,
-    output_rx: &Receiver<(String, ZahirOutput)>,
+    output_rx: &Receiver<(String, integrations::ZahirOutput)>,
     prior: &SnapshotPriorContext<'_>,
 ) -> Result<(), anyhow::Error> {
-    let dir_to_ublx_abs = canonicalize_dir_to_ublx(dir_to_ublx);
+    let dir_to_ublx_abs = utils::canonicalize_dir_to_ublx(dir_to_ublx);
     let ublx_paths = UblxPaths::new(dir_to_ublx);
     let tmp_path = ublx_paths.tmp();
     let db_path = ublx_paths.db();
@@ -361,7 +364,8 @@ pub fn write_snapshot_to_db_streaming(
                 Err(_) => continue,
             };
             let full_path = dir_to_ublx_abs.join(Path::new(&path_str));
-            let zahir_json = zahir_output_to_json_for_path(Some(&output), &full_path, &path_str);
+            let zahir_json =
+                integrations::zahir_output_to_json_for_path(Some(&output), &full_path, &path_str);
             let _ = update_stmt.execute(rusqlite::params![zahir_json, path_str]);
             n += 1;
             db_ops_utils::debug_snapshot_write_progress("streamed zahir updates", n, None);
@@ -446,11 +450,11 @@ fn copy_previous_aux_tables(conn: &Connection, live_db_path: &Path) -> Result<()
 
 fn write_delta_log(
     conn: &Connection,
-    nefax: &NefaxResult,
-    diff: &NefaxDiff,
+    nefax: &integrations::NefaxResult,
+    diff: &integrations::NefaxDiff,
 ) -> Result<(), anyhow::Error> {
     let mut stmt = conn.prepare(UblxDbStatements::INSERT_DELTA_LOG)?;
-    let created_ns = get_created_ns();
+    let created_ns = utils::get_created_ns();
 
     for delta_type in DeltaType::iter() {
         db_ops_utils::insert_results_into_delta_log_by_type(
@@ -544,6 +548,36 @@ fn snapshot_row_is_indexed_path(path_str: &str) -> bool {
     !rel_path_is_exact_local_config_toml(path_str)
 }
 
+/// Two string columns `(path, value)` from `snapshot`, keys normalized with [`utils::normalize_snapshot_rel_path_str`].
+fn load_snapshot_rel_path_string_map(
+    db_path: &Path,
+    sql: &str,
+) -> Result<HashMap<String, String>, anyhow::Error> {
+    if !db_path.exists() {
+        return Ok(HashMap::new());
+    }
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut out = HashMap::new();
+    for r in rows {
+        let (path, value) = r?;
+        out.insert(utils::normalize_snapshot_rel_path_str(&path), value);
+    }
+    Ok(out)
+}
+
+fn query_map_single_column<T: rusqlite::types::FromSql>(
+    conn: &Connection,
+    sql: &str,
+) -> Result<Vec<T>, anyhow::Error> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map([], |row| row.get::<_, T>(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
 /// Load (path, `zahir_json`) from the snapshot table for paths that have non-empty `zahir_json`. Use when reusing prior zahir for unchanged mtime. Empty if DB missing or table empty.
 ///
 /// # Errors
@@ -551,21 +585,8 @@ fn snapshot_row_is_indexed_path(path_str: &str) -> bool {
 /// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_snapshot_zahir_json_map(
     db_path: &Path,
-) -> Result<std::collections::HashMap<String, String>, anyhow::Error> {
-    if !db_path.exists() {
-        return Ok(std::collections::HashMap::new());
-    }
-    let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_PATH_ZAHIR_JSON)?;
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    let mut out = std::collections::HashMap::new();
-    for r in rows {
-        let (path, json) = r?;
-        out.insert(normalize_snapshot_rel_path_str(&path), json);
-    }
-    Ok(out)
+) -> Result<HashMap<String, String>, anyhow::Error> {
+    load_snapshot_rel_path_string_map(db_path, UblxDbStatements::SELECT_SNAPSHOT_PATH_ZAHIR_JSON)
 }
 
 /// Load (`path`, `category`) from the snapshot table. Empty if DB missing. Keeps category stable when only `zahir_json` is updated.
@@ -575,21 +596,8 @@ pub fn load_snapshot_zahir_json_map(
 /// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_snapshot_category_map(
     db_path: &Path,
-) -> Result<std::collections::HashMap<String, String>, anyhow::Error> {
-    if !db_path.exists() {
-        return Ok(std::collections::HashMap::new());
-    }
-    let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_PATH_CATEGORY)?;
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    let mut out = std::collections::HashMap::new();
-    for r in rows {
-        let (path, category) = r?;
-        out.insert(normalize_snapshot_rel_path_str(&path), category);
-    }
-    Ok(out)
+) -> Result<HashMap<String, String>, anyhow::Error> {
+    load_snapshot_rel_path_string_map(db_path, UblxDbStatements::SELECT_SNAPSHOT_PATH_CATEGORY)
 }
 
 /// Load prior Nefax from `.ublx` `snapshot` only. Returns `None` when the table is empty (after skipping absolute-path rows).
@@ -600,7 +608,7 @@ pub fn load_snapshot_category_map(
 pub fn load_nefax_from_db(
     dir_to_ublx: &Path,
     db_path: &Path,
-) -> Result<Option<NefaxResult>, anyhow::Error> {
+) -> Result<Option<integrations::NefaxResult>, anyhow::Error> {
     db_ops_utils::NefaxFromGivenDB::new(dir_to_ublx, db_path).load_nefax_from_given_db()
 }
 
@@ -611,13 +619,7 @@ pub fn load_nefax_from_db(
 /// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
     let conn = open_for_snapshot_tui_read(db_path)?;
-    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_CATEGORIES)?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
+    query_map_single_column(&conn, UblxDbStatements::SELECT_SNAPSHOT_CATEGORIES)
 }
 
 /// Distinct snapshot timestamps from `delta_log` (`created_ns`), newest first. Empty if table missing or empty.
@@ -627,13 +629,10 @@ pub fn load_snapshot_categories(db_path: &Path) -> Result<Vec<String>, anyhow::E
 /// Returns [`anyhow::Error`] on `SQLite` open/query errors.
 pub fn load_delta_log_snapshot_timestamps(db_path: &Path) -> Result<Vec<i64>, anyhow::Error> {
     let conn = open_for_snapshot_tui_read(db_path)?;
-    let mut stmt = conn.prepare(UblxDbStatements::SELECT_DELTA_LOG_SNAPSHOT_TIMESTAMPS)?;
-    let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
+    query_map_single_column(
+        &conn,
+        UblxDbStatements::SELECT_DELTA_LOG_SNAPSHOT_TIMESTAMPS,
+    )
 }
 
 /// Rows in `delta_log` for a given `delta_type`: (`created_ns`, path), newest snapshot first, then path order.
@@ -795,11 +794,12 @@ pub fn update_snapshot_zahir_for_path(
     db_path: &Path,
     dir_to_ublx: &Path,
     path_rel: &str,
-    output: &ZahirOutput,
+    output: &integrations::ZahirOutput,
 ) -> Result<(), anyhow::Error> {
     let conn = Connection::open(db_path)?;
     let full_path = dir_to_ublx.join(path_rel);
-    let zahir_json = zahir_output_to_json_for_path(Some(output), &full_path, path_rel);
+    let zahir_json =
+        integrations::zahir_output_to_json_for_path(Some(output), &full_path, path_rel);
     conn.execute(
         UblxDbStatements::UPDATE_SNAPSHOT_ZAHIR_JSON_ONLY,
         rusqlite::params![zahir_json, path_rel],

@@ -1,7 +1,7 @@
-//! Integration tests for Settings local layout source ([`ublx::handlers::applets::settings::layout_overlay_for_local_editing`]).
+//! Integration tests for Settings local layout source ([`ublx::modules::settings::layout_overlay_for_local_editing`]).
 
 use ublx::config::{LayoutOverlay, UblxOverlay};
-use ublx::handlers::applets::settings::layout_overlay_for_local_editing;
+use ublx::modules::settings::layout_overlay_for_local_editing;
 
 #[test]
 fn layout_overlay_no_local_uses_merged() {

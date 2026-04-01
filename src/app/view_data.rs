@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::handlers::applets::search::{self, fuzzy_matches_field};
 use crate::layout::setup;
+use crate::modules::search::{self, fuzzy_matches_field};
 use crate::utils::{clamp_selection, clamp_selection_opt};
 
 fn sort_indices_by_mode(

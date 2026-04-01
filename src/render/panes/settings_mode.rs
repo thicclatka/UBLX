@@ -9,9 +9,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::config::{Osc11BackgroundFormat, UblxOverlay, UblxPaths, load_ublx_toml};
-use crate::handlers::applets::settings;
 use crate::layout::setup::{SettingsConfigScope, UblxState};
 use crate::layout::style;
+use crate::modules::settings;
 use crate::render::{path_lines, scrollable_content};
 use crate::ui::{UI_CONSTANTS, UI_GLYPHS, UI_STRINGS};
 use crate::utils;

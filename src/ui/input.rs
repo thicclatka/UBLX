@@ -4,14 +4,15 @@ use std::io;
 
 use crate::app::RunUblxParams;
 use crate::config::{LayoutOverlay, UblxOpts};
-use crate::handlers::{applets, leave_terminal_for_editor, state_transitions};
+use crate::handlers::{leave_terminal_for_editor, state_transitions};
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, StartupPromptPhase, UblxState, ViewData,
 };
+use crate::modules;
 use crate::ui::{
     MainTabFlags,
     consts::{MAIN_TAB_KEYS, UI_CONSTANTS, UI_STRINGS},
-    ctrl_chord, file_ops, keymap, lens, menu, mouse, multiselect,
+    ctrl_chord, file_ops, keymap, menus, mouse, multiselect,
 };
 
 #[derive(Clone)]
@@ -20,7 +21,7 @@ pub struct InputContext<'a> {
     /// Snapshot rows for resolving paths in multi-select (`None` in modes without a shared row slice).
     pub all_rows: Option<&'a [crate::layout::setup::TuiRow]>,
     pub right_content: &'a RightPaneContent,
-    pub theme_ctx: applets::theme_selector::ThemeContext,
+    pub theme_ctx: modules::theme_selector::ThemeContext,
     pub frame_area: Rect,
     pub layout: &'a LayoutOverlay,
     pub tabs: MainTabFlags,
@@ -51,14 +52,14 @@ fn dispatch_modal_handlers(
     state_mut: &mut UblxState,
     view_ref: &ViewData,
     right_content_ref: &RightPaneContent,
-    theme_ctx_ref: &applets::theme_selector::ThemeContext,
+    theme_ctx_ref: &modules::theme_selector::ThemeContext,
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
     input: ModalInput,
 ) -> bool {
     let ModalInput { e, action } = input;
     // Table-style: each line is (guard / handler returns true) → we handled the event.
-    if applets::first_run::handle_startup_prompt(state_mut, params_mut, ublx_opts_mut, action) {
+    if modules::first_run::handle_startup_prompt(state_mut, params_mut, ublx_opts_mut, action) {
         return true;
     }
     if file_ops::handle_file_delete_confirm(state_mut, params_mut, action) {
@@ -67,20 +68,20 @@ fn dispatch_modal_handlers(
     if file_ops::handle_file_rename_input(state_mut, params_mut, e) {
         return true;
     }
-    if lens::handle_lens_name_input(state_mut, params_mut, e) {
+    if menus::handle_lens_name_input(state_mut, params_mut, e) {
         return true;
     }
-    if lens::handle_lens_rename_input(state_mut, params_mut, e) {
+    if menus::handle_lens_rename_input(state_mut, params_mut, e) {
         return true;
     }
-    if lens::handle_lens_delete_confirm(state_mut, params_mut, action) {
+    if menus::handle_lens_delete_confirm(state_mut, params_mut, action) {
         return true;
     }
     if state_mut.chrome.ublx_switch.visible {
-        applets::ublx_switch::handle_key(state_mut, params_mut, action);
+        modules::ublx_switch::handle_key(state_mut, params_mut, action);
         return true;
     }
-    if applets::enhance_policy::handle_enhance_policy_menu(
+    if modules::enhance_policy::handle_enhance_policy_menu(
         state_mut,
         params_mut,
         ublx_opts_mut,
@@ -88,14 +89,14 @@ fn dispatch_modal_handlers(
     ) {
         return true;
     }
-    if menu::handle_space_menu(state_mut, view_ref, params_mut, ublx_opts_mut, action) {
+    if menus::handle_space_menu(state_mut, view_ref, params_mut, ublx_opts_mut, action) {
         return true;
     }
-    if lens::handle_lens_menu(state_mut, params_mut, action) {
+    if menus::handle_lens_menu(state_mut, params_mut, action) {
         return true;
     }
     if state_mut.theme.selector_visible {
-        applets::theme_selector::handle_key(
+        modules::theme_selector::handle_key(
             state_mut,
             params_mut,
             ublx_opts_mut,
@@ -108,10 +109,10 @@ fn dispatch_modal_handlers(
         state_mut.chrome.help_visible = false;
         return true;
     }
-    if menu::handle_open_menu(state_mut, params_mut, ublx_opts_mut, action) {
+    if menus::handle_open_menu(state_mut, params_mut, ublx_opts_mut, action) {
         return true;
     }
-    if menu::try_open_space_menu(state_mut, view_ref, right_content_ref, action) {
+    if menus::try_open_space_menu(state_mut, view_ref, right_content_ref, action) {
         return true;
     }
     false
@@ -128,10 +129,10 @@ fn try_open_settings_editor_from_menu(
         return false;
     }
     if let Some(ref path) = state_mut.settings.editing_path
-        && let Some(ed) = applets::opener::editor_for_open(ublx_opts_ref.editor_path.as_deref())
+        && let Some(ed) = modules::opener::editor_for_open(ublx_opts_ref.editor_path.as_deref())
     {
         let _ = leave_terminal_for_editor();
-        let _ = applets::opener::open_in_editor(&ed, path);
+        let _ = modules::opener::open_in_editor(&ed, path);
         state_mut.session.tick.refresh_terminal_after_editor = true;
     }
     true
@@ -140,29 +141,29 @@ fn try_open_settings_editor_from_menu(
 /// After modals: Settings digit buffers, theme picker, Settings keys, reload, search clear.
 fn handle_post_modal_chrome_keys(
     state_mut: &mut UblxState,
-    theme_ctx_ref: &applets::theme_selector::ThemeContext,
+    theme_ctx_ref: &modules::theme_selector::ThemeContext,
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
     e: KeyEvent,
     action: keymap::UblxAction,
 ) -> bool {
     if state_mut.main_mode == MainMode::Settings
-        && (applets::settings::handle_layout_text_key(state_mut, e)
-            || applets::settings::handle_opacity_text_key(state_mut, e))
+        && (modules::settings::handle_layout_text_key(state_mut, e)
+            || modules::settings::handle_opacity_text_key(state_mut, e))
     {
         return true;
     }
     if matches!(action, keymap::UblxAction::ThemeSelector) && !state_mut.theme.selector_visible {
-        applets::theme_selector::open(state_mut, theme_ctx_ref);
+        modules::theme_selector::open(state_mut, theme_ctx_ref);
         return true;
     }
     if state_mut.main_mode == MainMode::Settings
-        && applets::settings::handle_key(state_mut, params_mut, ublx_opts_mut, action)
+        && modules::settings::handle_key(state_mut, params_mut, ublx_opts_mut, action)
     {
         return true;
     }
     if matches!(action, keymap::UblxAction::ReloadConfig) {
-        applets::settings::apply_config_reload(
+        modules::settings::apply_config_reload(
             params_mut,
             ublx_opts_mut,
             state_mut,
@@ -171,7 +172,7 @@ fn handle_post_modal_chrome_keys(
         return true;
     }
     if matches!(action, keymap::UblxAction::ViewerFindClear) {
-        applets::viewer_find::clear(state_mut);
+        modules::viewer_find::clear(state_mut);
         return true;
     }
     if matches!(action, keymap::UblxAction::SearchClear) {
@@ -299,7 +300,7 @@ fn apply_overlay_key_overrides(
         && !e.modifiers.contains(KeyModifiers::CONTROL)
         && !e.modifiers.contains(KeyModifiers::SHIFT)
         && let KeyCode::Char(c) = e.code
-        && let Some(idx) = menu::space_menu_hotkey_to_index(kind, c, state_mut.main_mode)
+        && let Some(idx) = menus::space_menu_hotkey_to_index(kind, c, state_mut.main_mode)
     {
         *action = keymap::UblxAction::SpaceMenuHotkeySelect(idx);
         state_mut.last_key_for_double = None;
@@ -344,7 +345,7 @@ pub fn apply_action_with_settings_enter(
     let ctx = state_transitions::UblxActionContext::new(view_ref, right_content_ref);
     let quit = ctx.apply_action_to_state(state_mut, action, tabs.has_duplicates, tabs.has_lenses);
     if state_mut.main_mode == MainMode::Settings && mode_before != MainMode::Settings {
-        applets::settings::on_enter_settings(state_mut, params_mut);
+        modules::settings::on_enter_settings(state_mut, params_mut);
     }
     quit
 }
@@ -353,7 +354,7 @@ fn handle_ublx_keyboard(
     state_mut: &mut UblxState,
     e: KeyEvent,
     panes: &ViewPaneRefs<'_>,
-    theme_ctx: &applets::theme_selector::ThemeContext,
+    theme_ctx: &modules::theme_selector::ThemeContext,
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
     tabs: MainTabFlags,

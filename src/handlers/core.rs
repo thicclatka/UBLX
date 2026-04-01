@@ -18,9 +18,10 @@ use crate::app;
 use crate::config;
 use crate::engine::db_ops::{self, TuiStartPreload};
 use crate::engine::orchestrator;
-use crate::handlers::{applets::first_run, snapshot};
+use crate::handlers::snapshot_pipeline;
 use crate::integrations::NefaxResult;
 use crate::layout::setup;
+use crate::modules::first_run;
 use crate::themes::default_theme_for_new_config_file;
 use crate::utils;
 
@@ -55,7 +56,7 @@ pub struct TuiModeLaunchOpts<'a> {
 /// Returns [`io::Error`] from headless snapshot mode, TUI setup, or the main run loop (terminal I/O).
 pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
     if params.snapshot_only {
-        run_snapshot_only(
+        headless_snap_mode(
             params.dir_to_ublx,
             params.ublx_opts,
             params.prior_nefax,
@@ -77,14 +78,19 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
     }
 }
 
-fn run_snapshot_only(
+fn headless_snap_mode(
     dir_to_ublx: &Path,
     ublx_opts: &config::UblxOpts,
     prior_nefax: Option<&NefaxResult>,
     start_time: Option<Instant>,
 ) -> std::io::Result<()> {
-    snapshot::run_snapshot_only(dir_to_ublx, ublx_opts, prior_nefax, start_time)
-        .map_err(|e| std::io::Error::other(e.to_string()))
+    snapshot_pipeline::run_snapshot_pipeline_headless(
+        dir_to_ublx,
+        ublx_opts,
+        prior_nefax,
+        start_time,
+    )
+    .map_err(|e| std::io::Error::other(e.to_string()))
 }
 
 fn run_tui_mode(
@@ -107,7 +113,7 @@ fn run_tui_mode(
         let opts_clone = ublx_opts.clone();
         let prior_clone = prior_nefax.cloned();
         std::thread::spawn(move || {
-            snapshot::run_snapshot_pipeline(
+            snapshot_pipeline::run_snapshot_pipeline(
                 &dir_clone,
                 &opts_clone,
                 prior_clone.as_ref(),

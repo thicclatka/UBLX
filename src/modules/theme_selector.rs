@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use crate::app::RunUblxParams;
 use crate::config::{UblxOpts, UblxPaths, write_local_theme};
-use crate::handlers::applets::settings;
 use crate::layout::setup::UblxState;
+use crate::modules::settings;
 use crate::themes;
 use crate::ui::{UblxAction, show_operation_toast};
 use crate::utils::{clamp_selection, sync_osc11_page_background};

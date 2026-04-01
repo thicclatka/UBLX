@@ -2,7 +2,7 @@
 
 use crate::app::RunUblxParams;
 use crate::config::OPERATION_NAME;
-use crate::handlers::snapshot;
+use crate::handlers;
 use crate::layout::setup::UblxState;
 use crate::ui::consts::UI_STRINGS;
 use crate::ui::show_operation_toast;
@@ -34,7 +34,7 @@ pub fn show_snapshot_completed_toast(
         return;
     };
     let op = OPERATION_NAME.op("snapshot");
-    snapshot::push_snapshot_done_to_bumper(b, added, mod_count, removed);
+    handlers::push_snapshot_done_to_bumper(b, added, mod_count, removed);
     // Bumper no longer stacks old snapshot lines; reset consumed so the toast shows the new pair.
     state_mut.toasts.consumed_per_operation.remove(&op);
     utils::show_toast_slot(

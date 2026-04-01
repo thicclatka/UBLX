@@ -1,10 +1,10 @@
 //! In-pane find: literal ranges, scroll, highlights.
 
-use ublx::handlers::applets::viewer_find::{
+use ublx::layout::setup::{UblxState, ViewerFindState};
+use ublx::modules::viewer_find::{
     self, highlight_cell_line, highlight_table_cell_line, line_byte_to_index, literal_match_ranges,
     option_needle_nonempty,
 };
-use ublx::layout::setup::{UblxState, ViewerFindState};
 
 #[test]
 fn literal_match_ranges_empty_needle() {

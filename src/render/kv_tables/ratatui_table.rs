@@ -9,8 +9,8 @@ use ratatui::widgets::{Cell, Row, Table};
 use rayon::prelude::*;
 
 use crate::config::PARALLEL;
-use crate::handlers::applets::viewer_find;
 use crate::layout::style;
+use crate::modules::viewer_find;
 use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;
 

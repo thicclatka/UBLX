@@ -1,6 +1,6 @@
 //! Bulk-rename buffer parsing (`parse_bulk_rename_lines`).
 
-use ublx::handlers::applets::file_ops::parse_bulk_rename_lines;
+use ublx::modules::file_ops::parse_bulk_rename_lines;
 
 #[test]
 fn parse_bulk_two_lines() {

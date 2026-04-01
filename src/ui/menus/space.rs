@@ -1,59 +1,13 @@
-//! Open menu (from Space menu) and spacebar context menu input handling.
+//! Spacebar context menu: row counts, labels, hotkeys, submit handling, and opening the menu.
 
 use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
 use crate::engine::db_ops;
-use crate::handlers::{applets, leave_terminal_for_editor};
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, SpaceMenuKind, UblxState, ViewData,
 };
+use crate::modules;
 use crate::ui::{UI_STRINGS, file_ops::modal_open, keymap::UblxAction, show_operation_toast};
-
-fn open_menu_on_submit(
-    state: &mut UblxState,
-    params: &RunUblxParams<'_>,
-    ublx_opts: &mut UblxOpts,
-) {
-    if let Some(rel_path) = state.open_menu.path.as_ref() {
-        let full_path = params.dir_to_ublx.join(rel_path);
-        let terminal_choice = state.open_menu.can_terminal && state.open_menu.selected_index == 0;
-        if terminal_choice {
-            if let Some(ed) = applets::opener::editor_for_open(ublx_opts.editor_path.as_deref()) {
-                let _ = leave_terminal_for_editor();
-                let _ = applets::opener::open_in_editor(&ed, &full_path);
-                state.session.tick.refresh_terminal_after_editor = true;
-            }
-        } else {
-            let _ = applets::opener::open_in_gui(&full_path);
-        }
-    }
-    state.close_open_menu();
-}
-
-/// Handle action when Open menu (Terminal/GUI) is visible. Returns true if handled.
-pub fn handle_open_menu(
-    state: &mut UblxState,
-    params: &RunUblxParams<'_>,
-    ublx_opts: &mut UblxOpts,
-    action: UblxAction,
-) -> bool {
-    if !state.open_menu.visible {
-        return false;
-    }
-    match action {
-        UblxAction::Quit | UblxAction::SearchClear => state.close_open_menu(),
-        UblxAction::MoveDown => {
-            let max_idx = usize::from(state.open_menu.can_terminal);
-            state.open_menu.selected_index = (state.open_menu.selected_index + 1).min(max_idx);
-        }
-        UblxAction::MoveUp => {
-            state.open_menu.selected_index = state.open_menu.selected_index.saturating_sub(1);
-        }
-        UblxAction::SearchSubmit => open_menu_on_submit(state, params, ublx_opts),
-        _ => {}
-    }
-    true
-}
 
 #[must_use]
 fn space_menu_item_count(kind: Option<&SpaceMenuKind>, main_mode: MainMode) -> usize {
@@ -258,7 +212,7 @@ fn space_menu_enhance_zahir_if_disabled(
     if ublx_opts.enable_enhance_all {
         return;
     }
-    match applets::enhance::enhance_single_path(
+    match modules::enhance::enhance_single_path(
         &params.dir_to_ublx,
         &params.db_path,
         path,
@@ -384,7 +338,7 @@ fn space_menu_file_actions_submit(
     }
     if idx == m.reveal {
         let full = params.dir_to_ublx.join(&path);
-        if let Err(e) = applets::opener::reveal_in_file_manager(&full) {
+        if let Err(e) = modules::opener::reveal_in_file_manager(&full) {
             log::warn!("Show in folder: {e}");
         }
         return;
@@ -410,7 +364,7 @@ fn space_menu_file_actions_submit(
         else {
             return;
         };
-        if applets::lens::remove_path_from_lens(&params.db_path, lens_name, &path).is_ok() {
+        if modules::lens::remove_path_from_lens(&params.db_path, lens_name, &path).is_ok() {
             show_operation_toast(
                 state,
                 params,

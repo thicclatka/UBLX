@@ -2,8 +2,8 @@
 
 use ratatui::layout::Rect;
 
-use crate::handlers::applets::viewer_find;
 use crate::layout::{setup::UblxState, style};
+use crate::modules::viewer_find;
 use crate::ui::UI_STRINGS;
 
 use super::consts::TABLE_GAP;

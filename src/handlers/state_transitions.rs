@@ -1,10 +1,10 @@
 //! Apply key actions to TUI state. Moved from layout so "what happens on key" lives with other behavior.
 
-use crate::handlers::applets::viewer_find;
 use crate::integrations::ZahirFileType as FileType;
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
 };
+use crate::modules::viewer_find;
 use crate::ui::UblxAction;
 use crate::utils::clamp_selection;
 

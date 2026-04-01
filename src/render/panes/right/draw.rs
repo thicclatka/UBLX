@@ -8,11 +8,11 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::handlers::applets::viewer_find;
 use crate::layout::{
     setup::{RightPaneContent, RightPaneMode, UblxState, ViewData},
     style,
 };
+use crate::modules::viewer_find;
 use crate::render::viewers::image as viewer_image;
 use crate::render::{kv_tables, scrollable_content};
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};

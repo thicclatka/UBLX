@@ -1,18 +1,80 @@
-//! In-process switch to another indexed root (same terminal session; no `exec`).
+//! Switch indexed project: list recents-backed roots with a DB, then switch in-process to the chosen root.
 
 use std::path::PathBuf;
 use std::sync::mpsc;
 
 use crate::app::{RunUblxParams, RunUblxStartupFlow};
 use crate::config::{
-    UblxOpts, UblxOptsForDirExtras, UblxPaths, ensure_global_config_file_with_defaults,
-    record_ublx_session_open,
+    UblxOpts, UblxOptsForDirExtras, UblxPaths, all_indexed_roots_alphabetical,
+    ensure_global_config_file_with_defaults, record_prior_root_selected, record_ublx_session_open,
 };
 use crate::engine::{db_ops, orchestrator};
-use crate::handlers::{core, snapshot};
-use crate::layout::setup;
+use crate::handlers;
+use crate::layout::setup::{self, UblxState, UblxSwitchPickerState};
 use crate::themes;
+use crate::ui::UblxAction;
 use crate::utils::BumperBuffer;
+
+pub fn open(state_mut: &mut UblxState, params: &RunUblxParams<'_>) {
+    let roots = all_indexed_roots_alphabetical();
+    let current = params.dir_to_ublx.as_path();
+    let current_canon = current
+        .canonicalize()
+        .unwrap_or_else(|_| current.to_path_buf());
+    let sel = roots
+        .iter()
+        .position(|p| {
+            let c = p.canonicalize().unwrap_or_else(|_| p.clone());
+            c == current_canon
+        })
+        .unwrap_or(0);
+    let max = roots.len().saturating_sub(1);
+    state_mut.chrome.ublx_switch = UblxSwitchPickerState {
+        visible: true,
+        selected_index: sel.min(max),
+        roots,
+    };
+}
+
+pub fn handle_key(
+    state_mut: &mut UblxState,
+    params_mut: &mut RunUblxParams<'_>,
+    action: UblxAction,
+) {
+    let sw = &mut state_mut.chrome.ublx_switch;
+    let n = sw.roots.len();
+    match action {
+        UblxAction::Quit | UblxAction::SearchClear => {
+            sw.visible = false;
+        }
+        UblxAction::MoveDown if n > 0 => {
+            sw.selected_index = (sw.selected_index + 1).min(n - 1);
+        }
+        UblxAction::MoveUp if n > 0 => {
+            sw.selected_index = sw.selected_index.saturating_sub(1);
+        }
+        UblxAction::SearchSubmit => {
+            if n == 0 {
+                sw.visible = false;
+                return;
+            }
+            let dir = sw.roots[sw.selected_index].clone();
+            let cur_c = params_mut
+                .dir_to_ublx
+                .canonicalize()
+                .unwrap_or_else(|_| params_mut.dir_to_ublx.clone());
+            let pick_c = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+            if pick_c == cur_c {
+                sw.visible = false;
+                return;
+            }
+            let _ = record_prior_root_selected(&dir);
+            sw.visible = false;
+            state_mut.session.pending_switch_to = Some(dir);
+        }
+        _ => {}
+    }
+}
 
 /// Replace the running session’s indexed root: new DB, new opts, new background snapshot channel, fresh UI state.
 ///
@@ -65,7 +127,7 @@ pub fn perform_session_switch<'a>(
     let prior_for_thread = prior_opt.clone();
     let bumper_for_thread = bumper.cloned();
     std::thread::spawn(move || {
-        snapshot::run_snapshot_pipeline(
+        handlers::run_snapshot_pipeline(
             &dir_clone,
             &opts_clone,
             prior_for_thread.as_ref(),
@@ -74,7 +136,7 @@ pub fn perform_session_switch<'a>(
         );
     });
 
-    let config_reload_rx = Some(core::spawn_config_watcher(&dir));
+    let config_reload_rx = Some(handlers::spawn_config_watcher(&dir));
     let pending_force_full_enhance_toast = orchestrator::should_force_full_zahir(ublx_opts);
     let _ = record_ublx_session_open(&dir);
 

@@ -2,8 +2,8 @@
 
 use crate::app::RunUblxParams;
 use crate::config::{EnhancePolicy, UblxOpts, UblxPaths, write_local_enhance_policy};
-use crate::handlers::applets::settings::apply_config_reload;
 use crate::layout::setup::UblxState;
+use crate::modules::settings::apply_config_reload;
 use crate::ui::{UI_STRINGS, UblxAction, show_operation_toast};
 use crate::utils::clamp_selection;
 

@@ -450,7 +450,7 @@ pub fn handle_mouse_event(
             );
             if contains(footer, event.column, event.row) {
                 let url = env!("CARGO_PKG_REPOSITORY");
-                if let Err(e) = crate::handlers::applets::opener::open_url(url) {
+                if let Err(e) = crate::modules::opener::open_url(url) {
                     log::warn!("open repository URL: {e}");
                 }
             }

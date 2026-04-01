@@ -10,8 +10,9 @@ use ratatui::prelude::CrosstermBackend;
 use crate::app::{RunUblxParams, load_snapshot_for_tui};
 use crate::config::{LayoutOverlay, UblxOpts};
 use crate::engine::{db_ops, orchestrator};
-use crate::handlers::{applets, reapply_terminal_after_editor, snapshot};
+use crate::handlers::{reapply_terminal_after_editor, spawn_snapshot_from_dir_db};
 use crate::layout::setup;
+use crate::modules;
 use crate::render::marquee;
 use crate::ui;
 use crate::utils;
@@ -33,7 +34,7 @@ fn run_pending_session_switch(
         return Ok(());
     };
     let bumper = params.bumper;
-    match crate::handlers::session_switch::perform_session_switch(
+    match modules::ublx_switch::perform_session_switch(
         pending, params, ublx_opts, categories, all_rows, state, bumper,
     ) {
         Ok(()) => terminal.clear(),
@@ -138,7 +139,7 @@ pub fn run_tick(
         draw_one_frame(terminal, state, &view, &right_content, &draw_inputs)?;
     }
     let layout_for_input = params.layout.clone();
-    let theme_ctx = applets::theme_selector::context_from_state(state, params, theme_name);
+    let theme_ctx = modules::theme_selector::context_from_state(state, params, theme_name);
     let quit = ui::handle_ublx_input(
         state,
         ui::InputContext {
@@ -181,7 +182,7 @@ fn tick_applets_and_io(
     params: &mut RunUblxParams<'_>,
     ublx_opts: &mut UblxOpts,
 ) {
-    applets::settings::on_first_tick(state, params);
+    modules::settings::on_first_tick(state, params);
 
     if params.startup.pending_force_full_enhance_toast {
         params.startup.pending_force_full_enhance_toast = false;
@@ -209,7 +210,7 @@ fn tick_applets_and_io(
             ublx_opts.nefax.with_hash,
         ) {
             Ok((groups, mode)) => {
-                applets::dupe_finder::prune_duplicate_ignores_after_reload(
+                modules::dupe_finder::prune_duplicate_ignores_after_reload(
                     &mut state.duplicate_ignored_paths,
                     &groups,
                 );
@@ -224,16 +225,16 @@ fn tick_applets_and_io(
         && let Ok((groups, mode)) = rx.try_recv()
     {
         params.duplicate_groups_rx = None;
-        applets::dupe_finder::on_groups_received(state, params, groups, mode);
+        modules::dupe_finder::on_groups_received(state, params, groups, mode);
     }
 
     if let Some(rx) = params.config_reload_rx.as_ref()
         && rx.try_recv().is_ok()
     {
-        applets::settings::on_config_reload(state, params, ublx_opts);
+        modules::settings::on_config_reload(state, params, ublx_opts);
     }
 
-    applets::dupe_finder::spawn_if_requested(state, params, ublx_opts);
+    modules::dupe_finder::spawn_if_requested(state, params, ublx_opts);
 }
 
 fn tick_toasts_and_snapshot(
@@ -269,7 +270,7 @@ fn handle_snapshot_request(
     {
         params.startup.pending_force_full_enhance_toast = true;
     }
-    snapshot::spawn_snapshot_from_dir_db(
+    spawn_snapshot_from_dir_db(
         &params.dir_to_ublx,
         &params.db_path,
         params.snapshot_done_tx.as_ref(),

@@ -5,10 +5,10 @@ use std::collections::HashSet;
 use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
 use crate::engine::db_ops;
-use crate::handlers::applets::{enhance, lens as lens_applet};
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, MainMode, MultiselectState, PanelFocus, TuiRow, UblxState, ViewData,
 };
+use crate::modules::{enhance, lens as lens_applet};
 use crate::ui::{UI_STRINGS, file_ops, keymap::UblxAction, show_operation_toast};
 
 fn multiselect_applies(main_mode: MainMode) -> bool {

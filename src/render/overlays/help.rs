@@ -138,7 +138,7 @@ const HELP_COMMAND_MODE: &[(&str, &str)] = help_entries![
     ("Command Mode + p", COMMAND_MODE_DESCRIPTIONS.project),
 ];
 
-/// Space menu: matches [`crate::ui::menu::space_menu_item_labels`] / `UI_STRINGS.space`.
+/// Space menu: matches [`crate::ui::space_menu_item_labels`] / `UI_STRINGS.space`.
 const HELP_BROWSER_SPACE: &[(&str, &str)] = help_entries![
     ("Space → o", "Open — Terminal and/or GUI"),
     ("Space → f", "Show in folder"),

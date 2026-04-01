@@ -8,10 +8,11 @@ use std::time::{Duration, Instant};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 
 use crate::app::RunUblxParams;
-use crate::handlers::{applets, state_transitions};
+use crate::handlers::state_transitions;
 use crate::layout::setup::{
     CtrlChordState, MainMode, RightPaneContent, UblxState, ViewData, ViewerChrome,
 };
+use crate::modules;
 use crate::ui::{COMMAND_MODE_DESCRIPTIONS, MainTabFlags, keymap::UblxAction};
 
 /// After leader, show the menu if no second key within this duration.
@@ -84,7 +85,7 @@ fn apply_chord_action(
     let ctx = state_transitions::UblxActionContext::new(view, right);
     let quit = ctx.apply_action_to_state(state, action, tabs.has_duplicates, tabs.has_lenses);
     if state.main_mode == MainMode::Settings && mode_before != MainMode::Settings {
-        applets::settings::on_enter_settings(state, params);
+        modules::settings::on_enter_settings(state, params);
     }
     quit
 }
@@ -98,7 +99,7 @@ pub fn handle_chord_key_event(
     right_content: &RightPaneContent,
     params: &mut RunUblxParams<'_>,
     tabs: MainTabFlags,
-    theme_ctx: &applets::theme_selector::ThemeContext,
+    theme_ctx: &modules::theme_selector::ThemeContext,
 ) -> Option<bool> {
     if !state.chrome.ctrl_chord.is_active() {
         return None;
@@ -115,7 +116,7 @@ pub fn handle_chord_key_event(
         KeyCode::Char(c) => {
             if c.eq_ignore_ascii_case(&'p') {
                 end_chord(state);
-                applets::ublx_switch::open(state, params);
+                modules::ublx_switch::open(state, params);
                 return Some(false);
             }
             let Some(action) = chord_action_for_key(c) else {
@@ -124,7 +125,7 @@ pub fn handle_chord_key_event(
             };
             end_chord(state);
             if matches!(action, UblxAction::ThemeSelector) && !state.theme.selector_visible {
-                applets::theme_selector::open(state, theme_ctx);
+                modules::theme_selector::open(state, theme_ctx);
                 return Some(false);
             }
             let quit = apply_chord_action(state, view, right_content, action, tabs, params);

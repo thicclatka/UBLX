@@ -1,8 +1,8 @@
 //! Delta-mode view data: overview, added/mod/removed rows, filtered display lines.
 
 use crate::engine::db_ops::{self, DELTA_CATEGORY_COUNT, DeltaType};
-use crate::handlers::applets::search;
 use crate::layout::setup;
+use crate::modules::search;
 use crate::ui::UI_STRINGS;
 use crate::utils::{clamp_selection, clamp_selection_opt, format_timestamp_ns};
 

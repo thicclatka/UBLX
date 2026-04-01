@@ -8,8 +8,8 @@ use rayon::prelude::*;
 
 use crate::config::PARALLEL;
 use crate::engine::db_ops::{self, DuplicateGroup};
-use crate::handlers::applets::search::fuzzy_matches_field;
 use crate::layout::setup;
+use crate::modules::search::fuzzy_matches_field;
 use crate::utils::clamp_selection;
 
 use super::view_data;

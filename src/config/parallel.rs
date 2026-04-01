@@ -11,11 +11,11 @@ pub struct PrettyTablePrep {
 /// Thresholds above which we switch to parallel iteration for specific operations.
 #[derive(Clone, Copy, Debug)]
 pub struct Parallel {
-    /// Snapshot content indices: filter rows by category + fuzzy search. (`handlers::applets::search::content_indices_for_view`)
+    /// Snapshot content indices: filter rows by category + fuzzy search. (`modules::search::content_indices_for_view`)
     pub content_indices: usize,
-    /// Categories that have ≥1 row fuzzy-matching search. (`handlers::applets::search::categories_for_search`)
+    /// Categories that have ≥1 row fuzzy-matching search. (`modules::search::categories_for_search`)
     pub categories_for_search: usize,
-    /// Delta rows filtered by fuzzy path match. (`handlers::applets::search::filter_delta_rows`)
+    /// Delta rows filtered by fuzzy path match. (`modules::search::filter_delta_rows`)
     pub delta_rows: usize,
     /// Duplicates groups or Lenses names filtered by search. (`app::user_selected`)
     pub user_selected_filter: usize,

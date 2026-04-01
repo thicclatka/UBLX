@@ -16,7 +16,7 @@ use crate::utils::BumperBuffer;
 /// # Errors
 ///
 /// Returns [`anyhow::Error`] when the orchestrator or follow-up steps fail.
-pub fn run_snapshot_only(
+pub fn run_snapshot_pipeline_headless(
     dir_to_ublx: &Path,
     ublx_opts: &UblxOpts,
     prior_nefax: Option<&NefaxResult>,
@@ -72,7 +72,7 @@ pub fn run_snapshot_pipeline(
     }
 }
 
-/// Load `prior_nefax` and `ublx_opts` from `dir` and `db_path`, then run [`run_snapshot_pipeline`].
+/// Load `prior_nefax` and `ublx_opts` from `dir` and `db_path`, then run [`run_snap_pipeline`].
 /// Use from the TUI when running a snapshot on demand (e.g. Command Mode: Ctrl+A, then s).
 ///
 /// `preserve_*_cache_before_apply`: when `Some`, replaces the corresponding field on the opts returned from
@@ -80,7 +80,7 @@ pub fn run_snapshot_pipeline(
 /// still sees a false→true flip after [`UblxOpts::reload_hot_config`] (or startup `for_dir`) already wrote the new
 /// values to the on-disk cache — otherwise the snapshot would look like "no flip" (e.g. skip full Zahir, or lose hash
 /// backfill intent).
-pub fn run_snapshot_pipeline_from_dir_db(
+pub fn run_snap_pipeline_from_dir_db(
     dir: &Path,
     db_path: &Path,
     done_tx: Option<mpsc::Sender<(usize, usize, usize)>>,
@@ -117,7 +117,7 @@ pub fn run_snapshot_pipeline_from_dir_db(
     run_snapshot_pipeline(dir, &ublx_opts, prior_nefax.as_ref(), done_tx, bumper);
 }
 
-/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Command Mode: Ctrl+A, then s).
+/// Spawn a thread that runs [`run_snap_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Command Mode: Ctrl+A, then s).
 pub fn spawn_snapshot_from_dir_db(
     dir: &Path,
     db_path: &Path,
@@ -135,7 +135,7 @@ pub fn spawn_snapshot_from_dir_db(
         let preserve_with_hash_cache_before_apply =
             preserve_enhance_cache_from.map(|o| o.with_hash_cache_before_apply);
         std::thread::spawn(move || {
-            run_snapshot_pipeline_from_dir_db(
+            run_snap_pipeline_from_dir_db(
                 &dir,
                 &db,
                 Some(tx_clone),
