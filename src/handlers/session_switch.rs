@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc;
 
-use crate::app::{RunUblxParams, RunUblxStartupFlow, load_snapshot_for_tui};
+use crate::app::{RunUblxParams, RunUblxStartupFlow};
 use crate::config::{
     UblxOpts, UblxOptsForDirExtras, UblxPaths, ensure_global_config_file_with_defaults,
     record_ublx_session_open,
@@ -33,8 +33,8 @@ pub fn perform_session_switch<'a>(
     let dir = new_dir;
     let db_path = db_ops::ensure_ublx_and_db(&dir).map_err(|e| e.to_string())?;
 
+    let cold = db_ops::load_tui_start_data(&db_path).map_err(|e| e.to_string())?;
     let paths = UblxPaths::new(&dir);
-    let cached_settings = db_ops::load_settings_from_db(&db_path).ok().flatten();
     let valid_themes: Vec<&str> = themes::theme_ordered_list()
         .iter()
         .map(|t| t.name)
@@ -49,30 +49,32 @@ pub fn perform_session_switch<'a>(
         None,
         None,
         None,
-        cached_settings.as_ref(),
+        cold.cached_settings.as_ref(),
         &for_dir_config,
     );
+
+    let prior_opt = cold.prior_nefax;
+    let c = cold.categories;
+    let r = cold.rows;
+    let lens_names = cold.lens_names;
 
     let (tx, rx) = mpsc::channel::<(usize, usize, usize)>();
     let tx_for_tui = tx.clone();
     let dir_clone = dir.clone();
     let opts_clone = ublx_opts.clone();
-    let prior_clone = db_ops::load_nefax_from_db(&dir_clone, &db_path)
-        .ok()
-        .flatten();
+    let prior_for_thread = prior_opt.clone();
     let bumper_for_thread = bumper.cloned();
     std::thread::spawn(move || {
         snapshot::run_snapshot_pipeline(
             &dir_clone,
             &opts_clone,
-            prior_clone.as_ref(),
+            prior_for_thread.as_ref(),
             Some(tx),
             bumper_for_thread.as_ref(),
         );
     });
 
     let config_reload_rx = Some(core::spawn_config_watcher(&dir));
-    let lens_names = db_ops::load_lens_names(&db_path).unwrap_or_default();
     let pending_force_full_enhance_toast = orchestrator::should_force_full_zahir(ublx_opts);
     let _ = record_ublx_session_open(&dir);
 
@@ -99,10 +101,6 @@ pub fn perform_session_switch<'a>(
     };
     params.right_pane_async_tx = Some(right_pane_tx);
 
-    let (c, r) = load_snapshot_for_tui(
-        &params.db_path,
-        db_ops::SnapshotReaderPreference::PreferUblx,
-    );
     *categories = c;
     *all_rows = r;
 

@@ -1,10 +1,10 @@
 //! Index DB and related files under the `dir_to_ublx_abs`, all keyed by package name (e.g. `.ublx`, `.ublx_tmp`, `.ublx-wal`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use log::debug;
 use rusqlite::{Connection, OptionalExtension};
@@ -17,12 +17,89 @@ use crate::integrations::{
 use crate::utils::{canonicalize_dir_to_ublx, get_created_ns, normalize_snapshot_rel_path_str};
 
 use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
+use super::lens::load_lens_names_from_conn;
+use super::reader::{SnapshotReaderPreference, snapshot_reader_path_with};
 use super::utils::{self as db_ops_utils, SnapshotPriorContext};
 
 /// How long TUI snapshot reads wait on `SQLITE_BUSY` before failing (keeps the event loop responsive while tmp is written).
 pub const SNAPSHOT_TUI_READ_BUSY_MS: u64 = 2;
 
+/// One row from snapshot for TUI list: (path, category, `size_bytes`). `zahir_json` is loaded on demand for the selected row.
+pub type SnapshotTuiRow = (String, String, u64);
+
+/// Result of [`load_tui_start_data`]: prior index state, cached settings, and TUI list data in one DB pass.
+pub struct TuiStartLoad {
+    pub prior_nefax: Option<NefaxResult>,
+    /// From `settings` row (same connection as snapshot — avoids a second open on startup).
+    pub cached_settings: Option<UblxSettings>,
+    pub categories: Vec<String>,
+    pub rows: Vec<SnapshotTuiRow>,
+    pub lens_names: Vec<String>,
+}
+
+/// Categories, rows, and lens names for [`crate::handlers::RunAppParams::tui_start`] (prior Nefax is separate).
+pub struct TuiStartPreload {
+    pub categories: Vec<String>,
+    pub rows: Vec<SnapshotTuiRow>,
+    pub lens_names: Vec<String>,
+}
+
+impl TuiStartLoad {
+    /// Split into prior Nefax, preload payload, and cached settings for [`UblxOpts::for_dir`].
+    #[must_use]
+    pub fn split_for_app(self) -> (Option<NefaxResult>, TuiStartPreload, Option<UblxSettings>) {
+        let TuiStartLoad {
+            prior_nefax,
+            cached_settings,
+            categories,
+            rows,
+            lens_names,
+        } = self;
+        (
+            prior_nefax,
+            TuiStartPreload {
+                categories,
+                rows,
+                lens_names,
+            },
+            cached_settings,
+        )
+    }
+}
+
+fn apply_snapshot_read_tuning(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "PRAGMA mmap_size = 268435456;
+         PRAGMA cache_size = -65536;",
+    )
+}
+
+/// If the DB is in WAL mode, checkpoint into the main file so cold startup does less WAL replay.
+/// Best-effort (ignored on error). Do **not** call on every hot-path read — only dedicated startup opens.
+fn maybe_checkpoint_wal_for_read(conn: &Connection) {
+    let Ok(mode) = conn.query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0)) else {
+        return;
+    };
+    if !mode.eq_ignore_ascii_case("wal") {
+        return;
+    }
+    if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
+        debug!("wal_checkpoint at TUI read open: {e}");
+    }
+}
+
+/// TUI startup only: open, optional WAL truncate checkpoint, then read tuning (see [`maybe_checkpoint_wal_for_read`]).
+fn open_for_tui_start_read(path: &Path) -> Result<Connection, rusqlite::Error> {
+    let c = Connection::open(path)?;
+    c.busy_timeout(Duration::from_millis(SNAPSHOT_TUI_READ_BUSY_MS))?;
+    maybe_checkpoint_wal_for_read(&c);
+    apply_snapshot_read_tuning(&c)?;
+    Ok(c)
+}
+
 /// Open the DB for interactive reads with a short busy timeout (poll / right pane while snapshot runs).
+///
+/// Applies read-side tuning (`mmap`, page cache) to speed large snapshot DBs.
 ///
 /// # Errors
 ///
@@ -30,7 +107,79 @@ pub const SNAPSHOT_TUI_READ_BUSY_MS: u64 = 2;
 pub fn open_for_snapshot_tui_read(path: &Path) -> Result<Connection, rusqlite::Error> {
     let c = Connection::open(path)?;
     c.busy_timeout(Duration::from_millis(SNAPSHOT_TUI_READ_BUSY_MS))?;
+    apply_snapshot_read_tuning(&c)?;
     Ok(c)
+}
+
+/// Prior Nefax, TUI categories + rows, and lens names in **one** connection and one full snapshot table scan (plus small lens query).
+///
+/// Prefer this on TUI launch instead of separate prior-Nefax load, category query, row query, and lens query.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
+pub fn load_tui_start_data(db_path: &Path) -> Result<TuiStartLoad, anyhow::Error> {
+    let Some(read_path) = snapshot_reader_path_with(db_path, SnapshotReaderPreference::PreferUblx)
+    else {
+        return Ok(TuiStartLoad {
+            prior_nefax: None,
+            cached_settings: None,
+            categories: Vec::new(),
+            rows: Vec::new(),
+            lens_names: Vec::new(),
+        });
+    };
+    let t0 = Instant::now();
+    let conn = open_for_tui_start_read(&read_path)?;
+    let cached_settings = load_settings_from_conn(&conn).ok().flatten();
+    let lens_names = load_lens_names_from_conn(&conn).unwrap_or_default();
+
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_SNAPSHOT_TUI_START)?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, Option<Vec<u8>>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+        ))
+    })?;
+
+    let mut nefax = NefaxResult::new();
+    let mut all_rows: Vec<SnapshotTuiRow> = Vec::new();
+    let mut category_set = BTreeSet::new();
+
+    for r in rows {
+        let (path_str, mtime_ns, size, hash_blob, category_opt) = r?;
+        db_ops_utils::nefax_insert_snapshot_row(&mut nefax, &path_str, mtime_ns, size, hash_blob);
+        let category = category_opt.unwrap_or_default();
+        if !category.is_empty() {
+            category_set.insert(category.clone());
+        }
+        let size_u = size.max(0).cast_unsigned();
+        all_rows.push((path_str, category, size_u));
+    }
+
+    all_rows.sort_by(|a, b| a.0.cmp(&b.0));
+    let categories: Vec<String> = category_set.into_iter().collect();
+
+    let prior = (!nefax.is_empty()).then_some(nefax);
+
+    debug!(
+        "tui cold start: {} snapshot rows, {} categories, {} lenses, {:?}",
+        all_rows.len(),
+        categories.len(),
+        lens_names.len(),
+        t0.elapsed()
+    );
+
+    Ok(TuiStartLoad {
+        prior_nefax: prior,
+        cached_settings,
+        categories,
+        rows: all_rows,
+        lens_names,
+    })
 }
 
 /// WAL on `.ublx_tmp` so readers (TUI poll) can overlap snapshot writes; finalized before rename.
@@ -88,9 +237,6 @@ fn write_settings_copy_previous_write_delta_log(
     })?;
     Ok(())
 }
-
-/// One row from snapshot for TUI list: (path, category, `size_bytes`). `zahir_json` is loaded on demand for the selected row.
-pub type SnapshotTuiRow = (String, String, u64);
 
 /// Write nefax + zahir outputs to the snapshot: build DB at `dir_to_ublx_abs/.ublx_tmp` (with schema), insert all rows, write settings and `delta_log`, then rename to `dir_to_ublx_abs/.ublx`. Uses `prior.prior_zahir_json` for paths not in this run's zahir result (e.g. when zahir was skipped due to unchanged mtime). Uses `prior.prior_category` so listing categories stay stable when only `zahir_json` changes. When `zahir_result` is None (no paths to zahir), all paths use prior.
 ///
@@ -320,14 +466,13 @@ fn ensure_settings_config_source(conn: &Connection) {
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN config_source TEXT", []);
 }
 
-/// Load cached settings from the ublx DB. Returns `None` if the settings table is empty (e.g. DB created before settings existed).
+/// Load cached settings using an existing connection (same path as [`load_tui_start_data`] snapshot read).
 ///
 /// # Errors
 ///
-/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
-pub fn load_settings_from_db(db_path: &Path) -> Result<Option<UblxSettings>, anyhow::Error> {
-    let conn = Connection::open(db_path)?;
-    ensure_settings_config_source(&conn);
+/// Returns [`anyhow::Error`] on `SQLite` query errors.
+pub fn load_settings_from_conn(conn: &Connection) -> Result<Option<UblxSettings>, anyhow::Error> {
+    ensure_settings_config_source(conn);
     let settings_query = UblxDbStatements::create_query_for_settings_from_db();
     conn.query_row(&settings_query, [], |row| {
         let nt: i64 = row.get(0)?;
@@ -341,6 +486,16 @@ pub fn load_settings_from_db(db_path: &Path) -> Result<Option<UblxSettings>, any
     })
     .optional()
     .map_err(Into::into)
+}
+
+/// Load cached settings from the ublx DB. Returns `None` if the settings table is empty (e.g. DB created before settings existed).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` open/query errors.
+pub fn load_settings_from_db(db_path: &Path) -> Result<Option<UblxSettings>, anyhow::Error> {
+    let conn = Connection::open(db_path)?;
+    load_settings_from_conn(&conn)
 }
 
 /// True if `snapshot` has at least one row. Lets `main` treat “empty snapshot + no local `ublx.toml`” as first-run even when the `.ublx` file already exists (e.g. quit before the prompt finished).

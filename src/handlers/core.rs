@@ -16,7 +16,8 @@ use ratatui::prelude::CrosstermBackend;
 
 use crate::app;
 use crate::config;
-use crate::engine::{db_ops, orchestrator};
+use crate::engine::db_ops::{self, TuiStartPreload};
+use crate::engine::orchestrator;
 use crate::handlers::{applets::first_run, snapshot};
 use crate::integrations::NefaxResult;
 use crate::layout::setup;
@@ -34,6 +35,16 @@ pub struct RunAppParams<'a> {
     pub dev: bool,
     pub start_time: Option<Instant>,
     /// Show first-run welcome when [`crate::config::paths::should_show_initial_prompt`] is true (no `ubli/` DB yet).
+    pub initial_prompt: bool,
+    /// TUI only: categories, file rows, lens names from [`db_ops::load_tui_start_data`] (omit to load snapshot in [`run_tui_session`]).
+    pub tui_start: Option<TuiStartPreload>,
+}
+
+/// First-terminal setup flags for [`run_tui_mode`].
+#[derive(Clone, Copy)]
+pub struct TuiModeLaunchOpts<'a> {
+    pub bumper: Option<&'a utils::BumperBuffer>,
+    pub dev: bool,
     pub initial_prompt: bool,
 }
 
@@ -56,9 +67,12 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
             params.db_path,
             params.ublx_opts,
             params.prior_nefax,
-            params.bumper,
-            params.dev,
-            params.initial_prompt,
+            TuiModeLaunchOpts {
+                bumper: params.bumper,
+                dev: params.dev,
+                initial_prompt: params.initial_prompt,
+            },
+            params.tui_start.take(),
         )
     }
 }
@@ -78,10 +92,14 @@ fn run_tui_mode(
     db_path: &Path,
     ublx_opts: &mut config::UblxOpts,
     prior_nefax: Option<&NefaxResult>,
-    bumper: Option<&utils::BumperBuffer>,
-    dev: bool,
-    initial_prompt: bool,
+    launch: TuiModeLaunchOpts<'_>,
+    tui_start: Option<TuiStartPreload>,
 ) -> std::io::Result<()> {
+    let TuiModeLaunchOpts {
+        bumper,
+        dev,
+        initial_prompt,
+    } = launch;
     let (tx, rx) = mpsc::channel::<(usize, usize, usize)>();
     let tx_for_tui = tx.clone();
     if !initial_prompt {
@@ -101,7 +119,11 @@ fn run_tui_mode(
 
     let config_reload_rx = Some(spawn_config_watcher(dir_to_ublx));
 
-    let lens_names = db_ops::load_lens_names(db_path).unwrap_or_default();
+    let (lens_names, preloaded_snapshot) = if let Some(p) = tui_start {
+        (p.lens_names, Some((p.categories, p.rows)))
+    } else {
+        (db_ops::load_lens_names(db_path).unwrap_or_default(), None)
+    };
     let pending_force_full_enhance_toast =
         !initial_prompt && orchestrator::should_force_full_zahir(ublx_opts);
     if !initial_prompt {
@@ -130,7 +152,12 @@ fn run_tui_mode(
         },
         right_pane_async_tx: Some(right_pane_tx),
     };
-    run_tui_session(&mut params, ublx_opts, Some(right_pane_rx))?;
+    run_tui_session(
+        &mut params,
+        ublx_opts,
+        Some(right_pane_rx),
+        preloaded_snapshot,
+    )?;
     if let Some(b) = bumper
         && dev
     {
@@ -214,11 +241,16 @@ pub fn run_tui_session(
     params: &mut app::RunUblxParams<'_>,
     ublx_opts: &mut config::UblxOpts,
     right_pane_async_rx: Option<tokio::sync::mpsc::UnboundedReceiver<setup::RightPaneAsyncReady>>,
+    preloaded_snapshot: Option<(Vec<String>, Vec<setup::TuiRow>)>,
 ) -> io::Result<()> {
-    let (mut categories, mut all_rows) = app::load_snapshot_for_tui(
-        &params.db_path,
-        db_ops::SnapshotReaderPreference::PreferUblx,
-    );
+    let (mut categories, mut all_rows) = if let Some((c, r)) = preloaded_snapshot {
+        (c, r)
+    } else {
+        app::load_snapshot_for_tui(
+            &params.db_path,
+            db_ops::SnapshotReaderPreference::PreferUblx,
+        )
+    };
     let mut state = setup::UblxState::new();
     state.right_pane_async.rx = right_pane_async_rx;
     {

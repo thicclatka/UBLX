@@ -11,7 +11,7 @@ use crate::layout::setup::{ContentMarqueeState, MainMode, PanelFocus, TuiRow, Vi
 const MARQUEE_STEP: Duration = Duration::from_millis(110);
 const MARQUEE_PAD: &str = "   ";
 
-/// Shared per-tick inputs for marquee advancement (keeps tick helper arg counts low for clippy).
+/// Shared per-tick inputs for marquee advancement
 pub struct MarqueeTickCtx<'a> {
     pub focus: PanelFocus,
     pub main_mode: MainMode,

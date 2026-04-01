@@ -15,7 +15,7 @@ use ublx::integrations::load_prior_nefax_or_exit;
 use ublx::themes;
 use ublx::utils;
 
-/// Headless indexing flags (kept in one struct so the top-level [`Args`] stays under clippy’s bool limit).
+/// Headless indexing flag
 #[derive(Parser)]
 struct HeadlessCli {
     /// Headless snapshot then exit (no TUI). Writes `.ublx.toml` when this dir has no local config yet.
@@ -100,10 +100,21 @@ fn main() {
     );
     debug!("cached ublx roots seen before startup: {had_any_cached_db_before_this_root}");
 
-    // Load prior Nefax from DB or exit if error
-    let prior_nefax = load_prior_nefax_or_exit(&dir_to_ublx, &db_path);
-
-    let cached_settings = db_ops::load_settings_from_db(&db_path).ok().flatten();
+    // Prior Nefax + settings + (TUI only) snapshot/lens preload in one DB pass (`db_ops::load_tui_start_data`).
+    let (prior_nefax_owned, tui_start, cached_settings) = if headless {
+        (
+            load_prior_nefax_or_exit(&dir_to_ublx, &db_path),
+            None,
+            db_ops::load_settings_from_db(&db_path).ok().flatten(),
+        )
+    } else {
+        let load = fatal!(
+            db_ops::load_tui_start_data(&db_path),
+            "failed to load snapshot: {}"
+        );
+        let (prior, preload, cached) = load.split_for_app();
+        (prior, Some(preload), cached)
+    };
     if cached_settings.is_some() {
         debug!("using cached settings from ublx db (skipping disk check)");
     }
@@ -135,7 +146,8 @@ fn main() {
         dir_to_ublx: &dir_to_ublx,
         db_path: &db_path,
         ublx_opts: &mut ublx_opts,
-        prior_nefax: prior_nefax.as_ref(),
+        prior_nefax: prior_nefax_owned.as_ref(),
+        tui_start,
         bumper: bumper.as_ref(),
         dev: args.dev,
         start_time,

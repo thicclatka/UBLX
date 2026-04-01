@@ -9,6 +9,19 @@ use super::SnapshotTuiRow;
 use super::consts::UblxDbStatements;
 use super::core::open_for_snapshot_tui_read;
 
+/// Load lens names in id order using an existing connection (e.g. shared with TUI cold start).
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on `SQLite` query errors.
+pub fn load_lens_names_from_conn(conn: &Connection) -> Result<Vec<String>, anyhow::Error> {
+    let mut stmt = conn.prepare(UblxDbStatements::SELECT_LENS_NAMES)?;
+    let names: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(names)
+}
+
 /// Load lens names in id order for the TUI left bar. Returns empty if DB missing or no lenses.
 ///
 /// # Errors
@@ -19,11 +32,7 @@ pub fn load_lens_names(db_path: &Path) -> Result<Vec<String>, anyhow::Error> {
         return Ok(Vec::new());
     }
     let conn = open_for_snapshot_tui_read(db_path)?;
-    let mut stmt = conn.prepare(UblxDbStatements::SELECT_LENS_NAMES)?;
-    let names: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(names)
+    load_lens_names_from_conn(&conn)
 }
 
 /// Load (path, category, size) rows for a lens by name, ordered by position. Returns empty if lens not found or DB missing.

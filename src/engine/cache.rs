@@ -1,14 +1,38 @@
 //! Right-pane viewer: cache full styled [`Text`] + viewport windowing for heavy paths (delimiter
-//! tables, large markdown). Lives under `render` with no `layout` dependency so [`UblxState`] can
-//! hold cache fields via `crate::render::cache`.
+//! tables, large markdown, large syntect-highlighted files). Lives under `render` with no `layout`
+//! dependency so [`UblxState`] can hold cache fields via `crate::render::cache`.
 
 use ratatui::text::Text;
 
-/// Minimum raw UTF-8 size to cache parsed markdown + `to_text` output (viewport slice on scroll).
-pub const VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES: usize = 64 * 1024;
+use crate::engine::db_ops::UblxDbCategory;
+use crate::themes::Appearance;
 
-/// Max delimiter-table previews kept in [`crate::layout::setup::UblxState::csv_table_text_lru`].
-pub const CSV_VIEWER_TEXT_LRU_CAP: usize = 3;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ViewerTextCache {
+    pub min_markdown_bytes: usize,
+    pub min_syntect_bytes: usize,
+    pub csv_lru_cap: usize,
+}
+
+impl ViewerTextCache {
+    #[must_use] 
+    pub const fn new() -> Self {
+        Self {
+            min_markdown_bytes: 64 * 1024,
+            min_syntect_bytes: 32 * 1024,
+            csv_lru_cap: 3,
+        }
+    }
+}
+
+impl Default for ViewerTextCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Thresholds for markdown / syntect viewer caching. Use this in `const` contexts; [`Default`] matches.
+pub const VIEWER_TEXT_CACHE: ViewerTextCache = ViewerTextCache::new();
 
 // -----------------------------------------------------------------------------
 // Generic LRU (small N: linear scan is fine)
@@ -61,7 +85,7 @@ impl<K: PartialEq, V> LruCache<K, V> {
 
 impl<K: PartialEq, V> Default for LruCache<K, V> {
     fn default() -> Self {
-        Self::with_capacity(CSV_VIEWER_TEXT_LRU_CAP)
+        Self::with_capacity(ViewerTextCache::new().csv_lru_cap)
     }
 }
 
@@ -130,6 +154,20 @@ pub fn viewer_table_cache_key_from_entry(e: &ViewerTextCacheEntry) -> ViewerTabl
     }
 }
 
+/// Snapshot + palette context for syntect viewer cache match and build (`content` module builds entries).
+#[derive(Clone, Copy, Debug)]
+pub struct SyntectViewerCacheParams<'a> {
+    pub path: &'a str,
+    pub raw: &'a str,
+    pub content_width: u16,
+    /// Palette name (`themes::current().name`); build clones to owned [`ViewerTextCacheEntry::theme_name`].
+    pub theme_name: &'a str,
+    pub appearance: Appearance,
+    pub category: UblxDbCategory,
+    pub mtime_ns: Option<i64>,
+    pub byte_size: Option<u64>,
+}
+
 /// One slot: path, layout width, theme, content identity, metrics, full rendered body.
 #[derive(Clone)]
 pub struct ViewerTextCacheEntry {
@@ -139,6 +177,8 @@ pub struct ViewerTextCacheEntry {
     pub content_identity: ViewerContentIdentity,
     pub line_count: usize,
     pub text: Text<'static>,
+    /// `Some` when this entry was built with syntect; [`None`] for markdown and delimiter tables.
+    pub syntect: Option<(Appearance, UblxDbCategory)>,
 }
 
 impl ViewerTextCacheEntry {
@@ -175,6 +215,26 @@ impl ViewerTextCacheEntry {
                 *ptr == raw.as_ptr() as usize && *len == raw.len()
             }
         }
+    }
+
+    /// Markdown cache entry (not syntect).
+    #[must_use]
+    pub fn matches_markdown_viewer(&self, path: &str, width: u16, theme: &str, raw: &str) -> bool {
+        self.syntect.is_none() && self.matches(path, width, theme, raw)
+    }
+
+    /// Syntect-highlighted cache: same appearance + DB category + buffer/file identity.
+    #[must_use]
+    pub fn matches_syntect_viewer(&self, p: &SyntectViewerCacheParams<'_>) -> bool {
+        self.syntect == Some((p.appearance, p.category))
+            && self.matches_with_file_meta(
+                p.path,
+                p.content_width,
+                p.theme_name,
+                p.raw,
+                p.mtime_ns,
+                p.byte_size,
+            )
     }
 
     /// Lines visible in the preview: `[scroll_y, scroll_y + viewport_h)` into cached `Text`.

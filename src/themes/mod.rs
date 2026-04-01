@@ -4,6 +4,7 @@
 
 mod color_utils;
 mod palettes;
+pub mod syntect;
 
 use ratatui::style::Color;
 use std::cell::RefCell;
@@ -15,6 +16,7 @@ pub use color_utils::{
 };
 
 pub use palettes::{DEFAULT_COLORS, OBLIVION_INK, theme_ordered_list, theme_selector_entries};
+pub use syntect::{SYNTECT_THEME_KEYS, SyntectThemeKeys};
 
 /// One row in the theme selector list: a non-selectable section label or a selectable theme.
 #[derive(Clone, Copy)]

@@ -1,0 +1,167 @@
+//! Syntect-based syntax highlighting for the Viewer tab.
+//!
+//! **Whether** to highlight comes only from the snapshot [`UblxDbCategory`] (same strings as the DB
+//! `category` column). **Which** syntect grammar to use follows that type; for [`FileType::Code`] the
+//! path/filename selects the language (Rust vs TypeScript, etc.), since the DB only stores “Code”.
+//!
+//! Extra grammars (e.g. TOML, TypeScript) come from the `sublime_syntaxes` crate (bat-sourced
+//! `.sublime-syntax` blobs), consulted after [`SyntaxSet::load_defaults_newlines`].
+
+use std::path::Path;
+use std::sync::LazyLock;
+
+use ratatui::style::{Color, Modifier, Style as RatStyle};
+use ratatui::text::{Line, Span, Text};
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{FontStyle, Style as SynStyle, Theme, ThemeSet};
+use syntect::parsing::{SyntaxReference, SyntaxSet};
+use syntect::util::LinesWithEndings;
+
+use crate::engine::db_ops::UblxDbCategory;
+use crate::integrations::ZahirFileType as FileType;
+use crate::themes::{self, Appearance, SYNTECT_THEME_KEYS};
+
+static DEFAULT_SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+static EXTRA_SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(sublime_syntaxes::extra_syntax_set);
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+
+/// Plain text and fallback always use the default pack (both sets carry a “Plain Text” entry;
+/// defaults stay canonical).
+fn plain(default: &SyntaxSet) -> (&SyntaxSet, &SyntaxReference) {
+    (default, default.find_syntax_plain_text())
+}
+
+fn find_by_extension<'a>(
+    default: &'a SyntaxSet,
+    extra: &'a SyntaxSet,
+    ext: &str,
+) -> Option<(&'a SyntaxSet, &'a SyntaxReference)> {
+    default
+        .find_syntax_by_extension(ext)
+        .map(|s| (default, s))
+        .or_else(|| extra.find_syntax_by_extension(ext).map(|s| (extra, s)))
+}
+
+fn find_by_first_line<'a>(
+    default: &'a SyntaxSet,
+    extra: &'a SyntaxSet,
+    line: &str,
+) -> Option<(&'a SyntaxSet, &'a SyntaxReference)> {
+    default
+        .find_syntax_by_first_line(line)
+        .map(|s| (default, s))
+        .or_else(|| extra.find_syntax_by_first_line(line).map(|s| (extra, s)))
+}
+
+fn pick_syntax_by_path<'a>(
+    default: &'a SyntaxSet,
+    extra: &'a SyntaxSet,
+    path: &str,
+    raw: &str,
+) -> (&'a SyntaxSet, &'a SyntaxReference) {
+    let first_line = raw.lines().next().unwrap_or("");
+    let p = Path::new(path);
+    let fname = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+    find_by_extension(default, extra, fname)
+        .or_else(|| find_by_extension(default, extra, ext))
+        .or_else(|| find_by_first_line(default, extra, first_line))
+        .unwrap_or_else(|| plain(default))
+}
+
+fn theme_for_appearance(appearance: Appearance) -> &'static Theme {
+    let k = &SYNTECT_THEME_KEYS;
+    let key = match appearance {
+        Appearance::Dark => k.dark,
+        Appearance::Light => k.light,
+    };
+    THEME_SET.themes.get(key).unwrap_or_else(|| {
+        THEME_SET
+            .themes
+            .get(k.fallback)
+            .expect("syntect fallback theme")
+    })
+}
+
+fn syn_style_to_ratatui(s: &SynStyle) -> RatStyle {
+    let fg = s.foreground;
+    let mut st = RatStyle::default().fg(Color::Rgb(fg.r, fg.g, fg.b));
+    let fs = s.font_style;
+    if fs.contains(FontStyle::BOLD) {
+        st = st.add_modifier(Modifier::BOLD);
+    }
+    if fs.contains(FontStyle::ITALIC) {
+        st = st.add_modifier(Modifier::ITALIC);
+    }
+    if fs.contains(FontStyle::UNDERLINE) {
+        st = st.add_modifier(Modifier::UNDERLINED);
+    }
+    st
+}
+
+fn pick_syntax<'a>(
+    default: &'a SyntaxSet,
+    extra: &'a SyntaxSet,
+    ft: FileType,
+    path: &str,
+    raw: &str,
+) -> (&'a SyntaxSet, &'a SyntaxReference) {
+    let first_line = raw.lines().next().unwrap_or("");
+    match ft {
+        FileType::Json => {
+            find_by_extension(default, extra, "json").unwrap_or_else(|| plain(default))
+        }
+        FileType::Toml => {
+            find_by_extension(default, extra, "toml").unwrap_or_else(|| plain(default))
+        }
+        FileType::Yaml => {
+            find_by_extension(default, extra, "yaml").unwrap_or_else(|| plain(default))
+        }
+        FileType::Xml => find_by_extension(default, extra, "xml").unwrap_or_else(|| plain(default)),
+        FileType::Html => {
+            find_by_extension(default, extra, "html").unwrap_or_else(|| plain(default))
+        }
+        FileType::Ini => find_by_extension(default, extra, "ini").unwrap_or_else(|| plain(default)),
+        FileType::Log => find_by_extension(default, extra, "log")
+            .or_else(|| find_by_first_line(default, extra, first_line))
+            .unwrap_or_else(|| plain(default)),
+        FileType::Code => pick_syntax_by_path(default, extra, path, raw),
+        _ => plain(default),
+    }
+}
+
+/// Syntax-highlight using DB [`UblxDbCategory`]; caller should only invoke for zahir types that use syntect.
+#[must_use]
+pub fn highlight_viewer(raw: &str, path: &str, cat: UblxDbCategory) -> Text<'static> {
+    let UblxDbCategory::Zahir(ft) = cat else {
+        return Text::from(raw.to_string());
+    };
+    let default = &*DEFAULT_SYNTAX_SET;
+    let extra = &*EXTRA_SYNTAX_SET;
+    let (ss, syntax) = pick_syntax(default, extra, ft, path, raw);
+    let theme = theme_for_appearance(themes::current().appearance);
+    let mut h = HighlightLines::new(syntax, theme);
+    let mut lines = Vec::new();
+    for line in LinesWithEndings::from(raw) {
+        match h.highlight_line(line, ss) {
+            Ok(regions) => {
+                let mut spans = Vec::new();
+                for (style, text) in regions {
+                    if text.is_empty() {
+                        continue;
+                    }
+                    spans.push(Span::styled(text.to_string(), syn_style_to_ratatui(&style)));
+                }
+                lines.push(if spans.is_empty() {
+                    Line::default()
+                } else {
+                    Line::from(spans)
+                });
+            }
+            Err(_) => {
+                return Text::from(raw.to_string());
+            }
+        }
+    }
+    Text::from(lines)
+}

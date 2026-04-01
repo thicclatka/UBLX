@@ -33,7 +33,7 @@ struct ViewPaneRefs<'a> {
     right: &'a RightPaneContent,
 }
 
-/// Key event and resolved action passed into modal handlers (keeps [`dispatch_modal_handlers`] under clippy’s arg limit).
+/// Key event and resolved action passed into modal handlers
 #[derive(Clone, Copy)]
 struct ModalInput {
     e: KeyEvent,

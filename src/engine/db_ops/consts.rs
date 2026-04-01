@@ -165,6 +165,10 @@ impl UblxDbStatements {
     pub const SELECT_SNAPSHOT_ROWS_FOR_TUI_ALL: &'static str =
         "SELECT path, category, size FROM snapshot ORDER BY category, path";
 
+    /// Single pass for TUI cold start: prior Nefax columns + category (no `zahir_json`). Order matches list query.
+    pub const SELECT_SNAPSHOT_TUI_START: &'static str =
+        "SELECT path, mtime_ns, size, hash, category FROM snapshot ORDER BY category, path";
+
     /// `zahir_json` for a single path (for right-pane on-demand load).
     pub const SELECT_SNAPSHOT_ZAHIR_JSON_BY_PATH: &'static str =
         "SELECT zahir_json FROM snapshot WHERE path = ?1";
@@ -305,6 +309,31 @@ impl UblxDbCategory {
             UblxDbCategory::File => "File",
             UblxDbCategory::Zahir(ft) => ft.as_metadata_name(),
         }
+    }
+
+    /// Parse a snapshot row `category` column (strings written by [`UblxDbCategory::get_category_for_path`]).
+    #[must_use]
+    pub fn from_snapshot_category(s: &str) -> Self {
+        let t = s.trim();
+        if t.is_empty() {
+            return Self::File;
+        }
+        if t == Self::UblxLog.as_str() {
+            return Self::UblxLog;
+        }
+        if t == Self::Git.as_str() {
+            return Self::Git;
+        }
+        if t == Self::Directory.as_str() {
+            return Self::Directory;
+        }
+        if t == Self::File.as_str() {
+            return Self::File;
+        }
+        if let Some(ft) = file_type_from_metadata_name(t) {
+            return Self::Zahir(ft);
+        }
+        Self::File
     }
 
     /// Get the category for a given path.

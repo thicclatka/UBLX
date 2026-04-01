@@ -7,7 +7,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 
 use crate::layout::{
-    setup::{MainMode, SpaceMenuKind},
+    setup::{MainMode, SpaceMenuKind, UblxSwitchPickerState},
     style,
 };
 use crate::themes;
@@ -327,11 +327,7 @@ pub fn render_ctrl_chord_menu(f: &mut Frame, full_area: Rect) {
 }
 
 /// Centered table of indexed root paths (Command Mode + `p`). Same block + table styling as [`render_ctrl_chord_menu`].
-pub fn render_ublx_switch_picker(
-    f: &mut Frame,
-    full_area: Rect,
-    sw: &crate::layout::setup::UblxSwitchPickerState,
-) {
+pub fn render_ublx_switch_picker(f: &mut Frame, full_area: Rect, sw: &UblxSwitchPickerState) {
     let t = themes::current();
     let title = UI_STRINGS.pad(UI_STRINGS.dialogs.ublx_switch_popup);
     let n = sw.roots.len();

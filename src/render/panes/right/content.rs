@@ -4,12 +4,35 @@
 use ratatui::text::Text;
 
 use crate::engine::cache::{self, ViewerContentIdentity, ViewerTextCacheEntry};
+use crate::engine::db_ops::UblxDbCategory;
 use crate::integrations::{ZahirFileType as FileType, delimiter_from_path_for_viewer};
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
-use crate::render::kv_tables;
-use crate::render::viewers::{csv_handler, image as viewer_image, markdown};
+use crate::render::{
+    kv_tables,
+    viewers::{csv_handler, image as viewer_image, markdown, syntect_text},
+};
 use crate::themes;
 use crate::ui::UI_STRINGS;
+
+/// Bundles snapshot path/raw/theme with appearance + file identity for syntect cache match/build.
+fn syntect_viewer_cache_params<'a>(
+    path: &'a str,
+    raw: &'a str,
+    content_width: u16,
+    theme_name: &'a str,
+    rc: &RightPaneContent,
+) -> cache::SyntectViewerCacheParams<'a> {
+    cache::SyntectViewerCacheParams {
+        path,
+        raw,
+        content_width,
+        theme_name,
+        appearance: themes::current().appearance,
+        category: rc.ublx_db_category(),
+        mtime_ns: rc.snap_meta.mtime_ns,
+        byte_size: rc.snap_meta.size,
+    }
+}
 
 #[inline]
 fn viewer_is_csv(rc: &RightPaneContent) -> bool {
@@ -35,6 +58,25 @@ fn viewer_is_markdown(rc: &RightPaneContent) -> bool {
     rc.zahir_file_type() == Some(FileType::Markdown)
 }
 
+/// Syntect only when the snapshot [`UblxDbCategory`] (DB `category` column) is a zahir type we highlight.
+#[inline]
+fn viewer_uses_syntect_highlight(rc: &RightPaneContent) -> bool {
+    rc.snap_meta.path.is_some()
+        && matches!(
+            rc.ublx_db_category(),
+            UblxDbCategory::Zahir(
+                FileType::Json
+                    | FileType::Toml
+                    | FileType::Yaml
+                    | FileType::Xml
+                    | FileType::Html
+                    | FileType::Ini
+                    | FileType::Log
+                    | FileType::Code
+            )
+        )
+}
+
 fn try_build_csv_cache_entry(
     path: &str,
     raw: &str,
@@ -56,6 +98,7 @@ fn try_build_csv_cache_entry(
         content_identity,
         line_count,
         text,
+        syntect: None,
     })
 }
 
@@ -78,6 +121,22 @@ fn try_build_markdown_cache_entry(
         },
         line_count,
         text,
+        syntect: None,
+    }
+}
+
+fn try_build_syntect_cache_entry(p: &cache::SyntectViewerCacheParams<'_>) -> ViewerTextCacheEntry {
+    let text = syntect_text::highlight_viewer(p.raw, p.path, p.category);
+    let line_count = text.lines.len();
+    let content_identity = cache::viewer_content_identity(p.raw, p.mtime_ns, p.byte_size);
+    ViewerTextCacheEntry {
+        path: p.path.to_string(),
+        content_width: p.content_width,
+        theme_name: p.theme_name.to_string(),
+        content_identity,
+        line_count,
+        text,
+        syntect: Some((p.appearance, p.category)),
     }
 }
 
@@ -123,10 +182,10 @@ pub fn ensure_viewer_text_cache(
         return;
     }
 
-    if viewer_is_markdown(right_content) && raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES
+    if viewer_is_markdown(right_content) && raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
     {
         if let Some(ref e) = state.viewer_text_cache
-            && e.matches(path, content_width, theme, raw)
+            && e.matches_markdown_viewer(path, content_width, theme, raw)
         {
             return;
         }
@@ -136,6 +195,19 @@ pub fn ensure_viewer_text_cache(
             content_width,
             theme_key,
         ));
+        return;
+    }
+
+    if viewer_uses_syntect_highlight(right_content)
+        && raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
+    {
+        let p = syntect_viewer_cache_params(path, raw, content_width, theme, right_content);
+        if let Some(ref e) = state.viewer_text_cache
+            && e.matches_syntect_viewer(&p)
+        {
+            return;
+        }
+        state.viewer_text_cache = Some(try_build_syntect_cache_entry(&p));
         return;
     }
 
@@ -180,9 +252,18 @@ pub fn viewer_text_cache_viewport_active(
         .viewer_text_cache
         .as_ref()
         .is_some_and(|e: &ViewerTextCacheEntry| {
-            e.matches(vp, content_width, theme, raw)
-                && viewer_is_markdown(right_content)
-                && raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES
+            (viewer_is_markdown(right_content)
+                && raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
+                && e.matches_markdown_viewer(vp, content_width, theme, raw))
+                || (viewer_uses_syntect_highlight(right_content)
+                    && raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
+                    && e.matches_syntect_viewer(&syntect_viewer_cache_params(
+                        vp,
+                        raw,
+                        content_width,
+                        theme,
+                        right_content,
+                    )))
         })
 }
 
@@ -193,7 +274,7 @@ pub fn viewer_total_lines(
     state: &mut UblxState,
 ) -> usize {
     match (state.right_pane_mode, use_kv_tables) {
-        (_, Some(json)) => crate::render::kv_tables::content_height(json) as usize,
+        (_, Some(json)) => kv_tables::content_height(json) as usize,
         (RightPaneMode::Viewer, _) => {
             let theme = themes::current().name;
             if viewer_show_delimited_table(right_content) {
@@ -204,9 +285,23 @@ pub fn viewer_total_lines(
                 right_content.snap_meta.path.as_deref(),
                 right_content.viewer.as_deref(),
             ) && let Some(ref e) = state.viewer_text_cache
-                && e.matches(vp, content_width, theme, raw)
             {
-                return e.line_count;
+                let syntect_args =
+                    syntect_viewer_cache_params(vp, raw, content_width, theme, right_content);
+                let cached = if viewer_is_markdown(right_content)
+                    && raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
+                {
+                    e.matches_markdown_viewer(vp, content_width, theme, raw)
+                } else if viewer_uses_syntect_highlight(right_content)
+                    && raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
+                {
+                    e.matches_syntect_viewer(&syntect_args)
+                } else {
+                    false
+                };
+                if cached {
+                    return e.line_count;
+                }
             }
             if viewer_show_delimited_table(right_content)
                 && let Some(raw) = right_content.viewer.as_deref()
@@ -246,6 +341,12 @@ pub fn viewer_total_lines(
                 let doc = markdown::parse_markdown(raw);
                 return doc.to_text(content_width).lines.len();
             }
+            if viewer_uses_syntect_highlight(right_content) {
+                return right_content
+                    .viewer
+                    .as_deref()
+                    .map_or(0, |t| t.lines().count());
+            }
             right_content
                 .viewer
                 .as_deref()
@@ -268,6 +369,9 @@ fn viewer_uses_preformatted_layout(
         return false;
     }
     if viewer_is_markdown(right_content) {
+        return true;
+    }
+    if viewer_uses_syntect_highlight(right_content) {
         return true;
     }
     if viewer_image::is_raster_preview_category(right_content)
@@ -335,10 +439,10 @@ fn viewer_display_text(
             }
         } else if viewer_is_markdown(right_content) {
             let theme = themes::current().name;
-            if raw.len() >= cache::VIEWER_TEXT_CACHE_MIN_MARKDOWN_BYTES
+            if raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
                 && let Some(ref path) = right_content.snap_meta.path
                 && let Some(ref e) = state.viewer_text_cache
-                && e.matches(path.as_str(), content_width, theme, raw)
+                && e.matches_markdown_viewer(path.as_str(), content_width, theme, raw)
             {
                 return match text_viewport {
                     Some((sy, vh)) => e.viewport_text(sy, vh),
@@ -347,6 +451,24 @@ fn viewer_display_text(
             }
             let doc = markdown::parse_markdown(raw);
             return doc.to_text(content_width);
+        } else if viewer_uses_syntect_highlight(right_content) {
+            let Some(path) = right_content.snap_meta.path.as_deref() else {
+                return Text::from(raw.to_string());
+            };
+            let theme = themes::current().name;
+            let syntect_args =
+                syntect_viewer_cache_params(path, raw, content_width, theme, right_content);
+            let cat = syntect_args.category;
+            if raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
+                && let Some(ref e) = state.viewer_text_cache
+                && e.matches_syntect_viewer(&syntect_args)
+            {
+                return match text_viewport {
+                    Some((sy, vh)) => e.viewport_text(sy, vh),
+                    None => e.text.clone(),
+                };
+            }
+            return syntect_text::highlight_viewer(raw, path, cat);
         } else if viewer_image::is_raster_preview_category(right_content) {
             if state.viewer_image.protocol.is_some() {
                 return Text::default();

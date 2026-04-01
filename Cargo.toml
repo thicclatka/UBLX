@@ -41,17 +41,19 @@ ratatui-image = { version = "10", default-features = false, features = [
   "crossterm",
   "image-defaults",
 ] }
-rayon = "1.10"
 ratatui-notifications = "0.1.0"
+rayon = "1.10"
 rusqlite = { version = "0.38.0", features = ["bundled-sqlcipher"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+sublime-syntaxes = "0.2.0"
+syntect = "5.3.0"
 tokio = { version = "1.50.0", features = ["rt-multi-thread", "sync"] }
-toml = "1.0.7"
+toml = "1.1.1"
 tui-logger = { version = "0.18.1", features = ["crossterm"] }
 unicode-width = "0.2"
-zip = { version = "8.4.0", default-features = false, features = ["deflate"] }
 zahirscan = "0.2.15"
+zip = { version = "8.4.0", default-features = false, features = ["deflate"] }
 
 [patch.crates-io]
 # zahirscan = { path = "../zahirscan" }

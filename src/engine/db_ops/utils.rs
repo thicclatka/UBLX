@@ -40,7 +40,7 @@ pub fn debug_snapshot_write_progress(phase: &str, n: u64, total: Option<u64>) {
     }
 }
 
-/// Prior snapshot maps and options passed through snapshot rebuild (keeps clippy arg counts down).
+/// Prior snapshot maps and options passed through snapshot rebuild
 pub struct SnapshotPriorContext<'a> {
     pub prior_zahir_json: &'a HashMap<String, String>,
     pub prior_category: &'a HashMap<String, String>,
@@ -66,6 +66,10 @@ pub fn ensure_ublx_and_db(dir_to_ublx: &Path) -> Result<PathBuf, anyhow::Error> 
     let path = paths.db();
     let conn = Connection::open(&path)?;
     conn.execute_batch(&UblxDbSchema::create_ublx_db_sql())?;
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snapshot_category_path ON snapshot (category, path)",
+        [],
+    );
     Ok(path)
 }
 
@@ -369,29 +373,40 @@ impl NefaxFromGivenDB {
         let mut nefax = NefaxResult::new();
         for row in rows {
             let (path_str, mtime_ns, size, hash_blob) = row?;
-            // Drop synthetic global-config row (`insert_global_config_row_if_exists`): absolute path, not a nefax-relative key.
-            // Local `ublx.toml` / `ublx.log` use the same display categories but stay relative — they must stay in prior nefax.
-            if Path::new(path_str.trim()).is_absolute() {
-                continue;
-            }
-            let path = snapshot_rel_path_buf(&path_str);
-            let size_u = size.try_into().unwrap_or(0);
-            let hash = hash_blob.filter(|b| b.len() == 32).map(|b| {
-                let mut a = [0u8; 32];
-                a.copy_from_slice(&b);
-                a
-            });
-            nefax.insert(
-                path,
-                NefaxPathMeta {
-                    mtime_ns,
-                    size: size_u,
-                    hash,
-                },
-            );
+            nefax_insert_snapshot_row(&mut nefax, &path_str, mtime_ns, size, hash_blob);
         }
         Ok(nefax)
     }
+}
+
+/// One snapshot row’s metadata into prior Nefax (skips absolute paths; same rules as [`NefaxFromGivenDB::load_nefax_from_given_db`]).
+pub fn nefax_insert_snapshot_row(
+    nefax: &mut NefaxResult,
+    path_str: &str,
+    mtime_ns: i64,
+    size: i64,
+    hash_blob: Option<Vec<u8>>,
+) {
+    // Drop synthetic global-config row (`insert_global_config_row_if_exists`): absolute path, not a nefax-relative key.
+    // Local `ublx.toml` / `ublx.log` use the same display categories but stay relative — they must stay in prior nefax.
+    if Path::new(path_str.trim()).is_absolute() {
+        return;
+    }
+    let path = snapshot_rel_path_buf(path_str);
+    let size_u = size.try_into().unwrap_or(0);
+    let hash = hash_blob.filter(|b| b.len() == 32).map(|b| {
+        let mut a = [0u8; 32];
+        a.copy_from_slice(b.as_slice());
+        a
+    });
+    nefax.insert(
+        path,
+        NefaxPathMeta {
+            mtime_ns,
+            size: size_u,
+            hash,
+        },
+    );
 }
 
 /// True if `snapshot` has at least one row (schema present and populated).

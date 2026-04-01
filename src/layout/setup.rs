@@ -12,7 +12,10 @@ use std::time::Instant;
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
 
-use crate::engine::{cache, db_ops::DeltaType};
+use crate::engine::{
+    cache,
+    db_ops::{DeltaType, UblxDbCategory},
+};
 use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
 use crate::render::viewers::pdf_preview::PDFPrefetch;
 use crate::utils::{ClipboardCopyCommand, ToastSlot};
@@ -912,6 +915,12 @@ impl RightPaneContent {
     #[must_use]
     pub fn zahir_file_type(&self) -> Option<FileType> {
         file_type_from_metadata_name(self.snap_meta.category.as_deref().unwrap_or(""))
+    }
+
+    /// Snapshot `category` column as [`UblxDbCategory`] (same classification as the DB / [`UblxDbCategory::get_category_for_path`]).
+    #[must_use]
+    pub fn ublx_db_category(&self) -> UblxDbCategory {
+        UblxDbCategory::from_snapshot_category(self.snap_meta.category.as_deref().unwrap_or(""))
     }
 }
 

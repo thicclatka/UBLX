@@ -10,7 +10,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::handlers::applets::viewer_find;
 use crate::layout::{
-    setup::{RightPaneContent, RightPaneMode, UblxState},
+    setup::{RightPaneContent, RightPaneMode, UblxState, ViewData},
     style,
 };
 use crate::render::viewers::image as viewer_image;
@@ -145,7 +145,7 @@ pub fn draw_right_pane_fullscreen(
     f: &mut ratatui::Frame,
     state: &mut UblxState,
     right_content: &RightPaneContent,
-    view: &crate::layout::setup::ViewData,
+    view: &ViewData,
     area: Rect,
     transparent_page_chrome: bool,
 ) {
