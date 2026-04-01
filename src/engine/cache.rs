@@ -15,7 +15,7 @@ pub struct ViewerTextCache {
 }
 
 impl ViewerTextCache {
-    #[must_use] 
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             min_markdown_bytes: 64 * 1024,
