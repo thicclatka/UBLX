@@ -95,8 +95,8 @@ pub struct UiStringsDialogs {
     pub multiselect_help_title: &'static str,
     /// Help overlay: section title above Viewer pane shortcuts.
     pub help_section_viewer: &'static str,
-    /// Help overlay: section title above Space menu shortcuts.
-    pub help_section_space: &'static str,
+    /// Help overlay: section title above quick actions menu (spacebar) shortcuts.
+    pub help_section_qa: &'static str,
     pub help_command: &'static str,
     pub help_action: &'static str,
     /// [`crate::render::overlays::popup::render_ublx_switch_picker`] border title; use with [`UiStrings::pad`].
@@ -161,7 +161,7 @@ pub struct UiStringsLens {
     pub toast_deleted_lens: &'static str,
 }
 
-/// Rename / delete entry under the indexed root (space menu file actions).
+/// Rename / delete entry under the indexed root (quick actions menu (spacebar) file actions).
 pub struct UiStringsFile {
     pub rename_prompt: &'static str,
     pub delete_confirm_title: &'static str,
@@ -238,7 +238,7 @@ pub struct UiStringsSpaceMenu {
     pub enhance_policy_never: &'static str,
     /// Run full `ZahirScan` on this file when `enable_enhance_all` is false.
     pub enhance_with_zahirscan: &'static str,
-    /// Copy raw snapshot `zahir_json` for this entry to the clipboard (space menu; only when JSON exists).
+    /// Copy raw snapshot `zahir_json` for this entry to the clipboard (quick actions menu (spacebar); only when JSON exists).
     pub copy_zahir_json: &'static str,
     pub add_to_lens: &'static str,
     /// Multi-select bulk / lens picker when already viewing a lens: add paths elsewhere.
@@ -247,7 +247,7 @@ pub struct UiStringsSpaceMenu {
     pub remove_from_lens: &'static str,
     pub rename: &'static str,
     pub delete: &'static str,
-    /// Duplicates tab only: hide this path from duplicate lists for this session (Space menu).
+    /// Duplicates tab only: hide this path from duplicate lists for this session (quick actions menu (spacebar)).
     pub ignore_in_duplicates: &'static str,
 }
 
@@ -386,12 +386,12 @@ impl UiStrings {
             help: "Help",
             theme: "Theme",
             notification: "Notification",
-            command_mode_popup: "Command Mode",
+            command_mode_popup: "Command Mode (Ctrl+a)",
             command_mode_key_column: "Key",
             multiselect_bulk_title: " Multi-select ",
-            multiselect_help_title: "Multi-select",
-            help_section_viewer: "Viewer Pane",
-            help_section_space: "Space Menu",
+            multiselect_help_title: "Multi-select (Ctrl+Space)",
+            help_section_viewer: "Right Pane",
+            help_section_qa: "Quick Actions (Spacebar)",
             help_command: "Command",
             help_action: "Action",
             ublx_switch_popup: "UBLX Switcher",

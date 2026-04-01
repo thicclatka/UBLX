@@ -6,9 +6,10 @@ use crate::app::RunUblxParams;
 use crate::config::{LayoutOverlay, UblxOpts};
 use crate::handlers::{leave_terminal_for_editor, state_transitions};
 use crate::layout::setup::{
-    MainMode, PanelFocus, RightPaneContent, StartupPromptPhase, UblxState, ViewData,
+    MainMode, PanelFocus, RightPaneContent, StartupPromptPhase, TuiRow, UblxState, ViewData,
 };
 use crate::modules;
+use crate::render::overlays;
 use crate::ui::{
     MainTabFlags,
     consts::{MAIN_TAB_KEYS, UI_CONSTANTS, UI_STRINGS},
@@ -19,7 +20,7 @@ use crate::ui::{
 pub struct InputContext<'a> {
     pub view: &'a ViewData,
     /// Snapshot rows for resolving paths in multi-select (`None` in modes without a shared row slice).
-    pub all_rows: Option<&'a [crate::layout::setup::TuiRow]>,
+    pub all_rows: Option<&'a [TuiRow]>,
     pub right_content: &'a RightPaneContent,
     pub theme_ctx: modules::theme_selector::ThemeContext,
     pub frame_area: Rect,
@@ -30,7 +31,7 @@ pub struct InputContext<'a> {
 /// View + middle rows + right pane (shared by [`handle_ublx_keyboard`]).
 struct ViewPaneRefs<'a> {
     view: &'a ViewData,
-    all_rows: Option<&'a [crate::layout::setup::TuiRow]>,
+    all_rows: Option<&'a [TuiRow]>,
     right: &'a RightPaneContent,
 }
 
@@ -89,7 +90,7 @@ fn dispatch_modal_handlers(
     ) {
         return true;
     }
-    if menus::handle_space_menu(state_mut, view_ref, params_mut, ublx_opts_mut, action) {
+    if menus::handle_qa_menu(state_mut, view_ref, params_mut, ublx_opts_mut, action) {
         return true;
     }
     if menus::handle_lens_menu(state_mut, params_mut, action) {
@@ -106,13 +107,28 @@ fn dispatch_modal_handlers(
         return true;
     }
     if state_mut.chrome.help_visible {
-        state_mut.chrome.help_visible = false;
-        return true;
+        let n = overlays::help_tab_count(state_mut.main_mode);
+        match action {
+            keymap::UblxAction::Tab if n > 0 => {
+                let t = state_mut.chrome.help_tab as usize;
+                state_mut.chrome.help_tab = ((t + 1) % n) as u8;
+                return true;
+            }
+            keymap::UblxAction::CycleRightPane if n > 0 => {
+                let t = state_mut.chrome.help_tab as usize;
+                state_mut.chrome.help_tab = ((t + n - 1) % n) as u8;
+                return true;
+            }
+            _ => {
+                state_mut.chrome.help_visible = false;
+                return true;
+            }
+        }
     }
     if menus::handle_open_menu(state_mut, params_mut, ublx_opts_mut, action) {
         return true;
     }
-    if menus::try_open_space_menu(state_mut, view_ref, right_content_ref, action) {
+    if menus::try_open_qa_menu(state_mut, view_ref, right_content_ref, action) {
         return true;
     }
     false
@@ -237,7 +253,7 @@ fn key_action_context_for(state: &UblxState, tabs: MainTabFlags) -> keymap::KeyA
                 && matches!(state.panels.focus, PanelFocus::Contents)
                 && !state.multiselect.active
                 && !state.search.active
-                && !state.space_menu.visible
+                && !state.qa_menu.visible
                 && !file_ops::modal_open(state)
                 && state.lens_confirm.rename_input.is_none()
                 && !state.lens_confirm.delete_visible
@@ -295,12 +311,12 @@ fn apply_overlay_key_overrides(
         }
     }
 
-    if state_mut.space_menu.visible
-        && let Some(ref kind) = state_mut.space_menu.kind
+    if state_mut.qa_menu.visible
+        && let Some(ref kind) = state_mut.qa_menu.kind
         && !e.modifiers.contains(KeyModifiers::CONTROL)
         && !e.modifiers.contains(KeyModifiers::SHIFT)
         && let KeyCode::Char(c) = e.code
-        && let Some(idx) = menus::space_menu_hotkey_to_index(kind, c, state_mut.main_mode)
+        && let Some(idx) = menus::qa_menu_hotkey_to_index(kind, c, state_mut.main_mode)
     {
         *action = keymap::UblxAction::SpaceMenuHotkeySelect(idx);
         state_mut.last_key_for_double = None;

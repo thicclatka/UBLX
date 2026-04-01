@@ -11,9 +11,7 @@ use crate::layout::{
     style,
 };
 use crate::themes;
-use crate::ui::{
-    CTRL_MENU_ROWS, UI_CONSTANTS, UI_STRINGS, label_with_hotkey, space_menu_item_labels,
-};
+use crate::ui::{CTRL_MENU_ROWS, UI_CONSTANTS, UI_STRINGS, label_with_hotkey, qa_menu_item_labels};
 use crate::utils::StringObjTraits;
 
 use super::utils::{ListPopupParams, POPUP_MENU, render_list_popup, render_text_input_popup};
@@ -34,7 +32,7 @@ pub fn render_context_menu(
         SpaceMenuKind::LensPanelActions { .. } => " Lens ",
         SpaceMenuKind::DuplicateMemberActions { .. } => " Duplicates ",
     };
-    let labeled = space_menu_item_labels(kind, main_mode);
+    let labeled = qa_menu_item_labels(kind, main_mode);
     let item_refs: Vec<&str> = labeled.iter().map(String::as_str).collect();
     let max_width = labeled
         .iter()

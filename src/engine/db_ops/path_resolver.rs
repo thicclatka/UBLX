@@ -3,13 +3,13 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::config::INDEX_DB_FILE_EXT;
+use crate::config::UBLX_NAMES;
 
 fn tmp_from_db_path(db_path: &Path) -> Option<PathBuf> {
     let parent = db_path.parent()?;
     let file_name = db_path.file_name()?.to_str()?;
-    if let Some(stem) = file_name.strip_suffix(INDEX_DB_FILE_EXT) {
-        Some(parent.join(format!("{stem}_tmp{INDEX_DB_FILE_EXT}")))
+    if let Some(stem) = file_name.strip_suffix(UBLX_NAMES.index_db_file_ext) {
+        Some(parent.join(format!("{stem}_tmp{}", UBLX_NAMES.index_db_file_ext)))
     } else {
         // Pre-extension layout: final `stem`, temp `stem_tmp` (no [`INDEX_DB_FILE_EXT`]).
         Some(parent.join(format!("{file_name}_tmp")))

@@ -84,7 +84,7 @@ pub enum UblxAction {
     MultiselectCancel,
     /// Spacebar context menu
     SpaceMenu,
-    /// Pick a context-menu row by letter while the space menu is open (indices match current items).
+    /// Pick a context-menu row by letter while the quick actions menu (spacebar) is open (indices match current items).
     SpaceMenuHotkeySelect(usize),
     /// First option on a Yes/No (or two-option) confirm overlay (`y`).
     ConfirmYes,
@@ -142,7 +142,7 @@ pub struct KeyActionContext {
     pub last_key_for_double: Option<char>,
     pub tabs: KeyOptionalTabs,
     pub tab_keys: UblxTabNumber,
-    /// Middle pane multi-select: Space toggles row (not space menu); **a** opens bulk menu.
+    /// Middle pane multi-select: Space toggles row (not quick actions menu (spacebar)); **a** opens bulk menu.
     pub multiselect: MultiselectBools,
     pub panel_focus_contents: bool,
     /// Lens picker list open (Esc closes it).

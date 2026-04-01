@@ -10,7 +10,7 @@ use crate::modules;
 use crate::ui::{UI_STRINGS, file_ops::modal_open, keymap::UblxAction, show_operation_toast};
 
 #[must_use]
-fn space_menu_item_count(kind: Option<&SpaceMenuKind>, main_mode: MainMode) -> usize {
+fn qa_menu_item_count(kind: Option<&SpaceMenuKind>, main_mode: MainMode) -> usize {
     match kind {
         Some(SpaceMenuKind::FileActions {
             show_enhance_directory_policy,
@@ -51,15 +51,15 @@ struct FileSpaceMenuIndices {
     delete: usize,
 }
 
-/// `"{label} ({key})"` — same pattern as space menu rows (e.g. bulk popup, lens actions).
+/// `"{label} ({key})"` — same pattern as quick actions menu (spacebar) rows (e.g. bulk popup, lens actions).
 #[must_use]
 pub fn label_with_hotkey(label: &str, key: char) -> String {
     format!("{label} ({key})")
 }
 
-/// Menu labels in display order with `(letter)` hints. Must match [`space_menu_hotkey_to_index`] and submit logic.
+/// Menu labels in display order with `(letter)` hints. Must match [`qa_menu_hotkey_to_index`] and submit logic.
 #[must_use]
-pub fn space_menu_item_labels(kind: &SpaceMenuKind, main_mode: MainMode) -> Vec<String> {
+pub fn qa_menu_item_labels(kind: &SpaceMenuKind, main_mode: MainMode) -> Vec<String> {
     match kind {
         SpaceMenuKind::FileActions {
             show_enhance_directory_policy,
@@ -108,7 +108,7 @@ pub fn space_menu_item_labels(kind: &SpaceMenuKind, main_mode: MainMode) -> Vec<
 
 /// Map a typed letter to a row index for the **current** menu (`None` if that row is not shown or key unknown).
 #[must_use]
-pub fn space_menu_hotkey_to_index(
+pub fn qa_menu_hotkey_to_index(
     kind: &SpaceMenuKind,
     key: char,
     main_mode: MainMode,
@@ -121,7 +121,7 @@ pub fn space_menu_hotkey_to_index(
             show_copy_zahir_json,
             ..
         } => {
-            let m = file_space_menu_indices(
+            let m = file_qa_menu_indices(
                 *show_enhance_directory_policy,
                 *show_enhance_zahir,
                 *show_copy_zahir_json,
@@ -158,7 +158,7 @@ pub fn space_menu_hotkey_to_index(
     }
 }
 
-fn file_space_menu_indices(
+fn file_qa_menu_indices(
     show_enhance_directory_policy: bool,
     show_enhance_zahir: bool,
     show_copy_zahir_json: bool,
@@ -203,7 +203,7 @@ fn file_space_menu_indices(
     }
 }
 
-fn space_menu_enhance_zahir_if_disabled(
+fn qa_menu_enhance_zahir_if_disabled(
     state: &mut UblxState,
     params: &mut RunUblxParams<'_>,
     path: &str,
@@ -307,7 +307,7 @@ fn copy_selected_path_to_clipboard(state: &mut UblxState, params: &RunUblxParams
     }
 }
 
-fn space_menu_file_actions_submit(
+fn qa_menu_file_actions_submit(
     state: &mut UblxState,
     view: &ViewData,
     params: &mut RunUblxParams<'_>,
@@ -326,7 +326,7 @@ fn space_menu_file_actions_submit(
         return;
     };
 
-    let m = file_space_menu_indices(
+    let m = file_qa_menu_indices(
         show_enhance_directory_policy,
         show_enhance_zahir,
         show_copy_zahir_json,
@@ -350,7 +350,7 @@ fn space_menu_file_actions_submit(
         return;
     }
     if m.zahir == Some(idx) {
-        space_menu_enhance_zahir_if_disabled(state, params, &path, ublx_opts);
+        qa_menu_enhance_zahir_if_disabled(state, params, &path, ublx_opts);
         return;
     }
     if idx == m.lens {
@@ -417,7 +417,7 @@ fn duplicate_member_actions_submit(
     }
 }
 
-fn space_menu_apply_submit(
+fn qa_menu_apply_submit(
     state: &mut UblxState,
     view: &ViewData,
     params: &mut RunUblxParams<'_>,
@@ -427,7 +427,7 @@ fn space_menu_apply_submit(
 ) {
     match kind {
         fa @ SpaceMenuKind::FileActions { .. } => {
-            space_menu_file_actions_submit(state, view, params, ublx_opts, fa, idx);
+            qa_menu_file_actions_submit(state, view, params, ublx_opts, fa, idx);
         }
         SpaceMenuKind::DuplicateMemberActions { path } => {
             duplicate_member_actions_submit(state, params, path, idx);
@@ -444,40 +444,42 @@ fn space_menu_apply_submit(
 }
 
 /// Handle action when spacebar context menu is visible. Returns true if handled.
-pub fn handle_space_menu(
+pub fn handle_qa_menu(
     state: &mut UblxState,
     view: &ViewData,
     params: &mut RunUblxParams<'_>,
     ublx_opts: &UblxOpts,
     action: UblxAction,
 ) -> bool {
-    if !state.space_menu.visible {
+    if !state.qa_menu.visible {
         return false;
     }
-    let item_count = space_menu_item_count(state.space_menu.kind.as_ref(), state.main_mode);
+    let item_count =
+        qa_menu_item_count(state.qa_menu.kind.as_ref(), state.main_mode);
     match action {
-        UblxAction::Quit | UblxAction::SearchClear => state.close_space_menu(),
+        UblxAction::Quit | UblxAction::SearchClear => state.close_qa_menu(),
         UblxAction::MoveDown => {
-            state.space_menu.selected_index =
-                (state.space_menu.selected_index + 1).min(item_count.saturating_sub(1));
+            state.qa_menu.selected_index =
+                (state.qa_menu.selected_index + 1).min(item_count.saturating_sub(1));
         }
         UblxAction::MoveUp => {
-            state.space_menu.selected_index = state.space_menu.selected_index.saturating_sub(1);
+            state.qa_menu.selected_index =
+                state.qa_menu.selected_index.saturating_sub(1);
         }
         UblxAction::SearchSubmit => {
-            let kind = state.space_menu.kind.clone();
-            let idx = state.space_menu.selected_index;
-            state.close_space_menu();
+            let kind = state.qa_menu.kind.clone();
+            let idx = state.qa_menu.selected_index;
+            state.close_qa_menu();
             if let Some(k) = kind {
-                space_menu_apply_submit(state, view, params, ublx_opts, k, idx);
+                qa_menu_apply_submit(state, view, params, ublx_opts, k, idx);
             }
         }
         UblxAction::SpaceMenuHotkeySelect(idx) => {
             if idx < item_count {
-                let kind = state.space_menu.kind.clone();
-                state.close_space_menu();
+                let kind = state.qa_menu.kind.clone();
+                state.close_qa_menu();
                 if let Some(k) = kind {
-                    space_menu_apply_submit(state, view, params, ublx_opts, k, idx);
+                    qa_menu_apply_submit(state, view, params, ublx_opts, k, idx);
                 }
             }
         }
@@ -487,11 +489,11 @@ pub fn handle_space_menu(
 }
 
 #[must_use]
-fn space_menu_open_blocked(state: &UblxState) -> bool {
+fn qa_menu_open_blocked(state: &UblxState) -> bool {
     !matches!(
         state.main_mode,
         MainMode::Snapshot | MainMode::Lenses | MainMode::Duplicates,
-    ) || state.space_menu.visible
+    ) || state.qa_menu.visible
         || state.enhance_policy_menu.visible
         || state.lens_confirm.rename_input.is_some()
         || state.lens_confirm.delete_visible
@@ -501,7 +503,7 @@ fn space_menu_open_blocked(state: &UblxState) -> bool {
         || modal_open(state)
 }
 
-fn try_open_file_space_menu(
+fn try_open_file_qa_menu(
     state_mut: &mut UblxState,
     right_content_ref: &RightPaneContent,
 ) -> bool {
@@ -509,10 +511,11 @@ fn try_open_file_space_menu(
         return false;
     };
     if state_mut.main_mode == MainMode::Duplicates {
-        state_mut.open_space_menu(SpaceMenuKind::DuplicateMemberActions { path: path.clone() });
+        state_mut
+            .open_qa_menu(SpaceMenuKind::DuplicateMemberActions { path: path.clone() });
         return true;
     }
-    state_mut.open_space_menu(SpaceMenuKind::FileActions {
+    state_mut.open_qa_menu(SpaceMenuKind::FileActions {
         path: path.clone(),
         can_open_in_terminal: right_content_ref.derived.can_open,
         show_enhance_directory_policy: right_content_ref.derived.offer_enhance_directory_policy,
@@ -522,7 +525,7 @@ fn try_open_file_space_menu(
     true
 }
 
-fn try_open_lens_panel_space_menu(state_mut: &mut UblxState, view_ref: &ViewData) -> bool {
+fn try_open_lens_panel_qa_menu(state_mut: &mut UblxState, view_ref: &ViewData) -> bool {
     if state_mut.main_mode != MainMode::Lenses || view_ref.filtered_categories.is_empty() {
         return false;
     }
@@ -533,12 +536,12 @@ fn try_open_lens_panel_space_menu(state_mut: &mut UblxState, view_ref: &ViewData
     else {
         return false;
     };
-    state_mut.open_space_menu(SpaceMenuKind::LensPanelActions { lens_name });
+    state_mut.open_qa_menu(SpaceMenuKind::LensPanelActions { lens_name });
     true
 }
 
-/// If action is `SpaceMenu` and context allows, open the space menu. Returns true if opened.
-pub fn try_open_space_menu(
+/// If action is `SpaceMenu` and context allows, open the quick actions menu (spacebar). Returns true if opened.
+pub fn try_open_qa_menu(
     state_mut: &mut UblxState,
     view_ref: &ViewData,
     right_content_ref: &RightPaneContent,
@@ -550,11 +553,11 @@ pub fn try_open_space_menu(
     if state_mut.main_mode == MainMode::Delta {
         return false;
     }
-    if space_menu_open_blocked(state_mut) {
+    if qa_menu_open_blocked(state_mut) {
         return false;
     }
     if state_mut.panels.focus == PanelFocus::Contents {
-        return try_open_file_space_menu(state_mut, right_content_ref);
+        return try_open_file_qa_menu(state_mut, right_content_ref);
     }
-    try_open_lens_panel_space_menu(state_mut, view_ref)
+    try_open_lens_panel_qa_menu(state_mut, view_ref)
 }

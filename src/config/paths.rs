@@ -9,18 +9,38 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-/// Package name from Cargo; used as stem for all index files.
-pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");
-/// Plural of `PKG_NAME` for the directory name.
-pub const PKG_NAME_PLURAL: &str = "ubli";
-/// File extension for the per-root index DB under `cache_dir()/`[`PKG_NAME_PLURAL`] (leading dot + [`PKG_NAME`]).
-pub const INDEX_DB_FILE_EXT: &str = concat!(".", env!("CARGO_PKG_NAME"));
-/// Basename of visible local config (`ublx.toml`). Same leaf as [`UblxPaths::visible_toml`].
-pub const LOCAL_CONFIG_VISIBLE_TOML: &str = concat!(env!("CARGO_PKG_NAME"), ".toml");
-/// Basename of hidden local config (`.ublx.toml`). Same leaf as [`UblxPaths::hidden_toml`].
-pub const LOCAL_CONFIG_HIDDEN_TOML: &str = concat!(".", env!("CARGO_PKG_NAME"), ".toml");
-/// Name of the Nefaxer DB file.
-pub const NEFAX_DB: &str = ".nefaxer";
+pub struct UblxNames {
+    pub pkg_name: &'static str,
+    pub pkg_name_plural: &'static str,
+    pub index_db_file_ext: &'static str,
+    pub local_config_visible_toml: &'static str,
+    pub local_config_hidden_toml: &'static str,
+    pub export_folder_name: &'static str,
+    pub nefax_db: &'static str,
+}
+
+impl Default for UblxNames {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl UblxNames {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            pkg_name: env!("CARGO_PKG_NAME"),
+            pkg_name_plural: "ubli",
+            index_db_file_ext: concat!(".", env!("CARGO_PKG_NAME")),
+            local_config_visible_toml: concat!(env!("CARGO_PKG_NAME"), ".toml"),
+            local_config_hidden_toml: concat!(".", env!("CARGO_PKG_NAME"), ".toml"),
+            nefax_db: ".nefaxer",
+            export_folder_name: concat!(env!("CARGO_PKG_NAME"), "-export"),
+        }
+    }
+}
+
+pub const UBLX_NAMES: UblxNames = UblxNames::new();
 
 /// `path_to_hex` / DB stem suffix length (16 hex chars from `DefaultHasher`).
 const PATH_HASH_HEX_LEN: usize = 16;
@@ -78,7 +98,7 @@ fn config_dir() -> Option<PathBuf> {
     {
         env::var("HOME")
             .ok()
-            .map(|h| PathBuf::from(h).join(".config").join(PKG_NAME))
+            .map(|h| PathBuf::from(h).join(".config").join(UBLX_NAMES.pkg_name))
     }
 }
 
@@ -95,16 +115,19 @@ fn cache_dir() -> Option<PathBuf> {
     }
     #[cfg(not(windows))]
     {
-        env::var("HOME")
-            .ok()
-            .map(|h| PathBuf::from(h).join(".local").join("share").join(PKG_NAME))
+        env::var("HOME").ok().map(|h| {
+            PathBuf::from(h)
+                .join(".local")
+                .join("share")
+                .join(UBLX_NAMES.pkg_name)
+        })
     }
 }
 
 /// Per-project `SQLite` files live under `cache_dir()/ubli/` (e.g. `~/.local/share/ublx/ubli`).
 #[must_use]
 fn db_dir() -> Option<PathBuf> {
-    cache_dir().map(|c| c.join(PKG_NAME_PLURAL))
+    cache_dir().map(|c| c.join(UBLX_NAMES.pkg_name_plural))
 }
 
 /// Per-indexed-dir metadata for welcome-screen recents: `cache_dir()/recents/<path_hash>.txt`.
@@ -227,7 +250,7 @@ pub fn has_any_cached_ublx_db() -> bool {
         e.path()
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(INDEX_DB_FILE_EXT))
+            .is_some_and(|n| n.ends_with(UBLX_NAMES.index_db_file_ext))
     })
 }
 
@@ -454,7 +477,7 @@ pub fn prior_indexed_roots_recent(current: &Path, max: usize) -> Vec<PathBuf> {
 /// Path to the global config file: `config_dir()/ublx.toml`. `None` if [`config_dir`] is unavailable.
 #[must_use]
 pub fn global_config_toml() -> Option<PathBuf> {
-    config_dir().map(|c| c.join(LOCAL_CONFIG_VISIBLE_TOML))
+    config_dir().map(|c| c.join(UBLX_NAMES.local_config_visible_toml))
 }
 
 /// Path to the cached "last applied" config for this dir: `cache_dir()/configs/[path_hex].toml`.
@@ -473,7 +496,7 @@ pub fn rel_path_is_exact_local_config_toml(path_str: &str) -> bool {
     }
     let norm = trim.replace('\\', "/");
     let norm = norm.trim_start_matches("./");
-    norm == LOCAL_CONFIG_VISIBLE_TOML || norm == LOCAL_CONFIG_HIDDEN_TOML
+    norm == UBLX_NAMES.local_config_visible_toml || norm == UBLX_NAMES.local_config_hidden_toml
 }
 
 /// Paths for the index DB and related files under an indexed `dir_to_ublx_abs`. Filenames use [`INDEX_DB_FILE_EXT`] and related suffixes (`_tmp`, `-wal`, `-shm`).
@@ -505,7 +528,7 @@ impl UblxPaths {
     /// Full filename for the index DB under [`Self::db_dir`] (stem + [`INDEX_DB_FILE_EXT`]).
     #[must_use]
     fn db_filename(&self) -> String {
-        format!("{}{}", self.db_stem(), INDEX_DB_FILE_EXT)
+        format!("{}{}", self.db_stem(), UBLX_NAMES.index_db_file_ext)
     }
 
     #[must_use]
@@ -528,19 +551,22 @@ impl UblxPaths {
 
     #[must_use]
     pub fn log_path(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(format!("{PKG_NAME}.log"))
+        self.dir_to_ublx_abs
+            .join(format!("{}.log", UBLX_NAMES.pkg_name))
     }
 
     /// Hidden config path: `dir_to_ublx_abs/.ublx.toml`.
     #[must_use]
     pub fn hidden_toml(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(LOCAL_CONFIG_HIDDEN_TOML)
+        self.dir_to_ublx_abs
+            .join(UBLX_NAMES.local_config_hidden_toml)
     }
 
     /// Visible config path: `dir_to_ublx_abs/ublx.toml`.
     #[must_use]
     pub fn visible_toml(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(LOCAL_CONFIG_VISIBLE_TOML)
+        self.dir_to_ublx_abs
+            .join(UBLX_NAMES.local_config_visible_toml)
     }
 
     /// True if `path` (relative to `dir_to_ublx_abs`) is the hidden or visible ublx config file.
@@ -549,8 +575,8 @@ impl UblxPaths {
         let Some(name) = path.file_name() else {
             return false;
         };
-        name == OsStr::new(LOCAL_CONFIG_VISIBLE_TOML)
-            || name == OsStr::new(LOCAL_CONFIG_HIDDEN_TOML)
+        name == OsStr::new(UBLX_NAMES.local_config_visible_toml)
+            || name == OsStr::new(UBLX_NAMES.local_config_hidden_toml)
     }
 
     /// Path to the config file to use: checks for `dir_to_ublx_abs/.ublx.toml` then `dir_to_ublx_abs/ublx.toml`; returns the first that exists, or `None`.
@@ -578,7 +604,7 @@ impl UblxPaths {
     /// Nefaxer index file (e.g. `dir_to_ublx_abs/.nefaxer`). When present, used as prior snapshot before ublx snapshot.
     #[must_use]
     pub fn nefax_db(&self) -> PathBuf {
-        self.dir_to_ublx_abs.join(NEFAX_DB)
+        self.dir_to_ublx_abs.join(UBLX_NAMES.nefax_db)
     }
 
     /// Temp file (write-then-rename to [`Self::db`]). Same stem as DB with `_tmp` before [`INDEX_DB_FILE_EXT`].
@@ -586,7 +612,11 @@ impl UblxPaths {
     pub fn tmp(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}_tmp{}", self.db_stem(), INDEX_DB_FILE_EXT))
+            .join(format!(
+                "{}_tmp{}",
+                self.db_stem(),
+                UBLX_NAMES.index_db_file_ext
+            ))
     }
 
     /// WAL file for [`Self::tmp`] when snapshot build uses `journal_mode=WAL`.
@@ -594,7 +624,11 @@ impl UblxPaths {
     pub fn tmp_wal(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}_tmp{}-wal", self.db_stem(), INDEX_DB_FILE_EXT))
+            .join(format!(
+                "{}_tmp{}-wal",
+                self.db_stem(),
+                UBLX_NAMES.index_db_file_ext
+            ))
     }
 
     /// Shared-memory file for [`Self::tmp`] in WAL mode.
@@ -602,7 +636,11 @@ impl UblxPaths {
     pub fn tmp_shm(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}_tmp{}-shm", self.db_stem(), INDEX_DB_FILE_EXT))
+            .join(format!(
+                "{}_tmp{}-shm",
+                self.db_stem(),
+                UBLX_NAMES.index_db_file_ext
+            ))
     }
 
     /// `SQLite` WAL file for [`Self::db`] when WAL mode is on.
@@ -610,7 +648,11 @@ impl UblxPaths {
     pub fn wal(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}{}-wal", self.db_stem(), INDEX_DB_FILE_EXT))
+            .join(format!(
+                "{}{}-wal",
+                self.db_stem(),
+                UBLX_NAMES.index_db_file_ext
+            ))
     }
 
     /// `SQLite` shared-memory file for [`Self::db`] in WAL mode.
@@ -618,17 +660,23 @@ impl UblxPaths {
     pub fn shm(&self) -> PathBuf {
         self.db_dir()
             .unwrap_or_else(|| self.dir_to_ublx_abs.clone())
-            .join(format!("{}{}-shm", self.db_stem(), INDEX_DB_FILE_EXT))
+            .join(format!(
+                "{}{}-shm",
+                self.db_stem(),
+                UBLX_NAMES.index_db_file_ext
+            ))
     }
 
     /// Paths to exclude from indexing (nefax + local config). DB files under `ubli/` use [`INDEX_DB_FILE_EXT`] and are not listed here (nefax matches path components).
     /// Local `ublx.toml` / `.ublx.toml` are edited from the Settings tab, not listed as a snapshot category.
+    /// [`UblxNames::export_folder_name`] (flat Zahir JSON export) is excluded so re-indexing does not ingest exported snapshots.
     #[must_use]
     pub fn exclude(&self) -> Vec<String> {
         vec![
-            NEFAX_DB.to_string(),
-            LOCAL_CONFIG_VISIBLE_TOML.to_string(),
-            LOCAL_CONFIG_HIDDEN_TOML.to_string(),
+            UBLX_NAMES.nefax_db.to_string(),
+            UBLX_NAMES.local_config_visible_toml.to_string(),
+            UBLX_NAMES.local_config_hidden_toml.to_string(),
+            UBLX_NAMES.export_folder_name.to_string(),
         ]
     }
 

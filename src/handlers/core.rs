@@ -28,6 +28,8 @@ use crate::utils;
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
     pub snapshot_only: bool,
+    /// Headless `--export`: dump snapshot `zahir_json` to `{PKG}-export/` and exit (no TUI).
+    pub export_only: bool,
     pub dir_to_ublx: &'a Path,
     pub db_path: &'a Path,
     pub ublx_opts: &'a mut config::UblxOpts,
@@ -55,7 +57,17 @@ pub struct TuiModeLaunchOpts<'a> {
 ///
 /// Returns [`io::Error`] from headless snapshot mode, TUI setup, or the main run loop (terminal I/O).
 pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
-    if params.snapshot_only {
+    if params.export_only && params.snapshot_only {
+        headless_snap_mode(
+            params.dir_to_ublx,
+            params.ublx_opts,
+            params.prior_nefax,
+            params.start_time,
+        )?;
+        headless_export_zahir_mode(params.dir_to_ublx, params.db_path)
+    } else if params.export_only {
+        headless_export_zahir_mode(params.dir_to_ublx, params.db_path)
+    } else if params.snapshot_only {
         headless_snap_mode(
             params.dir_to_ublx,
             params.ublx_opts,
@@ -75,6 +87,27 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
             },
             params.tui_start.take(),
         )
+    }
+}
+
+fn headless_export_zahir_mode(dir_to_ublx: &Path, db_path: &Path) -> std::io::Result<()> {
+    match db_ops::export_zahir_json_flat(dir_to_ublx, db_path) {
+        Ok(n) => {
+            let dest = dir_to_ublx.join(config::UBLX_NAMES.export_folder_name);
+            if n == 0 {
+                debug!(
+                    "export: wrote 0 Zahir JSON files under {}; run `ublx --full-snapshot --export` for a full pass, or tune enhance policy in config",
+                    dest.display()
+                );
+            } else {
+                debug!("export: wrote {n} Zahir JSON file(s) to {}", dest.display());
+            }
+            Ok(())
+        }
+        Err(e) => {
+            debug!("export failed: {e}");
+            Err(std::io::Error::other(e.to_string()))
+        }
     }
 }
 

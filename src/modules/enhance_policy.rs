@@ -1,4 +1,4 @@
-//! Space menu → subtree `[[enhance_policy]]` (index-time batch Zahir only).
+//! quick actions menu (spacebar) → subtree `[[enhance_policy]]` (index-time batch Zahir only).
 
 use crate::app::RunUblxParams;
 use crate::config::{EnhancePolicy, UblxOpts, UblxPaths, write_local_enhance_policy};

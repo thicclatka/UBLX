@@ -9,6 +9,8 @@
 
 UBLX is a **TUI that turns any directory into a flat, navigable catalog** — index once, then browse categories, previews, metadata, and templates in the terminal. (Driven by [nefaxer](https://github.com/thicclatka/nefaxer) and [zahirscan](https://github.com/thicclatka/zahirscan))
 
+**_Currently in development, expect breaking changes._**
+
 ## Install
 
 ```bash
@@ -24,7 +26,15 @@ cargo build --release
 - **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), **Space** then a letter for **Open** / **Lens** / … (see in-app help), stacked toasts. **Shift+S** viewer search, **Shift+F** viewer fullscreen. `q` / Esc quit.
 - **Snapshot-only** — Headless index without the TUI (`-s` / `--snapshot-only`); flags `-e`/`-f` control index-time Zahir when creating local config. See **Usage** below for exact behavior.
 
-## Modes (tabs)
+## Use case
+
+Looking for a file manager? Use [yazi](https://github.com/sxyazi/yazi) for that; where UBLX comes in:
+
+- Best for navigating and handling project directories that you frequent
+- Preview & extract filetype specific metadata without having to open a file
+- **For large directories**: can still get a quick understanding of filetypes contained without metadata enhancement
+
+## Modes
 
 | Tab            | Description                                                                                                                                                                       |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,6 +42,7 @@ cargo build --release
 | **Delta**      | Added / Mod / Removed since last snapshot; same 3-pane layout with overview in the right pane.                                                                                    |
 | **Lenses**     | Saved lists of items with a specific focus (e.g. a “lens” on a subset of files); left = lens names, middle = paths in the selected lens. Shown when the DB has at least one lens. |
 | **Duplicates** | Groups of duplicate files by content hash; left = group names, middle = paths in the group. Run duplicate detection (Ctrl+d) to populate; tab appears when groups exist.          |
+| **Settings**   | Global vs local config for the indexed root: theme, layout, `bg_opacity`, and other hot-reloadable keys; **e** opens the active scope's file in `$EDITOR`.                        |
 
 Cycle main tabs with `~`.
 
@@ -62,7 +73,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 - **Binaries** — short label instead of dumping bytes.
 - **Directories** — `tree` when available.
 
-Press **?** in the TUI to open the full keybinding help.
+Press **?** to open the full keybinding help.
 
 ## Configuration
 
@@ -103,7 +114,7 @@ The **longest** `path` prefix that matches a file wins. If no row matches, **`en
 
 ## Usage
 
-```bash
+```text
 Usage: ublx [OPTIONS] <DIR>
 
 Arguments:

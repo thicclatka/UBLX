@@ -68,7 +68,13 @@ pub fn draw_ublx_frame(
     if state.chrome.help_visible {
         let has_duplicates = args.duplicate_groups.is_some_and(|g| !g.is_empty());
         let has_lenses = args.lens_names.is_some_and(|n| !n.is_empty());
-        overlays::render_help_box(f, state.main_mode, has_lenses, has_duplicates);
+        overlays::render_help_box(
+            f,
+            state.main_mode,
+            has_lenses,
+            has_duplicates,
+            &mut state.chrome.help_tab,
+        );
     }
     if state.theme.selector_visible {
         overlays::render_theme_selector(f, state.theme.selector_index);
@@ -106,7 +112,7 @@ pub fn draw_ublx_frame(
     }
 }
 
-/// Render open menu, lens menu, space menu, and delete confirm popups when visible.
+/// Render open menu, lens menu, quick actions menu (spacebar), and delete confirm popups when visible.
 fn draw_popups(
     f: &mut Frame,
     state: &layout::setup::UblxState,
@@ -157,8 +163,8 @@ fn draw_popups(
             content_sel,
         );
     }
-    if state.space_menu.visible
-        && let Some(ref kind) = state.space_menu.kind
+    if state.qa_menu.visible
+        && let Some(ref kind) = state.qa_menu.kind
     {
         let (area, row) = match kind {
             layout::setup::SpaceMenuKind::FileActions { .. }
@@ -167,7 +173,7 @@ fn draw_popups(
         };
         overlays::popup::render_context_menu(
             f,
-            state.space_menu.selected_index,
+            state.qa_menu.selected_index,
             kind,
             state.main_mode,
             area,

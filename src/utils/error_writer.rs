@@ -63,8 +63,8 @@ pub fn exit_cli_usage() -> ! {
 }
 
 /// `--enhance-all` only applies with `--snapshot-only` or `--full-snapshot`; otherwise print and exit.
-pub fn exit_if_enhance_all_without_headless(enhance_all: bool, headless: bool) {
-    if enhance_all && !headless {
+pub fn exit_if_enhance_all_without_headless(enhance_all: bool, snapshot_headless: bool) {
+    if enhance_all && !snapshot_headless {
         eprintln!("ublx: --enhance-all requires --snapshot-only or --full-snapshot");
         exit_cli_usage();
     }

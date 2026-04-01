@@ -24,7 +24,10 @@ fn apply_quit(state_mut: &mut UblxState) -> bool {
 /// Apply miscellaneous actions to state
 fn apply_misc(state_mut: &mut UblxState, action: UblxAction) {
     match action {
-        UblxAction::Help => state_mut.chrome.help_visible = true,
+        UblxAction::Help => {
+            state_mut.chrome.help_visible = true;
+            state_mut.chrome.help_tab = 0;
+        }
         UblxAction::TakeSnapshot => state_mut.snapshot_bg.requested = true,
         _ => {}
     }

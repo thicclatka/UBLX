@@ -37,15 +37,18 @@ struct Args {
 /// Headless indexing flag
 #[derive(Parser)]
 struct HeadlessCli {
-    /// Headless snapshot then exit (no TUI). Writes a local config file when this dir has none.
+    /// Headless snapshot. Writes a local config file when this dir has none.
     #[arg(long = "snapshot-only", short = 's')]
     snapshot_only: bool,
-    /// With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run. Incompatible with `--full-snapshot`.
-    #[arg(long = "enhance-all", short = 'e', conflicts_with = "full_snapshot")]
+    /// With `--snapshot-only`: set `enable_enhance_all = true` in new local config and use it for this run.
+    #[arg(long = "enhance-all", short = 'e')]
     enhance_all: bool,
     /// Same as `--snapshot-only --enhance-all`.
     #[arg(long = "full-snapshot", short = 'f')]
     full_snapshot: bool,
+    /// Headless: write each Zahir JSON to `ublx-export/` as flat `{path}.json` files. Recommended to run with "--full-snapshot" to get most complete & recent results. Adjust enhance policy in config to fine-tune which paths get ZahirScan.
+    #[arg(long = "export", short = 'x')]
+    export_zahir: bool,
 }
 
 fn print_available_themes() {
@@ -69,11 +72,13 @@ fn main() {
     }
 
     let h = &args.headless;
-    let headless = h.snapshot_only || h.full_snapshot;
-    utils::exit_if_enhance_all_without_headless(h.enhance_all, headless);
-    let local_enhance_all = h.full_snapshot || h.enhance_all;
+    let headless_snapshot = h.snapshot_only || h.full_snapshot;
+    let headless_export = h.export_zahir;
+    let headless = headless_snapshot || headless_export;
 
-    let start_time = headless.then(Instant::now);
+    utils::exit_if_enhance_all_without_headless(h.enhance_all, headless_snapshot);
+
+    let start_time = headless_snapshot.then(Instant::now);
 
     let bumper = if headless {
         utils::build_logger_snapshot_only_no_tui();
@@ -83,6 +88,11 @@ fn main() {
         utils::init_logging(b.clone(), args.dev);
         Some(b)
     };
+
+    let local_enhance_all = h.enhance_all || h.full_snapshot;
+    if h.full_snapshot && h.enhance_all {
+        debug!("Full snapshot with --enhance-all is redundant; use --full-snapshot (-f) alone.");
+    }
 
     let dir_to_ublx = utils::validate_dir(&args.dir_to_ublx);
     debug!("indexing directory: {}", dir_to_ublx.display());
@@ -97,16 +107,22 @@ fn main() {
     );
     debug!("db: {}", db_path.display());
 
-    let initial_prompt = should_show_initial_prompt(headless, had_index_db_before_ensure);
+    let initial_prompt = should_show_initial_prompt(headless_snapshot, had_index_db_before_ensure);
     debug!(
         "initial_prompt={initial_prompt} (had_index_db_before_ensure={had_index_db_before_ensure})"
     );
     debug!("cached ublx roots seen before startup: {had_any_cached_db_before_this_root}");
 
     // Prior Nefax + settings + (TUI only) snapshot/lens preload in one DB pass (`db_ops::load_tui_start_data`).
-    let (prior_nefax_owned, tui_start, cached_settings) = if headless {
+    let (prior_nefax_owned, tui_start, cached_settings) = if headless_snapshot {
         (
             load_prior_nefax_or_exit(&dir_to_ublx, &db_path),
+            None,
+            db_ops::load_settings_from_db(&db_path).ok().flatten(),
+        )
+    } else if headless_export {
+        (
+            None,
             None,
             db_ops::load_settings_from_db(&db_path).ok().flatten(),
         )
@@ -139,13 +155,14 @@ fn main() {
         cached_settings.as_ref(),
         &for_dir_config,
     );
-    if headless && paths.toml_path().is_none() {
+    if headless_snapshot && paths.toml_path().is_none() {
         ublx_opts.enable_enhance_all = local_enhance_all;
     }
     debug!("UBLX CONFIG: {ublx_opts:#?}");
 
     let mut run_params = handlers::RunAppParams {
-        snapshot_only: headless,
+        snapshot_only: headless_snapshot,
+        export_only: headless_export,
         dir_to_ublx: &dir_to_ublx,
         db_path: &db_path,
         ublx_opts: &mut ublx_opts,
@@ -158,7 +175,7 @@ fn main() {
     };
     fatal!(handlers::run_app(&mut run_params), "{}");
 
-    if headless && paths.toml_path().is_none() {
+    if headless_snapshot && paths.toml_path().is_none() {
         fatal!(
             write_local_enhance_only_toml(&paths, local_enhance_all),
             "failed to write local config: {}"

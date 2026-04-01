@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::config::PKG_NAME;
+use crate::config::UBLX_NAMES;
 use crate::integrations::ZahirFileType as FileType;
 use crate::utils::exit_error;
 
@@ -182,7 +182,12 @@ pub fn build_logger_snapshot_only_no_tui() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
         .format(|buf, record| {
-            let ublx = PKG_NAME.to_uppercase().magenta().bold().to_string();
+            let ublx = UBLX_NAMES
+                .pkg_name
+                .to_uppercase()
+                .magenta()
+                .bold()
+                .to_string();
             let level = level_colored(record.level());
             let path = path_colored(record.target());
             writeln!(buf, "[{} {} {}] {}", ublx, level, path, record.args())

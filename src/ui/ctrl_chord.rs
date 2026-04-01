@@ -21,7 +21,7 @@ pub const CHORD_MENU_DELAY: Duration = Duration::from_millis(480);
 fn chord_blocked(state: &UblxState) -> bool {
     state.chrome.help_visible
         || state.theme.selector_visible
-        || state.space_menu.visible
+        || state.qa_menu.visible
         || state.open_menu.visible
         || state.lens_menu.visible
         || state.enhance_policy_menu.visible

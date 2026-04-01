@@ -6,6 +6,7 @@ mod lens;
 mod live_snapshot;
 mod path_resolver;
 mod utils;
+mod zahir_export;
 
 pub use consts::*;
 pub use core::*;
@@ -15,3 +16,4 @@ pub use lens::*;
 pub use live_snapshot::*;
 pub use path_resolver::*;
 pub use utils::*;
+pub use zahir_export::*;

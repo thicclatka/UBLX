@@ -3,8 +3,7 @@
 //! Settings overlay tests: `tests/settings_overlay.rs`.
 
 use ublx::config::{
-    INDEX_DB_FILE_EXT, PKG_NAME, hash_suffix_from_db_stem, is_hex_hash16,
-    should_show_initial_prompt,
+    UBLX_NAMES, hash_suffix_from_db_stem, is_hex_hash16, should_show_initial_prompt,
 };
 use ublx::render::path_lines::wrap_path_string_segments;
 
@@ -24,8 +23,14 @@ fn initial_prompt_only_if_no_ubli_db_when_not_snapshot_only() {
 
 #[test]
 fn index_db_file_ext_is_dot_pkg_name() {
-    assert_eq!(INDEX_DB_FILE_EXT, concat!(".", env!("CARGO_PKG_NAME")));
-    assert_eq!(INDEX_DB_FILE_EXT, format!(".{PKG_NAME}"));
+    assert_eq!(
+        UBLX_NAMES.index_db_file_ext,
+        format!(".{}", UBLX_NAMES.pkg_name)
+    );
+    assert_eq!(
+        UBLX_NAMES.index_db_file_ext,
+        format!(".{}", UBLX_NAMES.pkg_name)
+    );
 }
 
 #[test]

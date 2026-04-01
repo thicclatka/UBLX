@@ -785,7 +785,7 @@ pub fn load_snapshot_path_size_hash(
     Ok(out)
 }
 
-/// Apply one `ZahirScan` [`ZahirOutput`] to a snapshot row (e.g. space menu "Enhance with `ZahirScan`").
+/// Apply one `ZahirScan` [`ZahirOutput`] to a snapshot row (e.g. quick actions menu (spacebar) "Enhance with `ZahirScan`").
 ///
 /// # Errors
 ///

@@ -354,7 +354,7 @@ fn mouse_blocked_by_modals(state: &UblxState) -> bool {
         || state.chrome.ublx_switch.visible
         || state.open_menu.visible
         || state.lens_menu.visible
-        || state.space_menu.visible
+        || state.qa_menu.visible
         || state.enhance_policy_menu.visible
         || state.lens_confirm.delete_visible
         || state.file_rename_input.is_some()
@@ -447,6 +447,7 @@ pub fn handle_mouse_event(
                 main_mode,
                 tabs.has_lenses,
                 tabs.has_duplicates,
+                state_mut.chrome.help_tab,
             );
             if contains(footer, event.column, event.row) {
                 let url = env!("CARGO_PKG_REPOSITORY");

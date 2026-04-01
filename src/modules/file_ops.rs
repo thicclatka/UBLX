@@ -1,4 +1,4 @@
-//! Rename / delete files and folders under the indexed root (space menu → Rename / Delete).
+//! Rename / delete files and folders under the indexed root (quick actions menu (spacebar) → Rename / Delete).
 
 use std::fs;
 use std::path::{Path, PathBuf};

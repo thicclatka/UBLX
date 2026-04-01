@@ -1,4 +1,4 @@
-//! File rename / delete from the space menu (submenu + prompts).
+//! File rename / delete from the quick actions menu (spacebar) (submenu + prompts).
 
 use crossterm::event::KeyCode;
 

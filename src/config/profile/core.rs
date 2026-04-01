@@ -22,14 +22,14 @@ impl Default for LayoutOverlay {
 }
 
 /// Per-directory policy for automatic (index-time) `ZahirScan`. Longest matching path prefix wins; absent entry inherits [`crate::config::UblxOpts::enable_enhance_all`].
-/// Does not apply to per-file "Enhance with `ZahirScan`" from the space menu.
+/// Does not apply to per-file "Enhance with `ZahirScan`" from the quick actions menu (spacebar).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EnhancePolicy {
     /// Index-time batch Zahir for paths under this subtree (same idea as global `enable_enhance_all` for that prefix).
     #[serde(alias = "always")]
     Auto,
-    /// No batch Zahir under this subtree; enrich per file from the space menu only.
+    /// No batch Zahir under this subtree; enrich per file from the quick actions menu (spacebar) only.
     #[serde(alias = "never")]
     Manual,
 }

@@ -201,7 +201,7 @@ pub struct OpenMenuState {
 #[derive(Default)]
 pub struct LensMenuState {
     pub visible: bool,
-    /// Relative paths to add (one from the space menu, many from multi-select bulk).
+    /// Relative paths to add (one from the quick actions menu (spacebar), many from multi-select bulk).
     pub paths: Vec<String>,
     /// Omit from the picker (Lenses tab: **Add to other lens** must not list the active lens).
     pub exclude_lens_name: Option<String>,
@@ -209,9 +209,9 @@ pub struct LensMenuState {
     pub name_input: Option<String>,
 }
 
-/// Spacebar context menu state.
+/// Quick Actions context menu state.
 #[derive(Default)]
-pub struct SpaceMenuState {
+pub struct QAMenuState {
     pub visible: bool,
     pub selected_index: usize,
     pub kind: Option<SpaceMenuKind>,
@@ -292,6 +292,8 @@ pub struct UblxSwitchPickerState {
 #[derive(Default)]
 pub struct ViewerChrome {
     pub help_visible: bool,
+    /// Section tab index inside the help overlay (`Tab` / Shift+Tab); reset when opening help.
+    pub help_tab: u8,
     pub viewer_fullscreen: bool,
     pub ctrl_chord: CtrlChordState,
     pub ublx_switch: UblxSwitchPickerState,
@@ -501,7 +503,7 @@ pub struct UblxState {
     pub toasts: ToastState,
     pub open_menu: OpenMenuState,
     pub lens_menu: LensMenuState,
-    pub space_menu: SpaceMenuState,
+    pub qa_menu: QAMenuState,
     pub enhance_policy_menu: EnhancePolicyMenuState,
     pub lens_confirm: LensConfirmState,
     /// Rename entry: `(relative path, new basename being typed)`.
@@ -553,7 +555,7 @@ impl UblxState {
             toasts: ToastState::default(),
             open_menu: OpenMenuState::default(),
             lens_menu: LensMenuState::default(),
-            space_menu: SpaceMenuState::default(),
+            qa_menu: QAMenuState::default(),
             enhance_policy_menu: EnhancePolicyMenuState::default(),
             lens_confirm: LensConfirmState::default(),
             file_rename_input: None,
@@ -601,10 +603,10 @@ impl UblxState {
     }
 
     /// Reset spacebar context menu state.
-    pub fn close_space_menu(&mut self) {
-        self.space_menu.visible = false;
-        self.space_menu.selected_index = 0;
-        self.space_menu.kind = None;
+    pub fn close_qa_menu(&mut self) {
+        self.qa_menu.visible = false;
+        self.qa_menu.selected_index = 0;
+        self.qa_menu.kind = None;
     }
 
     pub fn close_enhance_policy_menu(&mut self) {
@@ -633,10 +635,10 @@ impl UblxState {
     }
 
     /// Open the spacebar context menu with the given kind.
-    pub fn open_space_menu(&mut self, kind: SpaceMenuKind) {
-        self.space_menu.visible = true;
-        self.space_menu.selected_index = 0;
-        self.space_menu.kind = Some(kind);
+    pub fn open_qa_menu(&mut self, kind: SpaceMenuKind) {
+        self.qa_menu.visible = true;
+        self.qa_menu.selected_index = 0;
+        self.qa_menu.kind = Some(kind);
     }
 
     /// Show the delete-lens confirmation for the given lens name.
@@ -646,7 +648,7 @@ impl UblxState {
         self.lens_confirm.delete_selected = 0;
     }
 
-    /// Space menu → Rename: centered text input with current basename.
+    /// quick actions menu (spacebar) → Rename: centered text input with current basename.
     pub fn open_file_rename_input(&mut self, rel_path: String) {
         let base = std::path::Path::new(&rel_path)
             .file_name()

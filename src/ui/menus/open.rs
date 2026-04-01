@@ -1,4 +1,4 @@
-//! Open menu (from Space menu) — Terminal vs GUI.
+//! Open menu (from quick actions menu (spacebar)) — Terminal vs GUI.
 
 use crate::app::RunUblxParams;
 use crate::config::UblxOpts;
