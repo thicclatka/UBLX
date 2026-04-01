@@ -210,11 +210,7 @@ fn submit_settings_bg_opacity_row(
             return;
         };
         let mut overlay = load_ublx_toml(Some(path.clone()), None).unwrap_or_default();
-        overlay.bg_opacity = if opacity_is_solid(v) {
-            None
-        } else {
-            Some(v)
-        };
+        overlay.bg_opacity = if opacity_is_solid(v) { None } else { Some(v) };
         persist_overlay_reload_refresh(
             path.as_path(),
             &overlay,

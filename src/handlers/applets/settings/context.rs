@@ -4,9 +4,9 @@ use crate::app::RunUblxParams;
 use crate::config::{
     UblxOverlay, UblxPaths, ensure_global_config_file_with_defaults, load_ublx_toml,
 };
-use crate::utils::opacity_is_solid;
 use crate::layout::setup::{SettingsConfigScope, SettingsPaneState, UblxState};
 use crate::themes::default_theme_for_new_config_file;
+use crate::utils::opacity_is_solid;
 
 /// Resolve which file is edited for the given scope.
 #[must_use]
