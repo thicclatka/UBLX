@@ -454,8 +454,7 @@ pub fn handle_qa_menu(
     if !state.qa_menu.visible {
         return false;
     }
-    let item_count =
-        qa_menu_item_count(state.qa_menu.kind.as_ref(), state.main_mode);
+    let item_count = qa_menu_item_count(state.qa_menu.kind.as_ref(), state.main_mode);
     match action {
         UblxAction::Quit | UblxAction::SearchClear => state.close_qa_menu(),
         UblxAction::MoveDown => {
@@ -463,8 +462,7 @@ pub fn handle_qa_menu(
                 (state.qa_menu.selected_index + 1).min(item_count.saturating_sub(1));
         }
         UblxAction::MoveUp => {
-            state.qa_menu.selected_index =
-                state.qa_menu.selected_index.saturating_sub(1);
+            state.qa_menu.selected_index = state.qa_menu.selected_index.saturating_sub(1);
         }
         UblxAction::SearchSubmit => {
             let kind = state.qa_menu.kind.clone();
@@ -503,16 +501,12 @@ fn qa_menu_open_blocked(state: &UblxState) -> bool {
         || modal_open(state)
 }
 
-fn try_open_file_qa_menu(
-    state_mut: &mut UblxState,
-    right_content_ref: &RightPaneContent,
-) -> bool {
+fn try_open_file_qa_menu(state_mut: &mut UblxState, right_content_ref: &RightPaneContent) -> bool {
     let Some(path) = right_content_ref.snap_meta.path.as_ref() else {
         return false;
     };
     if state_mut.main_mode == MainMode::Duplicates {
-        state_mut
-            .open_qa_menu(SpaceMenuKind::DuplicateMemberActions { path: path.clone() });
+        state_mut.open_qa_menu(SpaceMenuKind::DuplicateMemberActions { path: path.clone() });
         return true;
     }
     state_mut.open_qa_menu(SpaceMenuKind::FileActions {
