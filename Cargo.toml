@@ -60,3 +60,9 @@ zahirscan = "0.2.15"
 [dev-dependencies]
 anyhow = "1.0.102"
 log = "0.4.29"
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true

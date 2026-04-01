@@ -179,6 +179,8 @@ pub fn right_pane_footer_line_fullscreen(
         state.main_mode,
         state.panels.content_sort,
         chord_chrome_active(&state.chrome),
+        state.multiselect.active,
+        state.multiselect.selected.len(),
     )
     .spans;
     if let Some(viewer_line) = right_pane_footer_line(state, right_content) {

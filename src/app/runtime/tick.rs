@@ -143,6 +143,7 @@ pub fn run_tick(
         state,
         ui::InputContext {
             view: &view,
+            all_rows: rows_for_draw,
             right_content: &right_content,
             theme_ctx,
             frame_area: Rect::new(0, 0, term_size.width, term_size.height),
@@ -198,6 +199,25 @@ fn tick_applets_and_io(
         *categories = c;
         *all_rows = r;
         state.session.reload.snapshot_rows = false;
+    }
+
+    if state.session.reload.duplicate_groups {
+        state.session.reload.duplicate_groups = false;
+        match db_ops::load_duplicate_groups(
+            &params.db_path,
+            &params.dir_to_ublx,
+            ublx_opts.nefax.with_hash,
+        ) {
+            Ok((groups, mode)) => {
+                applets::dupe_finder::prune_duplicate_ignores_after_reload(
+                    &mut state.duplicate_ignored_paths,
+                    &groups,
+                );
+                params.duplicate_groups = groups;
+                params.duplicate_mode = mode;
+            }
+            Err(e) => log::warn!("reload duplicate groups: {e}"),
+        }
     }
 
     if let Some(rx) = params.duplicate_groups_rx.as_ref()

@@ -3,7 +3,9 @@
 use crate::app::{
     RunUblxParams,
     delta::{build_delta_view_data, clamp_delta_selection, view_data_for_delta_mode},
-    user_selected::{view_data_for_duplicates_mode, view_data_for_lenses_mode},
+    user_selected::{
+        filter_duplicate_groups_for_view, view_data_for_duplicates_mode, view_data_for_lenses_mode,
+    },
     view_data::{build_view_data, clamp_two_pane_selection},
 };
 use crate::engine::db_ops;
@@ -116,13 +118,34 @@ pub fn build_view_and_right_content<'a>(
         };
         let (view, right_content, rows_for_draw) = if state.main_mode == setup::MainMode::Duplicates
         {
-            build_view_and_right_user_selected_mode!(
-                state,
-                params,
-                &db_path_for_read,
-                view_data_for_duplicates_mode(state, &params.duplicate_groups),
-                enable_enhance_all
-            )
+            let filtered = filter_duplicate_groups_for_view(
+                &params.duplicate_groups,
+                &state.duplicate_ignored_paths,
+            );
+            if filtered.is_empty() && !params.duplicate_groups.is_empty() {
+                state.duplicate_ignored_paths.clear();
+                state.main_mode = setup::MainMode::Snapshot;
+                let view = build_view_data(state, categories, all_rows, snapshot_mtimes.as_ref());
+                apply_sort_anchor_selection(state, &view, Some(all_rows));
+                let right_content = async_ops::drive_right_pane_async(
+                    state,
+                    params.right_pane_async_tx.as_ref(),
+                    &params.dir_to_ublx,
+                    &db_path_for_read,
+                    &view,
+                    Some(all_rows),
+                    enable_enhance_all,
+                );
+                (view, right_content, Some(all_rows))
+            } else {
+                build_view_and_right_user_selected_mode!(
+                    state,
+                    params,
+                    &db_path_for_read,
+                    view_data_for_duplicates_mode(state, &params.duplicate_groups),
+                    enable_enhance_all
+                )
+            }
         } else if state.main_mode == setup::MainMode::Lenses {
             build_view_and_right_user_selected_mode!(
                 state,

@@ -22,17 +22,26 @@ pub fn handle_lens_name_input(
             name.pop();
         }
         KeyCode::Enter => {
-            let path = state.lens_menu.path.clone().unwrap_or_default();
+            let paths = state.lens_menu.paths.clone();
             let name_trimmed = name.trim().to_string();
             state.lens_menu.name_input = None;
             state.close_lens_menu();
-            if !name_trimmed.is_empty() {
-                let created = lens_applet::create_lens(&params.db_path, &name_trimmed).is_ok();
-                if lens_applet::add_path_to_lens(&params.db_path, &name_trimmed, &path).is_ok() {
-                    if created && !params.lens_names.contains(&name_trimmed) {
-                        params.lens_names.push(name_trimmed.clone());
-                    }
-                    let msg = if created {
+            if name_trimmed.is_empty() || paths.is_empty() {
+                return true;
+            }
+            let created = lens_applet::create_lens(&params.db_path, &name_trimmed).is_ok();
+            let mut any_ok = false;
+            for path in &paths {
+                if lens_applet::add_path_to_lens(&params.db_path, &name_trimmed, path).is_ok() {
+                    any_ok = true;
+                }
+            }
+            if any_ok {
+                if created && !params.lens_names.contains(&name_trimmed) {
+                    params.lens_names.push(name_trimmed.clone());
+                }
+                let msg = if paths.len() == 1 {
+                    if created {
                         UI_STRINGS
                             .lens
                             .toast_created_and_added_file
@@ -42,9 +51,11 @@ pub fn handle_lens_name_input(
                             .lens
                             .toast_added_to_lens
                             .replace("{LENS}", &name_trimmed)
-                    };
-                    show_operation_toast(state, params, msg, "lens", log::Level::Info);
-                }
+                    }
+                } else {
+                    format!("Added {} paths to lens \"{}\"", paths.len(), name_trimmed)
+                };
+                show_operation_toast(state, params, msg, "lens", log::Level::Info);
             }
         }
         KeyCode::Esc => state.lens_menu.name_input = None,
@@ -147,6 +158,17 @@ pub fn handle_lens_delete_confirm(
     true
 }
 
+fn lens_names_for_picker<'a>(
+    params: &'a RunUblxParams<'_>,
+    exclude: Option<&str>,
+) -> Vec<&'a String> {
+    params
+        .lens_names
+        .iter()
+        .filter(|n| exclude != Some(n.as_str()))
+        .collect()
+}
+
 /// Handle action when lens menu (Add to lens) is visible. Returns true if handled.
 pub fn handle_lens_menu(
     state: &mut UblxState,
@@ -159,33 +181,43 @@ pub fn handle_lens_menu(
     match action {
         UblxAction::Quit | UblxAction::SearchClear => state.close_lens_menu(),
         UblxAction::MoveDown => {
-            let max_idx = params.lens_names.len();
+            let picker =
+                lens_names_for_picker(params, state.lens_menu.exclude_lens_name.as_deref());
+            let max_idx = picker.len();
             state.lens_menu.selected_index = (state.lens_menu.selected_index + 1).min(max_idx);
         }
         UblxAction::MoveUp => {
             state.lens_menu.selected_index = state.lens_menu.selected_index.saturating_sub(1);
         }
         UblxAction::SearchSubmit => {
-            if let Some(ref path) = state.lens_menu.path {
-                if state.lens_menu.selected_index == 0 {
-                    state.lens_menu.name_input = Some(String::new());
-                } else if let Some(lens_name) =
-                    params.lens_names.get(state.lens_menu.selected_index - 1)
-                {
+            let paths = state.lens_menu.paths.clone();
+            if paths.is_empty() {
+                return true;
+            }
+            if state.lens_menu.selected_index == 0 {
+                state.lens_menu.name_input = Some(String::new());
+            } else if let Some(lens_name) =
+                lens_names_for_picker(params, state.lens_menu.exclude_lens_name.as_deref())
+                    .get(state.lens_menu.selected_index - 1)
+            {
+                let mut ok = 0usize;
+                for path in &paths {
                     if lens_applet::add_path_to_lens(&params.db_path, lens_name, path).is_ok() {
-                        show_operation_toast(
-                            state,
-                            params,
-                            UI_STRINGS
-                                .lens
-                                .toast_added_to_lens
-                                .replace("{LENS}", lens_name),
-                            "lens",
-                            log::Level::Info,
-                        );
+                        ok += 1;
                     }
-                    state.close_lens_menu();
                 }
+                if ok > 0 {
+                    let msg = if paths.len() == 1 {
+                        UI_STRINGS
+                            .lens
+                            .toast_added_to_lens
+                            .replace("{LENS}", lens_name)
+                    } else {
+                        format!("Added {ok} paths to lens \"{lens_name}\"")
+                    };
+                    show_operation_toast(state, params, msg, "lens", log::Level::Info);
+                }
+                state.close_lens_menu();
             }
         }
         _ => {}

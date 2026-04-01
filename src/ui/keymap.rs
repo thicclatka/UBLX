@@ -21,7 +21,7 @@ pub enum UblxAction {
     MainModeLenses,
     /// Alternate main tabs: Snapshot → Lenses (if any) → Delta → Duplicates (if any) → Settings (`~`)
     MainModeToggle,
-    /// Run duplicate detection in background and show Duplicates tab (Command Mode: Ctrl+Space, then d).
+    /// Run duplicate detection in background and show Duplicates tab (Command Mode: Ctrl+A, then d).
     LoadDuplicates,
     SearchStart,
     SearchChar(char),
@@ -62,16 +62,26 @@ pub enum UblxAction {
     FocusCategories,
     FocusContents,
     Tab,
-    /// Run take-snapshot pipeline in background; completion shows in log bumper (Command Mode: Ctrl+Space, then s).
+    /// Run take-snapshot pipeline in background; completion shows in log bumper (Command Mode: Ctrl+A, then s).
     TakeSnapshot,
     /// Cycle middle-pane content sort mode (Name → Size → Mod).
     CycleContentSort,
-    /// Theme selector popup (Command Mode: Ctrl+Space, then t). Writes theme to **local** project `ublx.toml` / `.ublx.toml`.
+    /// Theme selector popup (Command Mode: Ctrl+A, then t). Writes theme to **local** project `ublx.toml` / `.ublx.toml`.
     ThemeSelector,
     /// Open the active Settings file in $EDITOR / `editor_path` (plain `e`).
     OpenConfigInEditor,
-    /// Reload hot-reloadable config (theme, layout, hash, `show_hidden`, etc.) from disk (Command Mode: Ctrl+Space, then r).
+    /// Reload hot-reloadable config (theme, layout, `enable_enhance_all`, hash, `show_hidden`, etc.) from disk (Command Mode: Ctrl+A, then r).
     ReloadConfig,
+    /// Middle-pane multi-select: toggle current row (Space while multi-select is on).
+    MultiselectToggleRow,
+    /// Open bulk action menu (**a** with multi-select on, contents focused, modals closed).
+    MultiselectOpenBulkMenu,
+    /// Lenses tab, contents, single-select: **a** opens Add to other lens (same picker as bulk **a**; excludes active lens).
+    AddToOtherLens,
+    /// Bulk menu row by letter (r / a / d; Lenses third row is d for delete-from-current-lens).
+    BulkMenuHotkeySelect(usize),
+    /// Esc while multi-select is active (no search): leave multi-select without quitting.
+    MultiselectCancel,
     /// Spacebar context menu
     SpaceMenu,
     /// Pick a context-menu row by letter while the space menu is open (indices match current items).
@@ -104,17 +114,39 @@ pub struct KeyOptionalTabs {
     pub lenses: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ViewerFinderBools {
+    pub typing: bool,
+    pub committed: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MultiselectBools {
+    pub active: bool,
+    pub bulk_menu_visible: bool,
+    pub block_bulk_activation: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct AllowBools {
+    pub viewer_find: bool,
+    pub lens_add_to_other_hotkey: bool,
+}
+
 /// UI snapshot needed to resolve keys: search mode, filter, gg tracking, which optional tabs exist.
 #[derive(Clone, Copy, Debug)]
 pub struct KeyActionContext {
     pub search: KeySearchState,
-    pub viewer_find_typing: bool,
-    pub viewer_find_committed: bool,
-    /// Snapshot / Delta / Duplicates / Lenses (not Settings): in-pane find applies.
-    pub allow_viewer_find: bool,
+    pub viewer_find: ViewerFinderBools,
+    pub allow: AllowBools,
     pub last_key_for_double: Option<char>,
     pub tabs: KeyOptionalTabs,
     pub tab_keys: UblxTabNumber,
+    /// Middle pane multi-select: Space toggles row (not space menu); **a** opens bulk menu.
+    pub multiselect: MultiselectBools,
+    pub panel_focus_contents: bool,
+    /// Lens picker list open (Esc closes it).
+    pub lens_menu_list_open: bool,
 }
 
 #[must_use]
@@ -157,91 +189,160 @@ fn viewer_find_typing_mapping(event: KeyEvent) -> KeyActionResult {
     }
 }
 
+/// Esc: viewer find / search / bulk or lens menu / multi-select cancel; otherwise caller maps Esc to Quit.
+#[must_use]
+fn try_esc_special(ctx: &KeyActionContext) -> Option<(UblxAction, Option<char>)> {
+    if ctx.viewer_find.committed {
+        return Some((UblxAction::ViewerFindClear, None));
+    }
+    if ctx.search.active || ctx.search.has_filter {
+        return Some((UblxAction::SearchClear, None));
+    }
+    if ctx.multiselect.bulk_menu_visible || ctx.lens_menu_list_open {
+        return Some((UblxAction::SearchClear, None));
+    }
+    if ctx.multiselect.active && !ctx.search.active {
+        return Some((UblxAction::MultiselectCancel, None));
+    }
+    None
+}
+
+/// Shift/Ctrl-specific keys: viewer find, preview scroll, fast list motion, main-tab toggle, gg.
+#[must_use]
+fn try_char_action_modifiers(
+    code: KeyCode,
+    shift: bool,
+    ctrl: bool,
+    ctx: &KeyActionContext,
+) -> Option<(UblxAction, Option<char>)> {
+    match code {
+        KeyCode::Char('s' | 'S') if shift && ctx.allow.viewer_find && !ctx.search.active => {
+            Some((UblxAction::ViewerFindOpen, None))
+        }
+        KeyCode::Char('n')
+            if !shift
+                && !ctrl
+                && ctx.viewer_find.committed
+                && !ctx.viewer_find.typing
+                && !ctx.search.active =>
+        {
+            Some((UblxAction::ViewerFindNext, None))
+        }
+        KeyCode::Char('N')
+            if !ctrl
+                && ctx.viewer_find.committed
+                && !ctx.viewer_find.typing
+                && !ctx.search.active =>
+        {
+            Some((UblxAction::ViewerFindPrev, None))
+        }
+        KeyCode::Char('f' | 'F') if shift => Some((UblxAction::ViewerFullscreenToggle, None)),
+        KeyCode::Char('J') | KeyCode::Down if shift => Some((UblxAction::ScrollPreviewDown, None)),
+        KeyCode::Char('K') | KeyCode::Up if shift => Some((UblxAction::ScrollPreviewUp, None)),
+        KeyCode::Char('B') if shift => Some((UblxAction::PreviewTop, None)),
+        KeyCode::Char('E') if shift => Some((UblxAction::PreviewBottom, None)),
+        KeyCode::Char('j' | 'J') | KeyCode::Down if ctrl => Some((UblxAction::MoveDownFast, None)),
+        KeyCode::Char('k' | 'K') | KeyCode::Up if ctrl => Some((UblxAction::MoveUpFast, None)),
+        KeyCode::Char('~') => Some((UblxAction::MainModeToggle, None)),
+        KeyCode::Char('\u{60}') if shift && !ctx.search.active => {
+            Some((UblxAction::MainModeToggle, None))
+        }
+        KeyCode::Char('G') if shift => Some((UblxAction::ListBottom, None)),
+        KeyCode::Char('g') if !shift && !ctrl => {
+            if ctx.last_key_for_double == Some('g') {
+                Some((UblxAction::ListTop, None))
+            } else {
+                Some((UblxAction::Noop, Some('g')))
+            }
+        }
+        _ => None,
+    }
+}
+
+#[must_use]
+fn key_action_multiselect_lens_or_digit(c: char, ctx: &KeyActionContext) -> Option<UblxAction> {
+    if ctx.multiselect.active
+        && ctx.panel_focus_contents
+        && !ctx.search.active
+        && !ctx.multiselect.bulk_menu_visible
+        && !ctx.multiselect.block_bulk_activation
+        && c == 'a'
+    {
+        return Some(UblxAction::MultiselectOpenBulkMenu);
+    }
+    if ctx.allow.lens_add_to_other_hotkey && c == 'a' {
+        return Some(UblxAction::AddToOtherLens);
+    }
+    if ctx.multiselect.active
+        && ctx.panel_focus_contents
+        && !ctx.search.active
+        && !ctx.multiselect.bulk_menu_visible
+        && !ctx.multiselect.block_bulk_activation
+        && c == ' '
+    {
+        return Some(UblxAction::MultiselectToggleRow);
+    }
+    main_mode_action_for_digit(c, ctx.tab_keys, ctx.tabs)
+}
+
+#[must_use]
+fn key_action_navigation_letter(c: char) -> UblxAction {
+    match c {
+        ' ' => UblxAction::SpaceMenu,
+        'e' => UblxAction::OpenConfigInEditor,
+        'v' => UblxAction::RightPaneViewer,
+        't' => UblxAction::RightPaneTemplates,
+        'm' => UblxAction::RightPaneMetadata,
+        'w' => UblxAction::RightPaneWriting,
+        's' => UblxAction::CycleContentSort,
+        'j' => UblxAction::MoveDown,
+        'k' => UblxAction::MoveUp,
+        'h' => UblxAction::FocusCategories,
+        'l' => UblxAction::FocusContents,
+        'J' => UblxAction::ScrollPreviewDown,
+        'K' => UblxAction::ScrollPreviewUp,
+        _ => UblxAction::Noop,
+    }
+}
+
+/// Plain character (no Ctrl): multi-select / lens single-a / tab digits / hjkl navigation.
+#[must_use]
+fn key_action_plain_char(c: char, ctx: &KeyActionContext) -> (UblxAction, Option<char>) {
+    if let Some(a) = key_action_multiselect_lens_or_digit(c, ctx) {
+        return (a, None);
+    }
+    (key_action_navigation_letter(c), None)
+}
+
 #[must_use]
 fn key_action_default(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionResult {
     let shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
     let (action, last_key) = match event.code {
-        KeyCode::Esc if ctx.viewer_find_committed => (UblxAction::ViewerFindClear, None),
-        KeyCode::Esc if ctx.search.active || ctx.search.has_filter => {
-            (UblxAction::SearchClear, None)
-        }
-        KeyCode::Char('q') | KeyCode::Esc => (UblxAction::Quit, None),
+        KeyCode::Esc => try_esc_special(ctx).unwrap_or((UblxAction::Quit, None)),
+        KeyCode::Char('q') => (UblxAction::Quit, None),
         KeyCode::Char('?') => (UblxAction::Help, None),
         KeyCode::Char('/') if !ctx.search.active => (UblxAction::SearchStart, None),
         KeyCode::Char(c) if ctx.search.active => (UblxAction::SearchChar(c), None),
-        KeyCode::Char('s' | 'S') if shift && ctx.allow_viewer_find && !ctx.search.active => {
-            (UblxAction::ViewerFindOpen, None)
-        }
-        KeyCode::Char('n')
-            if !shift
-                && !ctrl
-                && ctx.viewer_find_committed
-                && !ctx.viewer_find_typing
-                && !ctx.search.active =>
-        {
-            (UblxAction::ViewerFindNext, None)
-        }
-        KeyCode::Char('N')
-            if !ctrl
-                && ctx.viewer_find_committed
-                && !ctx.viewer_find_typing
-                && !ctx.search.active =>
-        {
-            (UblxAction::ViewerFindPrev, None)
-        }
-        KeyCode::Char('f' | 'F') if shift => (UblxAction::ViewerFullscreenToggle, None),
-        KeyCode::Char('J') | KeyCode::Down if shift => (UblxAction::ScrollPreviewDown, None),
-        KeyCode::Char('K') | KeyCode::Up if shift => (UblxAction::ScrollPreviewUp, None),
-        KeyCode::Char('B') if shift => (UblxAction::PreviewTop, None),
-        KeyCode::Char('E') if shift => (UblxAction::PreviewBottom, None),
-        KeyCode::Char('j' | 'J') | KeyCode::Down if ctrl => (UblxAction::MoveDownFast, None),
-        KeyCode::Char('k' | 'K') | KeyCode::Up if ctrl => (UblxAction::MoveUpFast, None),
-        KeyCode::Char('~') => (UblxAction::MainModeToggle, None),
-        KeyCode::Char('\u{60}') if shift && !ctx.search.active => {
-            (UblxAction::MainModeToggle, None)
-        }
-        KeyCode::Char('G') if shift => (UblxAction::ListBottom, None),
-        KeyCode::Char('g') if !shift && !ctrl => {
-            if ctx.last_key_for_double == Some('g') {
-                (UblxAction::ListTop, None)
+        code => {
+            if let Some(t) = try_char_action_modifiers(code, shift, ctrl, ctx) {
+                t
             } else {
-                (UblxAction::Noop, Some('g'))
+                match code {
+                    KeyCode::Char(c) if shift => (UblxAction::SearchChar(c), None),
+                    KeyCode::Char(c) if !ctrl => key_action_plain_char(c, ctx),
+                    KeyCode::Enter => (UblxAction::SearchSubmit, None),
+                    KeyCode::Backspace => (UblxAction::SearchBackspace, None),
+                    KeyCode::Up => (UblxAction::MoveUp, None),
+                    KeyCode::Down => (UblxAction::MoveDown, None),
+                    KeyCode::Left => (UblxAction::FocusCategories, None),
+                    KeyCode::Right => (UblxAction::FocusContents, None),
+                    KeyCode::Tab => (UblxAction::Tab, None),
+                    KeyCode::BackTab => (UblxAction::CycleRightPane, None),
+                    _ => (UblxAction::Noop, None),
+                }
             }
         }
-        KeyCode::Char(c) if shift => (UblxAction::SearchChar(c), None),
-        KeyCode::Char(c) if !ctrl => {
-            let a = if let Some(mode) = main_mode_action_for_digit(c, ctx.tab_keys, ctx.tabs) {
-                mode
-            } else {
-                match c {
-                    ' ' => UblxAction::SpaceMenu,
-                    'e' => UblxAction::OpenConfigInEditor,
-                    'v' => UblxAction::RightPaneViewer,
-                    't' => UblxAction::RightPaneTemplates,
-                    'm' => UblxAction::RightPaneMetadata,
-                    'w' => UblxAction::RightPaneWriting,
-                    's' => UblxAction::CycleContentSort,
-                    'j' => UblxAction::MoveDown,
-                    'k' => UblxAction::MoveUp,
-                    'h' => UblxAction::FocusCategories,
-                    'l' => UblxAction::FocusContents,
-                    'J' => UblxAction::ScrollPreviewDown,
-                    'K' => UblxAction::ScrollPreviewUp,
-                    _ => UblxAction::Noop,
-                }
-            };
-            (a, None)
-        }
-        KeyCode::Enter => (UblxAction::SearchSubmit, None),
-        KeyCode::Backspace => (UblxAction::SearchBackspace, None),
-        KeyCode::Up => (UblxAction::MoveUp, None),
-        KeyCode::Down => (UblxAction::MoveDown, None),
-        KeyCode::Left => (UblxAction::FocusCategories, None),
-        KeyCode::Right => (UblxAction::FocusContents, None),
-        KeyCode::Tab => (UblxAction::Tab, None),
-        KeyCode::BackTab => (UblxAction::CycleRightPane, None),
-        _ => (UblxAction::Noop, None),
     };
     KeyActionResult {
         action,
@@ -262,7 +363,7 @@ pub fn key_action_setup(event: KeyEvent, ctx: &KeyActionContext) -> KeyActionRes
             last_key_for_double: None,
         };
     }
-    if ctx.viewer_find_typing {
+    if ctx.viewer_find.typing {
         let r = viewer_find_typing_mapping(event);
         if !matches!(r.action, UblxAction::Noop) {
             return r;

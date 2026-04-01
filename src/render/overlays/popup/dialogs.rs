@@ -126,20 +126,19 @@ pub fn render_delete_confirm(
     );
 }
 
-/// Delete file or folder under the indexed root (relative path in title).
+/// Delete file or folder under the indexed root (`title` is the full prompt line, e.g. `Delete path'? ` or bulk count).
 pub fn render_file_delete_confirm(
     f: &mut Frame,
-    rel_path: &str,
+    title: &str,
     selected_index: usize,
     anchor_area: Rect,
     anchor_row_index: usize,
 ) {
-    let title = format!("{}{}'? ", UI_STRINGS.file.delete_confirm_title, rel_path);
     let items = [UI_STRINGS.lens.delete_yes, UI_STRINGS.lens.delete_no];
     render_list_popup(
         f,
         &ListPopupParams {
-            title: &title,
+            title,
             items: &items,
             selected_index,
             anchor_area,

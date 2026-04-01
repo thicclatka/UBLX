@@ -5,21 +5,32 @@ use std::io;
 use crate::app::RunUblxParams;
 use crate::config::{LayoutOverlay, UblxOpts};
 use crate::handlers::{applets, leave_terminal_for_editor, state_transitions};
-use crate::layout::setup::{MainMode, RightPaneContent, StartupPromptPhase, UblxState, ViewData};
+use crate::layout::setup::{
+    MainMode, PanelFocus, RightPaneContent, StartupPromptPhase, UblxState, ViewData,
+};
 use crate::ui::{
     MainTabFlags,
     consts::{MAIN_TAB_KEYS, UI_CONSTANTS, UI_STRINGS},
-    ctrl_chord, file_ops, keymap, lens, menu, mouse,
+    ctrl_chord, file_ops, keymap, lens, menu, mouse, multiselect,
 };
 
 #[derive(Clone)]
 pub struct InputContext<'a> {
     pub view: &'a ViewData,
+    /// Snapshot rows for resolving paths in multi-select (`None` in modes without a shared row slice).
+    pub all_rows: Option<&'a [crate::layout::setup::TuiRow]>,
     pub right_content: &'a RightPaneContent,
     pub theme_ctx: applets::theme_selector::ThemeContext,
     pub frame_area: Rect,
     pub layout: &'a LayoutOverlay,
     pub tabs: MainTabFlags,
+}
+
+/// View + middle rows + right pane (shared by [`handle_ublx_keyboard`]).
+struct ViewPaneRefs<'a> {
+    view: &'a ViewData,
+    all_rows: Option<&'a [crate::layout::setup::TuiRow]>,
+    right: &'a RightPaneContent,
 }
 
 /// Key event and resolved action passed into modal handlers (keeps [`dispatch_modal_handlers`] under clippy’s arg limit).
@@ -214,15 +225,40 @@ fn key_action_context_for(state: &UblxState, tabs: MainTabFlags) -> keymap::KeyA
             active: state.search.active,
             has_filter: has_search_filter,
         },
-        viewer_find_typing: state.viewer_find.active,
-        viewer_find_committed: state.viewer_find.committed,
-        allow_viewer_find: !matches!(state.main_mode, MainMode::Settings),
+        viewer_find: keymap::ViewerFinderBools {
+            typing: state.viewer_find.active,
+            committed: state.viewer_find.committed,
+        },
+        allow: keymap::AllowBools {
+            viewer_find: !matches!(state.main_mode, MainMode::Settings),
+            lens_add_to_other_hotkey: state.main_mode == MainMode::Lenses
+                && matches!(state.panels.focus, PanelFocus::Contents)
+                && !state.multiselect.active
+                && !state.search.active
+                && !state.space_menu.visible
+                && !file_ops::modal_open(state)
+                && state.lens_confirm.rename_input.is_none()
+                && !state.lens_confirm.delete_visible
+                && !state.lens_menu.visible
+                && !state.multiselect.bulk_menu_visible,
+        },
         last_key_for_double: state.last_key_for_double,
         tabs: keymap::KeyOptionalTabs {
             duplicates: tabs.has_duplicates,
             lenses: tabs.has_lenses,
         },
         tab_keys: MAIN_TAB_KEYS,
+        multiselect: keymap::MultiselectBools {
+            active: state.multiselect.active,
+            bulk_menu_visible: state.multiselect.bulk_menu_visible,
+            block_bulk_activation: file_ops::modal_open(state)
+                || state.lens_confirm.rename_input.is_some()
+                || state.lens_confirm.delete_visible
+                || state.lens_menu.visible
+                || state.main_mode == MainMode::Duplicates,
+        },
+        panel_focus_contents: matches!(state.panels.focus, PanelFocus::Contents),
+        lens_menu_list_open: state.lens_menu.visible && state.lens_menu.name_input.is_none(),
     }
 }
 
@@ -262,10 +298,36 @@ fn apply_overlay_key_overrides(
         && !e.modifiers.contains(KeyModifiers::CONTROL)
         && !e.modifiers.contains(KeyModifiers::SHIFT)
         && let KeyCode::Char(c) = e.code
-        && let Some(idx) = menu::space_menu_hotkey_to_index(kind, c)
+        && let Some(idx) = menu::space_menu_hotkey_to_index(kind, c, state_mut.main_mode)
     {
         *action = keymap::UblxAction::SpaceMenuHotkeySelect(idx);
         state_mut.last_key_for_double = None;
+    }
+
+    if state_mut.multiselect.bulk_menu_visible
+        && !e.modifiers.contains(KeyModifiers::CONTROL)
+        && !e.modifiers.contains(KeyModifiers::SHIFT)
+        && let KeyCode::Char(c) = e.code
+    {
+        match c.to_ascii_lowercase() {
+            'r' => {
+                *action = keymap::UblxAction::BulkMenuHotkeySelect(0);
+                state_mut.last_key_for_double = None;
+            }
+            'a' => {
+                *action = keymap::UblxAction::BulkMenuHotkeySelect(1);
+                state_mut.last_key_for_double = None;
+            }
+            'd' => {
+                *action = keymap::UblxAction::BulkMenuHotkeySelect(2);
+                state_mut.last_key_for_double = None;
+            }
+            'z' if state_mut.multiselect.bulk_menu_zahir_row => {
+                *action = keymap::UblxAction::BulkMenuHotkeySelect(3);
+                state_mut.last_key_for_double = None;
+            }
+            _ => {}
+        }
     }
 }
 
@@ -286,6 +348,91 @@ pub fn apply_action_with_settings_enter(
     quit
 }
 
+fn handle_ublx_keyboard(
+    state_mut: &mut UblxState,
+    e: KeyEvent,
+    panes: &ViewPaneRefs<'_>,
+    theme_ctx: &applets::theme_selector::ThemeContext,
+    params_mut: &mut RunUblxParams<'_>,
+    ublx_opts_mut: &mut UblxOpts,
+    tabs: MainTabFlags,
+) -> bool {
+    if let Some(quit) = ctrl_chord::handle_chord_key_event(
+        state_mut,
+        &e,
+        panes.view,
+        panes.right,
+        params_mut,
+        tabs,
+        theme_ctx,
+    ) {
+        return quit;
+    }
+
+    if matches!(e.code, KeyCode::Char(' '))
+        && e.modifiers.contains(KeyModifiers::CONTROL)
+        && e.kind == KeyEventKind::Press
+        && multiselect::try_toggle_mode(state_mut, panes.view, panes.all_rows)
+    {
+        return false;
+    }
+
+    if matches!(e.code, KeyCode::Char('a' | 'A'))
+        && e.modifiers.contains(KeyModifiers::CONTROL)
+        && e.kind == KeyEventKind::Press
+        && ctrl_chord::try_begin_chord(state_mut)
+    {
+        return false;
+    }
+
+    let result = keymap::key_action_setup(e, &key_action_context_for(state_mut, tabs));
+    state_mut.last_key_for_double = result.last_key_for_double;
+    let mut action = result.action;
+
+    apply_overlay_key_overrides(state_mut, e, &mut action);
+
+    if try_open_settings_editor_from_menu(state_mut, action, &*ublx_opts_mut) {
+        return false;
+    }
+
+    if multiselect::handle_key(
+        state_mut,
+        panes.view,
+        panes.all_rows,
+        params_mut,
+        ublx_opts_mut,
+        action,
+    ) {
+        return false;
+    }
+
+    if dispatch_modal_handlers(
+        state_mut,
+        panes.view,
+        panes.right,
+        theme_ctx,
+        params_mut,
+        ublx_opts_mut,
+        ModalInput { e, action },
+    ) {
+        return false;
+    }
+
+    if handle_post_modal_chrome_keys(state_mut, theme_ctx, params_mut, ublx_opts_mut, e, action) {
+        return false;
+    }
+
+    if handle_viewer_find_typing(state_mut, action) {
+        return false;
+    }
+
+    if handle_active_search_key(state_mut, action) {
+        return false;
+    }
+
+    apply_action_with_settings_enter(state_mut, panes.view, panes.right, action, tabs, params_mut)
+}
+
 /// Poll for one key event, map it to a [`UblxAction`], run modal handlers, then apply the action to state.
 /// Returns `Ok(true)` when the event was handled and the main loop should skip further processing for this tick;
 /// `Ok(false)` when there was no key, a non-key event, or the event was consumed without requesting quit semantics.
@@ -301,6 +448,7 @@ pub fn handle_ublx_input(
 ) -> io::Result<bool> {
     let InputContext {
         view: view_ref,
+        all_rows,
         right_content: right_content_ref,
         theme_ctx,
         frame_area,
@@ -330,66 +478,18 @@ pub fn handle_ublx_input(
         return Ok(false);
     };
 
-    if let Some(quit) = ctrl_chord::handle_chord_key_event(
+    let panes = ViewPaneRefs {
+        view: view_ref,
+        all_rows,
+        right: right_content_ref,
+    };
+    Ok(handle_ublx_keyboard(
         state_mut,
-        &e,
-        view_ref,
-        right_content_ref,
-        params_mut,
-        tabs,
-        &theme_ctx,
-    ) {
-        return Ok(quit);
-    }
-
-    if matches!(e.code, KeyCode::Char(' '))
-        && e.modifiers.contains(KeyModifiers::CONTROL)
-        && e.kind == KeyEventKind::Press
-        && ctrl_chord::try_begin_chord(state_mut)
-    {
-        return Ok(false);
-    }
-
-    let result = keymap::key_action_setup(e, &key_action_context_for(state_mut, tabs));
-    state_mut.last_key_for_double = result.last_key_for_double;
-    let mut action = result.action;
-
-    apply_overlay_key_overrides(state_mut, e, &mut action);
-
-    if try_open_settings_editor_from_menu(state_mut, action, &*ublx_opts_mut) {
-        return Ok(false);
-    }
-
-    if dispatch_modal_handlers(
-        state_mut,
-        view_ref,
-        right_content_ref,
+        e,
+        &panes,
         &theme_ctx,
         params_mut,
         ublx_opts_mut,
-        ModalInput { e, action },
-    ) {
-        return Ok(false);
-    }
-
-    if handle_post_modal_chrome_keys(state_mut, &theme_ctx, params_mut, ublx_opts_mut, e, action) {
-        return Ok(false);
-    }
-
-    if handle_viewer_find_typing(state_mut, action) {
-        return Ok(false);
-    }
-
-    if handle_active_search_key(state_mut, action) {
-        return Ok(false);
-    }
-
-    Ok(apply_action_with_settings_enter(
-        state_mut,
-        view_ref,
-        right_content_ref,
-        action,
         tabs,
-        params_mut,
     ))
 }

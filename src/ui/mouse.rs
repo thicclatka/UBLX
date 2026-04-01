@@ -404,6 +404,7 @@ fn handle_mouse_left_down(
 
     if contains(areas.left, x, y) {
         state_mut.panels.focus = PanelFocus::Categories;
+        state_mut.multiselect.clear();
         if let Some(idx) = click_to_list_index(areas.left, y, view_ref.category_list_len) {
             state_mut.panels.category_state.select(Some(idx));
         }

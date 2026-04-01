@@ -1,11 +1,27 @@
 //! dupe-finder applet: request load, spawn background load, on result toast or switch to Duplicates tab.
 
+use std::collections::HashSet;
+
 use crate::app::RunUblxParams;
 use crate::config::{OPERATION_NAME, UblxOpts};
 use crate::engine::db_ops;
 use crate::layout::setup;
 use crate::ui::UI_STRINGS;
 use crate::utils;
+
+/// After reloading duplicate groups from the DB, drop ignore entries that no longer exist in any group.
+pub fn prune_duplicate_ignores_after_reload(
+    ignored: &mut HashSet<String>,
+    groups: &[db_ops::DuplicateGroup],
+) {
+    let mut keep = HashSet::new();
+    for g in groups {
+        for p in &g.paths {
+            keep.insert(p.clone());
+        }
+    }
+    ignored.retain(|p| keep.contains(p));
+}
 
 /// Called when the background duplicate load returns. Empty → toast "No duplicates found"; non-empty → set groups and switch to Duplicates mode.
 pub fn on_groups_received(
@@ -28,6 +44,7 @@ pub fn on_groups_received(
     } else {
         params.duplicate_groups = groups;
         params.duplicate_mode = mode;
+        state.duplicate_ignored_paths.clear();
         state.main_mode = setup::MainMode::Duplicates;
     }
 }

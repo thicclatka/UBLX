@@ -1,4 +1,4 @@
-//! Command Mode (`Ctrl+Space`) action descriptions (shared with help + chord menu).
+//! Command Mode (`Ctrl+A`) action descriptions (shared with help + chord menu).
 
 /// Second-column descriptions for Command Mode + d/t/s/r/p (same strings as the help overlay’s Command Mode rows).
 #[derive(Clone, Copy, Debug)]

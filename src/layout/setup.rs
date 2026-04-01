@@ -3,7 +3,7 @@
 //! [`crate::handlers::core::run_tui_session`] drives the loop; work per tick is split into four phases (see classification below).
 //! Action application (key → state changes) lives in [`crate::handlers::state_transitions`].
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
@@ -198,7 +198,10 @@ pub struct OpenMenuState {
 #[derive(Default)]
 pub struct LensMenuState {
     pub visible: bool,
-    pub path: Option<String>,
+    /// Relative paths to add (one from the space menu, many from multi-select bulk).
+    pub paths: Vec<String>,
+    /// Omit from the picker (Lenses tab: **Add to other lens** must not list the active lens).
+    pub exclude_lens_name: Option<String>,
     pub selected_index: usize,
     pub name_input: Option<String>,
 }
@@ -233,10 +236,33 @@ pub struct LensConfirmState {
 pub struct FileDeleteConfirmState {
     pub visible: bool,
     pub rel_path: Option<String>,
+    /// When set, confirm bulk delete (`rel_path` is ignored).
+    pub bulk_paths: Option<Vec<String>>,
     pub selected_index: usize,
 }
 
-/// After **Ctrl+Space**, wait for a letter or show the Command Mode menu (see [`crate::ui::ctrl_chord`]).
+/// Multi-select in the middle pane (Ctrl+Space on contents; cleared when focus leaves the contents list).
+#[derive(Debug, Default)]
+pub struct MultiselectState {
+    pub active: bool,
+    pub selected: HashSet<String>,
+    pub bulk_menu_visible: bool,
+    pub bulk_menu_selected: usize,
+    /// When true, bulk menu has a fourth row: Enhance with `ZahirScan` (z). Set when opening the menu.
+    pub bulk_menu_zahir_row: bool,
+}
+
+impl MultiselectState {
+    pub fn clear(&mut self) {
+        self.active = false;
+        self.selected.clear();
+        self.bulk_menu_visible = false;
+        self.bulk_menu_selected = 0;
+        self.bulk_menu_zahir_row = false;
+    }
+}
+
+/// After **Ctrl+A**, wait for a letter or show the Command Mode menu (see [`crate::ui::ctrl_chord`]).
 #[derive(Clone, Debug, Default)]
 pub struct CtrlChordState {
     pub pending: bool,
@@ -327,6 +353,8 @@ pub struct SessionReloadFlags {
     pub snapshot_rows: bool,
     /// After we show the "enhancing in background" toast for [`crate::engine::orchestrator::should_force_full_zahir`], suppress duplicates until restart.
     pub force_full_enhance_toast_shown: bool,
+    /// After deleting a file from Duplicates mode, reload duplicate groups from the DB on next tick.
+    pub duplicate_groups: bool,
 }
 
 /// One-shot session coordination for ticks, editor handoff, and DB reload.
@@ -476,6 +504,7 @@ pub struct UblxState {
     /// Rename entry: `(relative path, new basename being typed)`.
     pub file_rename_input: Option<(String, String)>,
     pub file_delete_confirm: FileDeleteConfirmState,
+    pub multiselect: MultiselectState,
     pub chrome: ViewerChrome,
     pub cached_tree: Option<(String, String)>,
     /// Same file row as last tick: reuse viewer text / cover bytes without disk reads.
@@ -490,6 +519,8 @@ pub struct UblxState {
     pub last_key_for_double: Option<char>,
     pub snapshot_bg: BackgroundSnapshot,
     pub duplicate_load: DuplicateLoadGate,
+    /// Duplicates tab: paths hidden for this session via Space → Ignore (i); not persisted.
+    pub duplicate_ignored_paths: HashSet<String>,
     pub config_written_by_us_at: Option<std::time::Instant>,
     pub session: SessionFlow,
     /// CLI to pipe UTF-8 into for clipboard (see [`ClipboardCopyCommand::detect`]); None if nothing found.
@@ -524,6 +555,7 @@ impl UblxState {
             lens_confirm: LensConfirmState::default(),
             file_rename_input: None,
             file_delete_confirm: FileDeleteConfirmState::default(),
+            multiselect: MultiselectState::default(),
             chrome: ViewerChrome::default(),
             cached_tree: None,
             viewer_disk_cache: None,
@@ -533,6 +565,7 @@ impl UblxState {
             last_key_for_double: None,
             snapshot_bg: BackgroundSnapshot::default(),
             duplicate_load: DuplicateLoadGate::default(),
+            duplicate_ignored_paths: HashSet::new(),
             config_written_by_us_at: None,
             session: SessionFlow::default(),
             clipboard_copy: ClipboardCopyCommand::detect(),
@@ -560,7 +593,7 @@ impl UblxState {
     /// Reset lens menu state (Esc or after adding to lens). Does not clear [`LensMenuState::name_input`].
     pub fn close_lens_menu(&mut self) {
         self.lens_menu.visible = false;
-        self.lens_menu.path = None;
+        self.lens_menu.paths.clear();
         self.lens_menu.selected_index = 0;
     }
 
@@ -584,10 +617,15 @@ impl UblxState {
         self.lens_confirm.delete_selected = 0;
     }
 
-    /// Open the Lens menu (Add to lens) for the given relative path.
-    pub fn open_lens_menu(&mut self, path: String) {
+    /// Open the Lens menu (Add to lens) for the given relative path(s).
+    /// `exclude_current_lens`: lens name to omit from the list (e.g. active lens on Lenses tab).
+    pub fn open_lens_menu(&mut self, paths: Vec<String>, exclude_current_lens: Option<String>) {
+        if paths.is_empty() {
+            return;
+        }
         self.lens_menu.visible = true;
-        self.lens_menu.path = Some(path);
+        self.lens_menu.paths = paths;
+        self.lens_menu.exclude_lens_name = exclude_current_lens;
         self.lens_menu.selected_index = 0;
     }
 
@@ -618,12 +656,21 @@ impl UblxState {
     pub fn close_file_delete_confirm(&mut self) {
         self.file_delete_confirm.visible = false;
         self.file_delete_confirm.rel_path = None;
+        self.file_delete_confirm.bulk_paths = None;
         self.file_delete_confirm.selected_index = 0;
     }
 
     pub fn open_file_delete_confirm(&mut self, rel_path: String) {
         self.file_delete_confirm.visible = true;
         self.file_delete_confirm.rel_path = Some(rel_path);
+        self.file_delete_confirm.bulk_paths = None;
+        self.file_delete_confirm.selected_index = 0;
+    }
+
+    pub fn open_file_delete_confirm_bulk(&mut self, paths: Vec<String>) {
+        self.file_delete_confirm.visible = true;
+        self.file_delete_confirm.rel_path = None;
+        self.file_delete_confirm.bulk_paths = Some(paths);
         self.file_delete_confirm.selected_index = 0;
     }
 }
@@ -716,7 +763,7 @@ pub enum PanelFocus {
 #[derive(Clone, Debug)]
 pub enum SpaceMenuKind {
     /// File actions for a selected file path (relative): Open, Show in folder, optional enhance,
-    /// Add/Remove lens, Copy Path, optional Copy Templates, Rename, Delete.
+    /// Add to lens or delete from current lens (Lenses tab uses d), Copy Path, optional Copy Templates, Rename, Delete.
     /// `can_open_in_terminal`: when true, Open shows Terminal+GUI; else GUI only.
     FileActions {
         path: String,
@@ -730,6 +777,8 @@ pub enum SpaceMenuKind {
     },
     /// Lens panel actions: `lens_name` is the selected lens. Options: Rename, Delete.
     LensPanelActions { lens_name: String },
+    /// Duplicates tab only: hide path from duplicate lists for this session, or delete the file.
+    DuplicateMemberActions { path: String },
 }
 
 /// Per-pane content from zahir JSON. Templates always present; metadata and writing only if keys exist.

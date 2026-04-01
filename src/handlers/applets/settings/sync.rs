@@ -6,11 +6,18 @@ use crate::app::RunUblxParams;
 use crate::config::{OPERATION_NAME, UblxOpts, UblxPaths, first_validation_error_message};
 use crate::layout::setup::UblxState;
 use crate::themes;
-use crate::ui::{UI_STRINGS, show_force_full_enhance_started_toast, show_operation_toast};
+use crate::ui::{UI_STRINGS, show_operation_toast};
 use crate::utils;
 
 /// Window (ms) after we write config ourselves (e.g. theme selector) during which a file-watcher reload is treated as self-caused.
 const CONFIG_SELF_WRITE_WINDOW_MS: u64 = 800;
+
+/// When a hot reload turns a snapshot-affecting bool from off→on, stash the prior cached value so the next snapshot still sees a false→true flip (see [`crate::config::UblxOpts`] `*_cache_before_apply` fields).
+fn set_snapshot_cache_before_apply_on_flip_to_true(flip_on: bool, cache: &mut Option<bool>) {
+    if flip_on {
+        *cache = Some(false);
+    }
+}
 
 /// Show ublx-settings toast on first tick (e.g. config loaded / validation message from startup).
 pub fn on_first_tick(state_mut: &mut UblxState, params_ref: &RunUblxParams<'_>) {
@@ -57,6 +64,8 @@ pub fn on_config_reload(
 }
 
 /// Reloads hot-reloadable config from paths and syncs theme/layout into params. Validates before applying; on validation failure shows a toast with variable-specific errors. If applied and `message` is `Some`, shows success toast (use `None` when the change was caused by us, e.g. theme selector write).
+///
+/// Flipping `enable_enhance_all` or `hash` to `true` only updates cache-before-apply flags so the **next** snapshot run picks up full Zahir / hashing (same idea as `show_hidden_files`); it does not queue a background snapshot.
 pub fn apply_config_reload(
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
@@ -74,23 +83,14 @@ pub fn apply_config_reload(
 
     if result.applied {
         sync_run_params_from_opts(params_mut, ublx_opts_mut);
-        if !old_enable_enhance_all && ublx_opts_mut.enable_enhance_all {
-            ublx_opts_mut.enable_enhance_all_cache_before_apply = Some(false);
-            if params_mut.startup.defer_first_snapshot {
-                if !state_mut.session.reload.force_full_enhance_toast_shown {
-                    params_mut.startup.pending_force_full_enhance_toast = true;
-                }
-            } else {
-                schedule_snapshot_after_enable_enhance_flip(state_mut);
-                show_force_full_enhance_started_toast(state_mut, params_mut);
-            }
-        }
-        if !old_with_hash && ublx_opts_mut.nefax.with_hash {
-            ublx_opts_mut.with_hash_cache_before_apply = Some(false);
-            if !params_mut.startup.defer_first_snapshot {
-                schedule_snapshot_after_enable_enhance_flip(state_mut);
-            }
-        }
+        set_snapshot_cache_before_apply_on_flip_to_true(
+            !old_enable_enhance_all && ublx_opts_mut.enable_enhance_all,
+            &mut ublx_opts_mut.enable_enhance_all_cache_before_apply,
+        );
+        set_snapshot_cache_before_apply_on_flip_to_true(
+            !old_with_hash && ublx_opts_mut.nefax.with_hash,
+            &mut ublx_opts_mut.with_hash_cache_before_apply,
+        );
         if let Some(msg) = message {
             show_operation_toast(state_mut, params_mut, msg, "settings", log::Level::Info);
         }
@@ -105,14 +105,5 @@ pub fn apply_config_reload(
             "settings",
             log::Level::Warn,
         );
-    }
-}
-
-/// Queue a background snapshot after `enable_enhance_all` flips to `true` on hot reload. If a snapshot is already running, run again when it finishes.
-fn schedule_snapshot_after_enable_enhance_flip(state_mut: &mut UblxState) {
-    if state_mut.snapshot_bg.done_received {
-        state_mut.snapshot_bg.requested = true;
-    } else {
-        state_mut.snapshot_bg.defer_snapshot_after_current = true;
     }
 }

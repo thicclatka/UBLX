@@ -1,6 +1,7 @@
 //! User-selected list modes: Duplicates and Lenses. Same two-pane structure (categories + contents);
 //! only the source of category names and content rows differs.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use rayon::prelude::*;
@@ -12,6 +13,27 @@ use crate::layout::setup;
 use crate::utils::clamp_selection;
 
 use super::view_data;
+
+/// Drop ignored paths; remove groups with fewer than two paths left.
+#[must_use]
+pub fn filter_duplicate_groups_for_view(
+    groups: &[DuplicateGroup],
+    ignored: &HashSet<String>,
+) -> Vec<DuplicateGroup> {
+    let mut out = Vec::new();
+    for g in groups {
+        let paths: Vec<String> = g
+            .paths
+            .iter()
+            .filter(|p| !ignored.contains(*p))
+            .cloned()
+            .collect();
+        if paths.len() > 1 {
+            out.push(DuplicateGroup { paths });
+        }
+    }
+    out
+}
 
 /// Mode-specific data for building [`ViewData`]. Handlers in [`view_data_for_user_selected_mode`] differentiate behavior.
 pub enum UserSelectedSource<'a> {
@@ -115,7 +137,8 @@ pub fn view_data_for_duplicates_mode(
     state: &setup::UblxState,
     groups: &[DuplicateGroup],
 ) -> setup::ViewData {
-    view_data_for_user_selected_mode(state, &UserSelectedSource::Duplicates { groups })
+    let filtered = filter_duplicate_groups_for_view(groups, &state.duplicate_ignored_paths);
+    view_data_for_user_selected_mode(state, &UserSelectedSource::Duplicates { groups: &filtered })
 }
 
 /// `ViewData` for Lenses mode (delegates to [`view_data_for_user_selected_mode`]).

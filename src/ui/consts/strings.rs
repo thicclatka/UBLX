@@ -85,10 +85,14 @@ pub struct UiStringsDialogs {
     pub help: &'static str,
     pub theme: &'static str,
     pub notification: &'static str,
-    /// Command Mode popup (`Ctrl+Space`); use with [`UiStrings::pad`].
+    /// Command Mode popup (`Ctrl+A`); use with [`UiStrings::pad`].
     pub command_mode_popup: &'static str,
-    /// First column header in the Command Mode table (single-letter key after Ctrl+Space).
+    /// First column header in the Command Mode table (single-letter key after Ctrl+A).
     pub command_mode_key_column: &'static str,
+    /// Bulk actions popup (multi-select).
+    pub multiselect_bulk_title: &'static str,
+    /// Help overlay section for multi-select.
+    pub multiselect_help_title: &'static str,
     /// Help overlay: section title above Viewer pane shortcuts.
     pub help_section_viewer: &'static str,
     /// Help overlay: section title above Space menu shortcuts.
@@ -115,7 +119,7 @@ pub struct UiStringsViewerRaster {
 pub struct UiStringsToasts {
     pub config_reloaded: &'static str,
     pub no_duplicates: &'static str,
-    /// Index-time full Zahir after enabling `enable_enhance_all` (background snapshot).
+    /// Toast when a full Zahir snapshot starts after `enable_enhance_all` was off in the cached overlay and is now on (Command Mode snapshot or first tick).
     pub force_full_enhance_background: &'static str,
     pub enhanced_with_zahirscan: &'static str,
     pub enhance_failed_prefix: &'static str,
@@ -129,6 +133,18 @@ pub struct UiStringsToasts {
     pub file_renamed: &'static str,
     pub file_deleted: &'static str,
     pub file_ops_failed_prefix: &'static str,
+    pub multiselect_none_selected: &'static str,
+    /// Replace `{N}` with the number of files renamed.
+    pub bulk_renamed_n: &'static str,
+    pub bulk_rename_no_editor: &'static str,
+    pub bulk_rename_editor_failed: &'static str,
+    pub bulk_rename_no_changes: &'static str,
+    /// Replace `{N}` with count and `{LENS}` with lens name (bulk remove from lens).
+    pub bulk_removed_n_from_lens: &'static str,
+    /// Replace `{N}` with count (multi-select bulk Enhance with `ZahirScan`).
+    pub bulk_enhanced_zahir_n: &'static str,
+    /// Duplicates tab: Space → Ignore (i); path hidden until reload or session end.
+    pub duplicate_member_ignored: &'static str,
 }
 
 pub struct UiStringsLens {
@@ -151,7 +167,7 @@ pub struct UiStringsFile {
     pub delete_confirm_title: &'static str,
 }
 
-/// Settings tab: bool row labels (TOML key names). For `show_hidden_files` / `hash` in the left pane, use [`append_settings_bool_snapshot_footnote`].
+/// Settings tab: bool row labels (TOML key names). For `show_hidden_files` / `hash` / `enable_enhance_all` in the left pane, use [`append_settings_bool_snapshot_footnote`].
 pub struct UiStringsSettingsBool {
     pub show_hidden_files: &'static str,
     pub hash: &'static str,
@@ -199,9 +215,14 @@ pub struct UiStringsSpaceMenu {
     /// Copy raw snapshot `zahir_json` for this entry to the clipboard (space menu; only when JSON exists).
     pub copy_zahir_json: &'static str,
     pub add_to_lens: &'static str,
+    /// Multi-select bulk / lens picker when already viewing a lens: add paths elsewhere.
+    pub add_to_other_lens: &'static str,
+    /// Label for removing a path from the lens you are viewing (hotkey `d` on Lenses tab).
     pub remove_from_lens: &'static str,
     pub rename: &'static str,
     pub delete: &'static str,
+    /// Duplicates tab only: hide this path from duplicate lists for this session (Space menu).
+    pub ignore_in_duplicates: &'static str,
 }
 
 /// All symbols and string literals used by the renderer.
@@ -340,6 +361,8 @@ impl UiStrings {
             notification: "Notification",
             command_mode_popup: "Command Mode",
             command_mode_key_column: "Key",
+            multiselect_bulk_title: " Multi-select ",
+            multiselect_help_title: "Multi-select",
             help_section_viewer: "Viewer Pane",
             help_section_space: "Space Menu",
             help_command: "Command",
@@ -374,6 +397,14 @@ impl UiStrings {
             file_renamed: r#"Renamed to "{PATH}""#,
             file_deleted: "Deleted",
             file_ops_failed_prefix: "Failed: ",
+            multiselect_none_selected: "No rows selected (Space toggles)",
+            bulk_renamed_n: "Renamed {N} file(s)",
+            bulk_rename_no_editor: "Bulk rename needs editor_path or $EDITOR",
+            bulk_rename_editor_failed: "Could not run editor for bulk rename",
+            bulk_rename_no_changes: "No renames (paths unchanged)",
+            bulk_removed_n_from_lens: r#"Removed {N} path(s) from lens "{LENS}""#,
+            bulk_enhanced_zahir_n: "Enhanced {N} file(s) with ZahirScan",
+            duplicate_member_ignored: "Hidden from Duplicates for this session",
         }
     }
 
@@ -408,11 +439,13 @@ impl UiStrings {
             enhance_policy_always: "Always — automatic (y)",
             enhance_policy_never: "Per-file — manual (n)",
             enhance_with_zahirscan: "Enhance with ZahirScan",
-            copy_zahir_json: "Copy Templates",
+            copy_zahir_json: "Copy Zahir JSON",
             add_to_lens: "Add to Lens",
-            remove_from_lens: "Remove from Lens",
+            add_to_other_lens: "Add to other lens",
+            remove_from_lens: "Delete from current Lens",
             rename: "Rename",
             delete: "Delete",
+            ignore_in_duplicates: "Ignore",
         }
     }
 

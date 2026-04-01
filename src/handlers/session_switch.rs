@@ -17,6 +17,10 @@ use crate::utils::BumperBuffer;
 /// Replace the running session’s indexed root: new DB, new opts, new background snapshot channel, fresh UI state.
 ///
 /// Caller should clear/redraw the terminal after success if desired.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] on error.
 pub fn perform_session_switch<'a>(
     new_dir: PathBuf,
     params: &mut RunUblxParams<'a>,

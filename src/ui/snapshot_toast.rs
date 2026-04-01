@@ -8,7 +8,7 @@ use crate::ui::consts::UI_STRINGS;
 use crate::ui::show_operation_toast;
 use crate::utils;
 
-/// Toast when a force-full Zahir snapshot starts (e.g. `enable_enhance_all` just turned on).
+/// Toast when a force-full Zahir snapshot starts (cached `enable_enhance_all` was false; next snapshot runs full index-time Zahir).
 pub fn show_force_full_enhance_started_toast(
     state_mut: &mut UblxState,
     params_ref: &RunUblxParams<'_>,

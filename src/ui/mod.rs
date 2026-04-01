@@ -6,6 +6,7 @@ mod keymap;
 mod lens;
 mod menu;
 mod mouse;
+mod multiselect;
 mod snapshot_toast;
 
 use crate::app::RunUblxParams;

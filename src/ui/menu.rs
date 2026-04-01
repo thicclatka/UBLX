@@ -56,7 +56,7 @@ pub fn handle_open_menu(
 }
 
 #[must_use]
-fn space_menu_item_count(kind: Option<&SpaceMenuKind>) -> usize {
+fn space_menu_item_count(kind: Option<&SpaceMenuKind>, main_mode: MainMode) -> usize {
     match kind {
         Some(SpaceMenuKind::FileActions {
             show_enhance_directory_policy,
@@ -64,15 +64,22 @@ fn space_menu_item_count(kind: Option<&SpaceMenuKind>) -> usize {
             show_copy_zahir_json,
             ..
         }) => {
-            2 // Open, Show in folder
+            let n = 2 // Open, Show in folder
                 + usize::from(*show_enhance_directory_policy)
                 + usize::from(*show_enhance_zahir)
                 + 1 // Add / Remove lens
                 + 1 // Copy Path
                 + usize::from(*show_copy_zahir_json)
-                + 2 // Rename, Delete
+                + 2; // Rename, Delete
+            if main_mode == MainMode::Lenses {
+                n - 1
+            } else {
+                n
+            }
         }
-        Some(SpaceMenuKind::LensPanelActions { .. }) => 2,
+        Some(
+            SpaceMenuKind::LensPanelActions { .. } | SpaceMenuKind::DuplicateMemberActions { .. },
+        ) => 2,
         None => 0,
     }
 }
@@ -90,7 +97,9 @@ struct FileSpaceMenuIndices {
     delete: usize,
 }
 
-fn label_with_hotkey(label: &str, key: char) -> String {
+/// `"{label} ({key})"` — same pattern as space menu rows (e.g. bulk popup, lens actions).
+#[must_use]
+pub fn label_with_hotkey(label: &str, key: char) -> String {
     format!("{label} ({key})")
 }
 
@@ -118,7 +127,7 @@ pub fn space_menu_item_labels(kind: &SpaceMenuKind, main_mode: MainMode) -> Vec<
                 ));
             }
             if main_mode == MainMode::Lenses {
-                v.push(label_with_hotkey(UI_STRINGS.space.remove_from_lens, 'l'));
+                v.push(label_with_hotkey(UI_STRINGS.space.remove_from_lens, 'd'));
             } else {
                 v.push(label_with_hotkey(UI_STRINGS.space.add_to_lens, 'l'));
             }
@@ -127,19 +136,29 @@ pub fn space_menu_item_labels(kind: &SpaceMenuKind, main_mode: MainMode) -> Vec<
                 v.push(label_with_hotkey(UI_STRINGS.space.copy_zahir_json, 'j'));
             }
             v.push(label_with_hotkey(UI_STRINGS.space.rename, 'r'));
-            v.push(label_with_hotkey(UI_STRINGS.space.delete, 'd'));
+            if main_mode != MainMode::Lenses {
+                v.push(label_with_hotkey(UI_STRINGS.space.delete, 'd'));
+            }
             v
         }
         SpaceMenuKind::LensPanelActions { .. } => vec![
             label_with_hotkey(UI_STRINGS.space.rename, 'r'),
             label_with_hotkey(UI_STRINGS.space.delete, 'd'),
         ],
+        SpaceMenuKind::DuplicateMemberActions { .. } => vec![
+            label_with_hotkey(UI_STRINGS.space.delete, 'd'),
+            label_with_hotkey(UI_STRINGS.space.ignore_in_duplicates, 'i'),
+        ],
     }
 }
 
 /// Map a typed letter to a row index for the **current** menu (`None` if that row is not shown or key unknown).
 #[must_use]
-pub fn space_menu_hotkey_to_index(kind: &SpaceMenuKind, key: char) -> Option<usize> {
+pub fn space_menu_hotkey_to_index(
+    kind: &SpaceMenuKind,
+    key: char,
+    main_mode: MainMode,
+) -> Option<usize> {
     let c = key.to_ascii_lowercase();
     match kind {
         SpaceMenuKind::FileActions {
@@ -158,17 +177,28 @@ pub fn space_menu_hotkey_to_index(kind: &SpaceMenuKind, key: char) -> Option<usi
                 'f' => Some(m.reveal),
                 'p' => m.policy,
                 'z' => m.zahir,
-                'l' => Some(m.lens),
+                'l' => (main_mode != MainMode::Lenses).then_some(m.lens),
                 'c' => Some(m.copy_path),
                 'j' => m.copy_json,
                 'r' => Some(m.rename),
-                'd' => Some(m.delete),
+                'd' => {
+                    if main_mode == MainMode::Lenses {
+                        Some(m.lens)
+                    } else {
+                        Some(m.delete)
+                    }
+                }
                 _ => None,
             }
         }
         SpaceMenuKind::LensPanelActions { .. } => match c {
             'r' => Some(0),
             'd' => Some(1),
+            _ => None,
+        },
+        SpaceMenuKind::DuplicateMemberActions { .. } => match c {
+            'd' => Some(0),
+            'i' => Some(1),
             _ => None,
         },
     }
@@ -371,7 +401,7 @@ fn space_menu_file_actions_submit(
     }
     if idx == m.lens {
         if state.main_mode == MainMode::Snapshot {
-            state.open_lens_menu(path);
+            state.open_lens_menu(vec![path], None);
             return;
         }
         let Some(lens_name) = view
@@ -406,8 +436,30 @@ fn space_menu_file_actions_submit(
         state.open_file_rename_input(path);
         return;
     }
-    if idx == m.delete {
+    if idx == m.delete && state.main_mode != MainMode::Lenses {
         state.open_file_delete_confirm(path);
+    }
+}
+
+fn duplicate_member_actions_submit(
+    state: &mut UblxState,
+    params: &mut RunUblxParams<'_>,
+    path: String,
+    idx: usize,
+) {
+    match idx {
+        0 => state.open_file_delete_confirm(path),
+        1 => {
+            state.duplicate_ignored_paths.insert(path);
+            show_operation_toast(
+                state,
+                params,
+                UI_STRINGS.toasts.duplicate_member_ignored,
+                "duplicates",
+                log::Level::Info,
+            );
+        }
+        _ => {}
     }
 }
 
@@ -423,11 +475,16 @@ fn space_menu_apply_submit(
         fa @ SpaceMenuKind::FileActions { .. } => {
             space_menu_file_actions_submit(state, view, params, ublx_opts, fa, idx);
         }
+        SpaceMenuKind::DuplicateMemberActions { path } => {
+            duplicate_member_actions_submit(state, params, path, idx);
+        }
         SpaceMenuKind::LensPanelActions { lens_name } => match idx {
             0 => {
                 state.lens_confirm.rename_input = Some((lens_name.clone(), lens_name));
             }
-            _ => state.open_lens_delete_confirm(lens_name),
+            _ => {
+                state.open_lens_delete_confirm(lens_name);
+            }
         },
     }
 }
@@ -443,7 +500,7 @@ pub fn handle_space_menu(
     if !state.space_menu.visible {
         return false;
     }
-    let item_count = space_menu_item_count(state.space_menu.kind.as_ref());
+    let item_count = space_menu_item_count(state.space_menu.kind.as_ref(), state.main_mode);
     match action {
         UblxAction::Quit | UblxAction::SearchClear => state.close_space_menu(),
         UblxAction::MoveDown => {
@@ -477,8 +534,10 @@ pub fn handle_space_menu(
 
 #[must_use]
 fn space_menu_open_blocked(state: &UblxState) -> bool {
-    !matches!(state.main_mode, MainMode::Snapshot | MainMode::Lenses)
-        || state.space_menu.visible
+    !matches!(
+        state.main_mode,
+        MainMode::Snapshot | MainMode::Lenses | MainMode::Duplicates,
+    ) || state.space_menu.visible
         || state.enhance_policy_menu.visible
         || state.lens_confirm.rename_input.is_some()
         || state.lens_confirm.delete_visible
@@ -495,6 +554,10 @@ fn try_open_file_space_menu(
     let Some(path) = right_content_ref.snap_meta.path.as_ref() else {
         return false;
     };
+    if state_mut.main_mode == MainMode::Duplicates {
+        state_mut.open_space_menu(SpaceMenuKind::DuplicateMemberActions { path: path.clone() });
+        return true;
+    }
     state_mut.open_space_menu(SpaceMenuKind::FileActions {
         path: path.clone(),
         can_open_in_terminal: right_content_ref.derived.can_open,
@@ -528,6 +591,9 @@ pub fn try_open_space_menu(
     action: UblxAction,
 ) -> bool {
     if !matches!(action, UblxAction::SpaceMenu) {
+        return false;
+    }
+    if state_mut.main_mode == MainMode::Delta {
         return false;
     }
     if space_menu_open_blocked(state_mut) {

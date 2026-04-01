@@ -37,6 +37,7 @@ fn apply_mode_switch(
     has_duplicates: bool,
     has_lenses: bool,
 ) {
+    state_mut.multiselect.clear();
     match action {
         UblxAction::MainModeSnapshot => state_mut.main_mode = MainMode::Snapshot,
         UblxAction::MainModeDelta => state_mut.main_mode = MainMode::Delta,
@@ -196,6 +197,20 @@ impl<'a> UblxActionContext<'a> {
                     .content_sort
                     .cycle_for_mode(state_mut.main_mode);
             }
+            UblxAction::AddToOtherLens => {
+                if state_mut.main_mode == MainMode::Lenses
+                    && let Some(i) = state_mut.panels.content_state.selected()
+                    && let Some(row) = self.view_ref.row_at(i, None)
+                {
+                    let path = row.0.clone();
+                    let ex = self
+                        .view_ref
+                        .filtered_categories
+                        .get(state_mut.panels.category_state.selected().unwrap_or(0))
+                        .cloned();
+                    state_mut.open_lens_menu(vec![path], ex);
+                }
+            }
             UblxAction::ListTop
             | UblxAction::ListBottom
             | UblxAction::MoveUp
@@ -244,14 +259,18 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::MoveDown => self.apply_move_down(state_mut),
             UblxAction::MoveUpFast => self.apply_move_up_by(state_mut, LIST_FAST_STEP_ROWS),
             UblxAction::MoveDownFast => self.apply_move_down_by(state_mut, LIST_FAST_STEP_ROWS),
-            UblxAction::FocusCategories => state_mut.panels.focus = PanelFocus::Categories,
-            UblxAction::FocusContents => state_mut.panels.focus = PanelFocus::Contents,
-            UblxAction::Tab => {
-                state_mut.panels.focus = match state_mut.panels.focus {
-                    PanelFocus::Categories => PanelFocus::Contents,
-                    PanelFocus::Contents => PanelFocus::Categories,
-                };
+            UblxAction::FocusCategories => {
+                state_mut.panels.focus = PanelFocus::Categories;
+                state_mut.multiselect.clear();
             }
+            UblxAction::FocusContents => state_mut.panels.focus = PanelFocus::Contents,
+            UblxAction::Tab => match state_mut.panels.focus {
+                PanelFocus::Categories => state_mut.panels.focus = PanelFocus::Contents,
+                PanelFocus::Contents => {
+                    state_mut.multiselect.clear();
+                    state_mut.panels.focus = PanelFocus::Categories;
+                }
+            },
             _ => {}
         }
     }

@@ -62,7 +62,7 @@ pub fn bool_row_count(scope: SettingsConfigScope) -> usize {
     }
 }
 
-/// Row label text. When `for_left_pane` is true, `show_hidden_files` and `hash` get [`append_settings_bool_snapshot_footnote`]. Base strings live in [`crate::ui::consts::UiStringsSettingsBool`].
+/// Row label text. When `for_left_pane` is true, `show_hidden_files`, `hash`, and `enable_enhance_all` get [`append_settings_bool_snapshot_footnote`]. Base strings live in [`crate::ui::consts::UiStringsSettingsBool`].
 #[must_use]
 pub fn bool_row_label(
     scope: SettingsConfigScope,
@@ -80,7 +80,9 @@ pub fn bool_row_label(
         if for_left_pane
             && matches!(
                 key,
-                SettingsBoolKey::ShowHiddenFiles | SettingsBoolKey::Hash
+                SettingsBoolKey::ShowHiddenFiles
+                    | SettingsBoolKey::Hash
+                    | SettingsBoolKey::EnableEnhanceAll
             )
         {
             Cow::Owned(append_settings_bool_snapshot_footnote(base))

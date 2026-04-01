@@ -1,7 +1,7 @@
-//! **Command Mode** (after **Ctrl+Space**): the next letter runs the matching shortcut (d, t, s, r, p),
+//! **Command Mode** (after **Ctrl+A**): the next letter runs the matching shortcut (d, t, s, r, p),
 //! or after a short timeout a centered menu lists them. Viewer search is **Shift+S**, not Command Mode.
 //! Jump-by-10 stays **Ctrl+j** / **Ctrl+k** (or arrows), not Command Mode.
-//! Terminals rarely deliver a bare `Ctrl` key, so the leader is **Ctrl+Space** instead of “Ctrl alone”.
+//! **Ctrl+Space** toggles middle-pane multi-select when contents are focused; Command Mode uses **Ctrl+A**.
 
 use std::time::{Duration, Instant};
 
@@ -27,11 +27,12 @@ fn chord_blocked(state: &UblxState) -> bool {
         || state.startup_prompt.is_some()
         || state.file_rename_input.is_some()
         || state.file_delete_confirm.visible
+        || state.multiselect.bulk_menu_visible
         || state.lens_confirm.delete_visible
         || state.lens_confirm.rename_input.is_some()
 }
 
-/// Start chord wait (highlight chrome); caller must ensure key was Ctrl+Space.
+/// Start chord wait (highlight chrome); caller must ensure key was Ctrl+A.
 pub fn try_begin_chord(state: &mut UblxState) -> bool {
     if chord_blocked(state) || state.search.active {
         return false;

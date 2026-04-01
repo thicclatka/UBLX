@@ -73,7 +73,7 @@ pub fn run_snapshot_pipeline(
 }
 
 /// Load `prior_nefax` and `ublx_opts` from `dir` and `db_path`, then run [`run_snapshot_pipeline`].
-/// Use from the TUI when running a snapshot on demand (e.g. Command Mode: Ctrl+Space, then s).
+/// Use from the TUI when running a snapshot on demand (e.g. Command Mode: Ctrl+A, then s).
 ///
 /// `preserve_*_cache_before_apply`: when `Some`, replaces the corresponding field on the opts returned from
 /// [`UblxOpts::for_dir`]. Pass the in-memory opts from the running TUI so a second `for_dir` in the snapshot thread
@@ -117,7 +117,7 @@ pub fn run_snapshot_pipeline_from_dir_db(
     run_snapshot_pipeline(dir, &ublx_opts, prior_nefax.as_ref(), done_tx, bumper);
 }
 
-/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Command Mode: Ctrl+Space, then s).
+/// Spawn a thread that runs [`run_snapshot_pipeline_from_dir_db`]. Use from the TUI when the user triggers a snapshot (e.g. Command Mode: Ctrl+A, then s).
 pub fn spawn_snapshot_from_dir_db(
     dir: &Path,
     db_path: &Path,

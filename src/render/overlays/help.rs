@@ -86,9 +86,8 @@ const HELP_VIEWER: &[(&str, &str)] = help_entries![
         "Focus on Viewer/Templates/Metadata/Writing tab in right pane"
     ),
     ("Shift+Tab", "Cycle right pane tab(s)"),
-    ("Shift+↑↓", "Scroll up / down in preview"),
-    ("Shift+J | +K", "Scroll down / up in preview"),
-    ("Shift+b | Shift+e", "Jump preview to top / bottom"),
+    ("Shift+↓↑ | Shift+J/+K", "Scroll down / up in right pane"),
+    ("Shift+b | Shift+e", "Jump right pane to top / bottom"),
     (
         "Shift+S",
         "Viewer literal search; Enter (apply) · Shift+S (re-edit) · n/N (next/prev) · Esc (clear)"
@@ -96,10 +95,40 @@ const HELP_VIEWER: &[(&str, &str)] = help_entries![
     ("Shift+F", "Viewer tab: toggle fullscreen"),
 ];
 
-/// Command Mode (Ctrl+Space) and single-letter follow-ups.
+/// Multi-select: contents pane, Snapshot or Lenses (not Duplicates). Bulk menu: Snapshot vs Lenses on **a** / **d**.
+const HELP_MULTISELECT: &[(&str, &str)] = help_entries![
+    ("Ctrl+Space", "Toggle Multi-select mode"),
+    ("Space", "Toggle row for multi-select"),
+    ("a", "Open Bulk menu"),
+    ("Bulk menu → r", "Rename paths in $EDITOR"),
+    (
+        "Bulk menu → a",
+        "Snapshot: add to lens · Lenses: add to other lens"
+    ),
+    (
+        "Bulk menu → d",
+        "Snapshot: delete files · Lenses: remove from current lens"
+    ),
+    ("Bulk menu → z", "Enhance with ZahirScan"),
+    ("Esc", "Exit Multi-select mode"),
+];
+
+/// Duplicates tab: no multi-select; Space is the small Duplicates menu (not full Actions).
+const HELP_BROWSER_SPACE_DUPLICATES: &[(&str, &str)] = help_entries![
+    (
+        "Space → d",
+        "Delete file; duplicate list reloads from index"
+    ),
+    (
+        "Space → i",
+        "Ignore — hide path in Duplicates for current dupe-finder run"
+    ),
+];
+
+/// Command Mode (Ctrl+A) and single-letter follow-ups.
 const HELP_COMMAND_MODE: &[(&str, &str)] = help_entries![
     (
-        "Ctrl+Space",
+        "Ctrl+A",
         "Command Mode: press a key next, or wait briefly for the command menu"
     ),
     ("Command Mode + d", COMMAND_MODE_DESCRIPTIONS.duplicates),
@@ -111,33 +140,15 @@ const HELP_COMMAND_MODE: &[(&str, &str)] = help_entries![
 
 /// Space menu: matches [`crate::ui::menu::space_menu_item_labels`] / `UI_STRINGS.space`.
 const HELP_BROWSER_SPACE: &[(&str, &str)] = help_entries![
-    ("Space → o", "Open — Terminal and/or GUI when available"),
+    ("Space → o", "Open — Terminal and/or GUI"),
     ("Space → f", "Show in folder"),
-    (
-        "Space → p",
-        "Enhance policy — when offered (Directory rows / policy submenu)"
-    ),
-    (
-        "Space → z",
-        "Enhance with ZahirScan — when offered for this file"
-    ),
-    (
-        "Space → l",
-        "Add to Lens (most tabs) or Remove from Lens (Lenses tab, Contents)"
-    ),
+    ("Space → p", "Enhance policy"),
+    ("Space → z", "Enhance with ZahirScan"),
+    ("Space → l", "Add to Lens"),
     ("Space → c", "Copy Path"),
-    (
-        "Space → j",
-        "Copy Templates — when this entry has Zahir JSON stored"
-    ),
-    (
-        "Space → r",
-        "Rename file (Contents) or rename lens (Categories, Lenses tab)"
-    ),
-    (
-        "Space → d",
-        "Delete file (Contents) or delete lens (Categories, Lenses tab)"
-    ),
+    ("Space → j", "Copy Zahir JSON"),
+    ("Space → r", "Rename file or lens"),
+    ("Space → d", "Delete file; remove from lens; delete lens"),
 ];
 
 /// Settings tab: one General table (digit row + nav + other + closing).
@@ -154,6 +165,10 @@ const HELP_SETTINGS_GENERAL: &[(&str, &str)] = help_entries![
 
 /// Second column for the main-tab digit row; same on every tab.
 const MAIN_TAB_DIGITS_DESC: &str = "Jump to Main Tab number based on what is visible.";
+
+/// Shown below all help tables: shortcuts and menu rows only appear when they apply.
+const HELP_AVAILABILITY_FOOTNOTE: &str =
+    "Tab, pane, current highlight, and config gate what is seen/available.";
 
 struct HelpSectionSpec {
     title: &'static str,
@@ -173,6 +188,11 @@ const BROWSER_SECTIONS: &[HelpSectionSpec] = &[
         include_digit_row: false,
     },
     HelpSectionSpec {
+        title: UI_STRINGS.dialogs.multiselect_help_title,
+        rows: HELP_MULTISELECT,
+        include_digit_row: false,
+    },
+    HelpSectionSpec {
         title: UI_STRINGS.dialogs.command_mode_popup,
         rows: HELP_COMMAND_MODE,
         include_digit_row: false,
@@ -180,6 +200,29 @@ const BROWSER_SECTIONS: &[HelpSectionSpec] = &[
     HelpSectionSpec {
         title: UI_STRINGS.dialogs.help_section_space,
         rows: HELP_BROWSER_SPACE,
+        include_digit_row: false,
+    },
+];
+
+const DUPLICATES_SECTIONS: &[HelpSectionSpec] = &[
+    HelpSectionSpec {
+        title: UI_STRINGS.tables.first_title,
+        rows: HELP_GENERAL_BROWSER,
+        include_digit_row: true,
+    },
+    HelpSectionSpec {
+        title: UI_STRINGS.dialogs.help_section_viewer,
+        rows: HELP_VIEWER,
+        include_digit_row: false,
+    },
+    HelpSectionSpec {
+        title: UI_STRINGS.dialogs.command_mode_popup,
+        rows: HELP_COMMAND_MODE,
+        include_digit_row: false,
+    },
+    HelpSectionSpec {
+        title: UI_STRINGS.dialogs.help_section_space,
+        rows: HELP_BROWSER_SPACE_DUPLICATES,
         include_digit_row: false,
     },
 ];
@@ -193,6 +236,11 @@ const LENSES_SECTIONS: &[HelpSectionSpec] = &[
     HelpSectionSpec {
         title: UI_STRINGS.dialogs.help_section_viewer,
         rows: HELP_VIEWER,
+        include_digit_row: false,
+    },
+    HelpSectionSpec {
+        title: UI_STRINGS.dialogs.multiselect_help_title,
+        rows: HELP_MULTISELECT,
         include_digit_row: false,
     },
     HelpSectionSpec {
@@ -213,12 +261,21 @@ const SETTINGS_SECTIONS: &[HelpSectionSpec] = &[HelpSectionSpec {
     include_digit_row: true,
 }];
 
+/// Delta tab: same General navigation table as Snapshot; no viewer / multi-select / space rows (different layout).
+const DELTA_SECTIONS: &[HelpSectionSpec] = &[HelpSectionSpec {
+    title: UI_STRINGS.tables.first_title,
+    rows: HELP_GENERAL_BROWSER,
+    include_digit_row: true,
+}];
+
 #[must_use]
 fn help_sections(mode: MainMode) -> &'static [HelpSectionSpec] {
     match mode {
+        MainMode::Snapshot => BROWSER_SECTIONS,
         MainMode::Settings => SETTINGS_SECTIONS,
+        MainMode::Delta => DELTA_SECTIONS,
         MainMode::Lenses => LENSES_SECTIONS,
-        _ => BROWSER_SECTIONS,
+        MainMode::Duplicates => DUPLICATES_SECTIONS,
     }
 }
 
@@ -301,8 +358,12 @@ fn help_max_desc_width(sections: &[HelpSectionSpec]) -> usize {
     m
 }
 
-/// Inner height: top gap, blurb, gap, then each section (optional gap, title, table), then gap + GitHub footer line.
-fn help_inner_height(blurb_lines: usize, sections: &[HelpSectionSpec]) -> usize {
+/// Inner height: top gap, blurb, gap, sections, gap, availability footnote, gap, GitHub line.
+fn help_inner_height(
+    blurb_lines: usize,
+    footnote_lines: usize,
+    sections: &[HelpSectionSpec],
+) -> usize {
     let mut h = 1 + blurb_lines + 1;
     for (i, s) in sections.iter().enumerate() {
         if i > 0 {
@@ -312,7 +373,7 @@ fn help_inner_height(blurb_lines: usize, sections: &[HelpSectionSpec]) -> usize 
         let dr = s.rows.len() + usize::from(s.include_digit_row);
         h += 1 + dr;
     }
-    h + 2 // gap before footer + clickable GitHub line
+    h + 1 + footnote_lines + 1 + 1 // gap, footnote, gap, GitHub
 }
 
 fn build_help_table(
@@ -365,6 +426,7 @@ struct HelpPopupLayout {
     chunks: Vec<Rect>,
     main_keys: String,
     tab_blurb_indented: String,
+    footnote_indented: String,
     sections: &'static [HelpSectionSpec],
     key_width: u16,
     text_style: Style,
@@ -383,12 +445,16 @@ fn compute_help_popup_layout(
     let key_width = help_max_key_width(sections, &main_keys);
     let desc_max = help_max_desc_width(sections);
     let content_w = (key_width as usize + 1 + desc_max).max(48);
-    let tab_blurb_indented = format!(" {tab_blurb}");
+    let tab_blurb_indented = tab_blurb;
     let wrap_w = content_w.saturating_sub(6).max(32);
     let blurb_lines = wrap_line_count(&tab_blurb_indented, wrap_w);
     let blurb_h = u16::try_from(blurb_lines).unwrap_or(u16::MAX).max(1);
 
-    let inner_h = help_inner_height(blurb_lines, sections);
+    let footnote_indented = HELP_AVAILABILITY_FOOTNOTE.trim().to_string();
+    let footnote_lines = wrap_line_count(&footnote_indented, wrap_w).max(1);
+    let footnote_h = u16::try_from(footnote_lines).unwrap_or(u16::MAX).max(1);
+
+    let inner_h = help_inner_height(blurb_lines, footnote_lines, sections);
     let content_h = inner_h + 1;
 
     let rect = style::centered_popup_rect(
@@ -431,6 +497,8 @@ fn compute_help_popup_layout(
         constraints.push(Constraint::Length((1 + dr) as u16));
     }
     constraints.push(Constraint::Length(1));
+    constraints.push(Constraint::Length(footnote_h));
+    constraints.push(Constraint::Length(1));
     constraints.push(Constraint::Length(1));
 
     let chunks = Layout::default()
@@ -445,6 +513,7 @@ fn compute_help_popup_layout(
         chunks,
         main_keys,
         tab_blurb_indented,
+        footnote_indented,
         sections,
         key_width,
         text_style,
@@ -467,12 +536,13 @@ pub fn render_help_box(f: &mut Frame, main_mode: MainMode, has_lenses: bool, has
     let layout = compute_help_popup_layout(f.area(), main_mode, has_lenses, has_duplicates);
     let chunks = &layout.chunks;
     let n = chunks.len();
-    debug_assert!(n >= 5, "help popup chunks include footer");
+    debug_assert!(n >= 9, "help popup chunks include footnote + footer");
 
     f.render_widget(Clear, layout.popup_rect);
 
     let blurb_para = Paragraph::new(layout.tab_blurb_indented.clone())
         .style(layout.text_style)
+        .alignment(Alignment::Center)
         .wrap(Wrap { trim: false });
     let top_gap = Paragraph::new("").style(layout.text_style);
     let blurb_table_gap = Paragraph::new("").style(layout.text_style);
@@ -510,9 +580,19 @@ pub fn render_help_box(f: &mut Frame, main_mode: MainMode, has_lenses: bool, has
         f.render_widget(table, table_rect);
     }
 
-    debug_assert_eq!(idx, n - 2);
+    debug_assert_eq!(idx, n.saturating_sub(4));
 
     let t = themes::current();
+    let pre_footnote_gap = Paragraph::new("").style(layout.text_style);
+    f.render_widget(pre_footnote_gap, chunks[n - 4]);
+
+    let hint = Style::default().fg(t.hint).bg(t.popup_bg);
+    let footnote_para = Paragraph::new(layout.footnote_indented.clone())
+        .style(hint)
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: false });
+    f.render_widget(footnote_para, chunks[n - 3]);
+
     let github_line = Line::from(vec![
         Span::styled(format!("{} ", UI_GLYPHS.github_mark), layout.text_style),
         Span::styled(

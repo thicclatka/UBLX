@@ -92,6 +92,33 @@ pub fn render_list_popup(frame: &mut Frame, params: &ListPopupParams<'_>) {
     );
 }
 
+/// Minimum inner width (characters) when the prompt and value are short.
+const TEXT_INPUT_MIN_INNER: usize = 8;
+/// Only count this many leading chars when sizing (avoids huge pastes dominating work).
+const TEXT_INPUT_MAX_MEASURE_CHARS: usize = 256;
+
+/// Outer width (including borders): grows with title and content, plus one column for continued typing,
+/// clamped to `max_popup_w` (and never below 3).
+fn text_input_popup_outer_width(title: &str, content: &str, max_popup_w: u16) -> u16 {
+    let max_w = max_popup_w as usize;
+    if max_w < 3 {
+        return max_popup_w;
+    }
+    let max_inner = max_w.saturating_sub(2);
+
+    let t = title.chars().take(TEXT_INPUT_MAX_MEASURE_CHARS).count();
+    let c = content.chars().take(TEXT_INPUT_MAX_MEASURE_CHARS).count();
+
+    let inner = t.max(c).max(TEXT_INPUT_MIN_INNER).saturating_add(1);
+
+    let inner = inner.min(max_inner);
+    let outer = inner.saturating_add(2).clamp(3, max_w);
+    outer as u16
+}
+
+/// When `extend_past_anchor` is false, the upper bound also respects the anchor (e.g. middle pane).
+/// When true (e.g. lens rename under the left list), the upper bound can reach `max_width` at the terminal edge
+/// so the box may extend past a narrow left pane.
 pub fn render_text_input_popup(
     frame: &mut Frame,
     title: &str,
@@ -99,6 +126,7 @@ pub fn render_text_input_popup(
     anchor_area: Rect,
     anchor_row_index: usize,
     max_width: u16,
+    extend_past_anchor: bool,
 ) {
     const HEIGHT: u16 = 3;
     let content_top = anchor_area.y + 2;
@@ -109,7 +137,14 @@ pub fn render_text_input_popup(
             .saturating_add(anchor_area.height.saturating_sub(HEIGHT));
     }
     let col_x = anchor_area.x + 1;
-    let popup_w = max_width.min(anchor_area.width.saturating_sub(2));
+    let max_w_terminal = frame.area().width.saturating_sub(col_x);
+    let anchor_cap = anchor_area.width.saturating_sub(2);
+    let max_popup_w = if extend_past_anchor {
+        max_width.min(max_w_terminal)
+    } else {
+        max_width.min(anchor_cap).min(max_w_terminal)
+    };
+    let popup_w = text_input_popup_outer_width(title, content, max_popup_w);
     let rect = Rect::new(col_x, row_y, popup_w, HEIGHT);
     frame.render_widget(Clear, rect);
 

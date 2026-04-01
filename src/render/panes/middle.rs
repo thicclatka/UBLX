@@ -5,11 +5,14 @@ use std::path::Path;
 
 use ratatui::Frame;
 use ratatui::layout::{HorizontalAlignment, Rect};
-use ratatui::text::Line;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::ListItem;
 
+use crate::layout::style::tab_active;
 use crate::layout::{setup, style};
 use crate::render::{marquee, panes};
+use crate::themes;
 use crate::ui::{UI_GLYPHS, UI_STRINGS, chord_chrome_active};
 
 #[must_use]
@@ -22,13 +25,39 @@ pub fn contents_list_item_for_row(
     global_sel: usize,
     max_cols: usize,
 ) -> ListItem<'static> {
-    let label = marquee::row_label_for_middle(state.main_mode, view, all_rows, dir_to_ublx, i)
+    let path_label = marquee::row_label_for_middle(state.main_mode, view, all_rows, dir_to_ublx, i)
         .unwrap_or_default();
     let use_marquee = i == global_sel && matches!(state.panels.focus, setup::PanelFocus::Contents);
+
+    if state.multiselect.active
+        && let Some(row) = view.row_at(i, all_rows)
+    {
+        let selected = state.multiselect.selected.contains(&row.0);
+        let path_cols = max_cols.saturating_sub(2);
+        let path_visible = if use_marquee {
+            marquee::visible_line(&path_label, path_cols, state.panels.content_marquee.offset)
+        } else {
+            path_label
+        };
+        let t = themes::current();
+        let bg = t.tab_active_bg;
+        let solid = Style::default().fg(bg).bg(bg);
+        let line = if selected {
+            Line::from(vec![
+                Span::styled(UI_GLYPHS.swatch_block.to_string(), solid),
+                Span::raw(" "),
+                Span::raw(path_visible),
+            ])
+        } else {
+            Line::from(vec![Span::raw("  "), Span::raw(path_visible)])
+        };
+        return ListItem::new(line);
+    }
+
     let text = if use_marquee {
-        marquee::visible_line(&label, max_cols, state.panels.content_marquee.offset)
+        marquee::visible_line(&path_label, max_cols, state.panels.content_marquee.offset)
     } else {
-        label
+        path_label
     };
     ListItem::new(text)
 }
@@ -119,10 +148,15 @@ pub fn line_for(
     main_mode: setup::MainMode,
     sort: setup::ContentSort,
     chord_mode: bool,
+    multiselect_active: bool,
+    multiselect_count: usize,
 ) -> Line<'static> {
     let current = selected_index.map_or(0, |i| i + 1);
     let total = content_len;
-    let counter = format_selection_counter(current, total);
+    let mut counter = format_selection_counter(current, total);
+    if multiselect_active && multiselect_count > 0 {
+        counter = format!("{counter} · {multiselect_count} sel");
+    }
     if let Some(sort_text) = sort_node_text(main_mode, sort) {
         style::viewer_footer_line(Some(&counter), None, Some(&sort_text), chord_mode)
             .unwrap_or_else(|| counter_line(current, total, chord_mode))
@@ -158,6 +192,8 @@ pub fn draw_paths_list_with_counter(
             state.main_mode,
             state.panels.content_sort,
             chord_chrome_active(&state.chrome),
+            state.multiselect.active,
+            state.multiselect.selected.len(),
         ));
     let total = view.content_len;
     let global_sel = state
@@ -224,11 +260,16 @@ pub fn draw_paths_list_with_counter(
         *state.panels.content_state.offset_mut() = 0;
     }
 
+    let highlight_style = if state.multiselect.active && content_focused {
+        tab_active()
+    } else {
+        state.panels.highlight_style
+    };
     panes::draw_list_panel(
         f,
         mid_items,
         mid_block,
-        state.panels.highlight_style,
+        highlight_style,
         content_focused,
         &mut state.panels.content_state,
         area,

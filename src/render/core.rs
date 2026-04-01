@@ -119,6 +119,13 @@ fn draw_popups(
         state.main_mode,
         layout::setup::MainMode::Snapshot | layout::setup::MainMode::Lenses
     );
+    let anchor_middle_popups = matches!(
+        state.main_mode,
+        layout::setup::MainMode::Snapshot
+            | layout::setup::MainMode::Delta
+            | layout::setup::MainMode::Duplicates
+            | layout::setup::MainMode::Lenses
+    );
 
     if state.open_menu.visible && in_snapshot_or_lenses {
         overlays::popup::render_open_menu(
@@ -137,6 +144,7 @@ fn draw_popups(
             middle,
             content_sel,
             lens_names,
+            state.lens_menu.exclude_lens_name.as_deref(),
         );
     }
     if state.enhance_policy_menu.visible && in_snapshot_or_lenses {
@@ -151,7 +159,8 @@ fn draw_popups(
         && let Some(ref kind) = state.space_menu.kind
     {
         let (area, row) = match kind {
-            layout::setup::SpaceMenuKind::FileActions { .. } => (middle, content_sel),
+            layout::setup::SpaceMenuKind::FileActions { .. }
+            | layout::setup::SpaceMenuKind::DuplicateMemberActions { .. } => (middle, content_sel),
             layout::setup::SpaceMenuKind::LensPanelActions { .. } => (left, category_sel),
         };
         overlays::popup::render_context_menu(
@@ -174,16 +183,32 @@ fn draw_popups(
             category_sel,
         );
     }
-    if state.file_delete_confirm.visible
-        && let Some(ref p) = state.file_delete_confirm.rel_path
-        && in_snapshot_or_lenses
-    {
-        overlays::popup::render_file_delete_confirm(
+    if state.file_delete_confirm.visible && anchor_middle_popups {
+        let title = if let Some(ref paths) = state.file_delete_confirm.bulk_paths {
+            format!("Delete {} items? ", paths.len())
+        } else if let Some(ref p) = state.file_delete_confirm.rel_path {
+            format!("{}{}'? ", UI_STRINGS.file.delete_confirm_title, p)
+        } else {
+            String::new()
+        };
+        if !title.is_empty() {
+            overlays::popup::render_file_delete_confirm(
+                f,
+                title.as_str(),
+                state.file_delete_confirm.selected_index,
+                middle,
+                content_sel,
+            );
+        }
+    }
+    if state.multiselect.bulk_menu_visible && anchor_middle_popups {
+        overlays::popup::render_multiselect_bulk_menu(
             f,
-            p,
-            state.file_delete_confirm.selected_index,
+            state.multiselect.bulk_menu_selected,
             middle,
             content_sel,
+            state.main_mode,
+            state.multiselect.bulk_menu_zahir_row,
         );
     }
 }
@@ -345,7 +370,9 @@ fn draw_main_content(
         let content_sel = state.panels.content_state.selected().unwrap_or(0);
         overlays::popup::render_file_rename_popup(f, middle, content_sel, input);
     } else if let Some((_, ref input)) = state.lens_confirm.rename_input {
-        overlays::popup::render_lens_rename_prompt(f, body.status_area, input);
+        let left = body.chunks[0];
+        let lens_row = state.panels.category_state.selected().unwrap_or(0);
+        overlays::popup::render_lens_rename_popup(f, left, lens_row, input);
     } else {
         draw_status_line(
             f,

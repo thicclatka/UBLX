@@ -48,6 +48,60 @@ pub fn rename_entry_under_root(
     Ok(new_rel_str)
 }
 
+/// Parse bulk-rename buffer from an external editor: one line per path, same order as `old_paths`.
+/// Each line is the **new** relative path (forward slashes); must keep the same parent directory as the original.
+///
+/// Returns `(old_rel, new_basename)` pairs for entries that actually change.
+///
+/// # Errors
+///
+/// Returns [`anyhow::Error`] when line count mismatches, a line is empty, or a path would change folders.
+pub fn parse_bulk_rename_lines(
+    old_paths: &[String],
+    editor_file_body: &str,
+) -> Result<Vec<(String, String)>, anyhow::Error> {
+    let lines: Vec<&str> = editor_file_body.lines().map(str::trim).collect();
+    if lines.iter().any(|l| l.is_empty()) {
+        return Err(anyhow::anyhow!(
+            "remove blank lines — one non-empty path per line, same order as before"
+        ));
+    }
+    if lines.len() != old_paths.len() {
+        return Err(anyhow::anyhow!(
+            "expected {} lines, got {} (same order as selection)",
+            old_paths.len(),
+            lines.len()
+        ));
+    }
+
+    let mut out = Vec::new();
+    for (old_raw, line) in old_paths.iter().zip(lines.iter()) {
+        let old_n = normalize_snapshot_rel_path_str(old_raw);
+        let new_n = normalize_snapshot_rel_path_str(line);
+        if old_n == new_n {
+            continue;
+        }
+        let old_p = Path::new(&old_n);
+        let new_p = Path::new(&new_n);
+        let old_parent = old_p.parent().unwrap_or_else(|| Path::new(""));
+        let new_parent = new_p.parent().unwrap_or_else(|| Path::new(""));
+        if old_parent != new_parent {
+            return Err(anyhow::anyhow!(
+                "bulk rename must stay in the same folder: {old_n} → {new_n}"
+            ));
+        }
+        let new_base = new_p
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("invalid new path: {new_n}"))?;
+        if new_base.is_empty() {
+            return Err(anyhow::anyhow!("empty file name in: {new_n}"));
+        }
+        out.push((old_n, new_base.to_string()));
+    }
+    Ok(out)
+}
+
 /// Delete file or directory at `rel` under `root`, then remove lens `path` row if present.
 ///
 /// # Errors

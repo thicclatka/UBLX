@@ -3,8 +3,8 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Style;
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Cell, Clear, Row, Table};
 
 use super::utils::{ListPopupParams, POPUP_MENU, render_list_popup, render_text_input_popup};
 
@@ -13,8 +13,13 @@ use crate::layout::{
     style,
 };
 use crate::themes;
-use crate::ui::{CTRL_MENU_ROWS, UI_CONSTANTS, UI_STRINGS, space_menu_item_labels};
+use crate::ui::{
+    CTRL_MENU_ROWS, UI_CONSTANTS, UI_STRINGS, label_with_hotkey, space_menu_item_labels,
+};
 use crate::utils::StringObjTraits;
+
+const LENS_NAME_INPUT_MAX_WIDTH: u16 = 56;
+const RENAME_INPUT_MAX_WIDTH: u16 = 96;
 
 pub fn render_context_menu(
     f: &mut Frame,
@@ -27,6 +32,7 @@ pub fn render_context_menu(
     let title = match kind {
         SpaceMenuKind::FileActions { .. } => " Actions ",
         SpaceMenuKind::LensPanelActions { .. } => " Lens ",
+        SpaceMenuKind::DuplicateMemberActions { .. } => " Duplicates ",
     };
     let labeled = space_menu_item_labels(kind, main_mode);
     let item_refs: Vec<&str> = labeled.iter().map(String::as_str).collect();
@@ -88,9 +94,15 @@ pub fn render_lens_menu(
     middle_area: Rect,
     content_selected_index: usize,
     lens_names: &[String],
+    exclude_lens_name: Option<&str>,
 ) {
     let items: Vec<&str> = std::iter::once(UI_STRINGS.lens.menu_create_new)
-        .chain(lens_names.iter().map(String::as_str))
+        .chain(
+            lens_names
+                .iter()
+                .filter(|n| exclude_lens_name != Some(n.as_str()))
+                .map(String::as_str),
+        )
         .collect();
     render_list_popup(
         f,
@@ -118,24 +130,27 @@ pub fn render_lens_name_popup(
         input,
         middle_area,
         content_selected_index,
-        36,
+        LENS_NAME_INPUT_MAX_WIDTH,
+        false,
     );
 }
 
-pub fn render_lens_name_prompt(f: &mut Frame, area: Rect, input: &str) {
-    let line = Line::from(vec![
-        Span::styled(UI_STRINGS.lens.name_prompt, style::hint_text()),
-        Span::styled(input, style::search_text()),
-    ]);
-    f.render_widget(Paragraph::new(line), area);
-}
-
-pub fn render_lens_rename_prompt(f: &mut Frame, area: Rect, input: &str) {
-    let line = Line::from(vec![
-        Span::styled(UI_STRINGS.lens.rename_prompt, style::hint_text()),
-        Span::styled(input, style::search_text()),
-    ]);
-    f.render_widget(Paragraph::new(line), area);
+/// Lens rename: same text-input pattern as [`render_file_rename_popup`], anchored under the lens row in the **left** pane.
+pub fn render_lens_rename_popup(
+    f: &mut Frame,
+    left_pane_area: Rect,
+    lens_row_index: usize,
+    input: &str,
+) {
+    render_text_input_popup(
+        f,
+        UI_STRINGS.lens.rename_prompt.trim(),
+        input,
+        left_pane_area,
+        lens_row_index,
+        RENAME_INPUT_MAX_WIDTH,
+        true,
+    );
 }
 
 /// File rename: same centered text-input pattern as [`render_lens_name_popup`].
@@ -151,7 +166,8 @@ pub fn render_file_rename_popup(
         input,
         middle_area,
         content_selected_index,
-        40,
+        RENAME_INPUT_MAX_WIDTH,
+        false,
     );
 }
 
@@ -180,10 +196,53 @@ pub fn render_enhance_policy_menu(
     );
 }
 
+/// Multi-select bulk: non-Lenses **r** / **a** / **d** and optional **z**; Lenses **r** / **a** / **d** (add elsewhere / delete from current lens) and optional **z**.
+pub fn render_multiselect_bulk_menu(
+    f: &mut Frame,
+    selected_index: usize,
+    middle_area: Rect,
+    content_selected_index: usize,
+    main_mode: MainMode,
+    show_zahir_row: bool,
+) {
+    let add_lens = label_with_hotkey(UI_STRINGS.space.add_to_lens, 'a');
+    let add_other = label_with_hotkey(UI_STRINGS.space.add_to_other_lens, 'a');
+    let delete_from_lens = label_with_hotkey(UI_STRINGS.space.remove_from_lens, 'd');
+    let enhance_z = label_with_hotkey(UI_STRINGS.space.enhance_with_zahirscan, 'z');
+
+    let mut items_owned: Vec<String> = match main_mode {
+        MainMode::Lenses => vec!["Rename (r)".to_string(), add_other, delete_from_lens],
+        _ => vec!["Rename (r)".to_string(), add_lens, "Delete (d)".to_string()],
+    };
+    if show_zahir_row {
+        items_owned.push(enhance_z);
+    }
+    let item_refs: Vec<&str> = items_owned.iter().map(String::as_str).collect();
+    let max_w = if show_zahir_row {
+        48u16
+    } else if matches!(main_mode, MainMode::Lenses) {
+        44
+    } else {
+        36
+    };
+    render_list_popup(
+        f,
+        &ListPopupParams {
+            title: UI_STRINGS.dialogs.multiselect_bulk_title,
+            items: &item_refs,
+            selected_index: selected_index.min(item_refs.len().saturating_sub(1)),
+            anchor_area: middle_area,
+            anchor_row_index: content_selected_index,
+            max_width: max_w,
+            max_items: None,
+        },
+    );
+}
+
 const CMD_MODE_WIDTH_LIMIT: usize = 24;
 const CMD_MODE_DESC_MIN_WIDTH: usize = CMD_MODE_WIDTH_LIMIT - 4;
 
-/// Centered Command Mode table (after Ctrl+Space, timeout with no second key). Same header/row styling as help.
+/// Centered Command Mode table (after Ctrl+A, timeout with no second key). Same header/row styling as help.
 pub fn render_ctrl_chord_menu(f: &mut Frame, full_area: Rect) {
     let rows = CTRL_MENU_ROWS;
     let n = rows.len();
