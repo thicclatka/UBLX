@@ -25,11 +25,14 @@ use crate::modules::first_run;
 use crate::themes::default_theme_for_new_config_file;
 use crate::utils;
 
+pub struct RunAppParamsHeadless {
+    pub snapshot_only: bool,
+    pub export_only: bool,
+}
+
 /// Parameters for [`run_app`]. Build after DB and opts are ready.
 pub struct RunAppParams<'a> {
-    pub snapshot_only: bool,
-    /// Headless `--export`: dump snapshot `zahir_json` to `{PKG}-export/` and exit (no TUI).
-    pub export_only: bool,
+    pub headless: &'a RunAppParamsHeadless,
     pub dir_to_ublx: &'a Path,
     pub db_path: &'a Path,
     pub ublx_opts: &'a mut config::UblxOpts,
@@ -57,7 +60,7 @@ pub struct TuiModeLaunchOpts<'a> {
 ///
 /// Returns [`io::Error`] from headless snapshot mode, TUI setup, or the main run loop (terminal I/O).
 pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
-    if params.export_only && params.snapshot_only {
+    if params.headless.export_only && params.headless.snapshot_only {
         headless_snap_mode(
             params.dir_to_ublx,
             params.ublx_opts,
@@ -65,9 +68,9 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
             params.start_time,
         )?;
         headless_export_zahir_mode(params.dir_to_ublx, params.db_path)
-    } else if params.export_only {
+    } else if params.headless.export_only {
         headless_export_zahir_mode(params.dir_to_ublx, params.db_path)
-    } else if params.snapshot_only {
+    } else if params.headless.snapshot_only {
         headless_snap_mode(
             params.dir_to_ublx,
             params.ublx_opts,

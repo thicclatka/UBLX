@@ -1,11 +1,83 @@
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
+use chrono::Local;
 use log::error;
 
 use crate::config::get_log_path;
 use crate::integrations::ZahirResult;
+
+/// If `result` is `Err(e)`, log with `log::error!` using `msg` as the format string (must contain one `{}` for `e`), append the same line to `ublx.log` when its path was set ([`crate::utils::set_index_dir_for_ublx_log`]), then exit with [`crate::utils::EXIT_ERROR`]. Otherwise return the `Ok` value.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] when appending the fatal line to the log file fails.
+pub fn fatal_error_handler<T, E: std::fmt::Display>(result: Result<T, E>, msg: &str) -> T {
+    match result {
+        Ok(v) => v,
+        Err(e) => {
+            let line = msg.replacen("{}", &e.to_string(), 1);
+            error!("{line}");
+            try_append_fatal_line(&line);
+            exit_error();
+        }
+    }
+}
+
+/// Resolved path to `ublx.log` under the indexed root ([`get_log_path`]), for fatal/panic appends only.
+static UBLX_LOG_FILE_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// After [`validate_dir`](crate::utils::validate_dir): pass the indexed project root. Stores [`get_log_path`](crate::config::get_log_path) — the real `ublx.log` path, not the directory path.
+pub fn set_index_dir_for_ublx_log(dir_to_ublx: &Path) {
+    let _ = UBLX_LOG_FILE_PATH.set(get_log_path(dir_to_ublx));
+}
+
+/// Chain [`try_write_panic_to_log`] before the current panic hook (usually stderr). Call after [`set_index_dir_for_ublx_log`]. [`crate::handlers::core::run_tui_session`] installs another hook that restores the terminal; that hook wraps whatever was active here.
+pub fn install_panic_hook_with_ublx_log(dir_to_ublx: &Path) {
+    set_index_dir_for_ublx_log(dir_to_ublx);
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        try_write_panic_to_log(info);
+        previous(info);
+    }));
+}
+
+/// Append a single line to the resolved `ublx.log` (best-effort; ignores I/O errors).
+pub fn try_append_fatal_line(message_ref: &str) {
+    let Some(log_path) = UBLX_LOG_FILE_PATH.get() else {
+        return;
+    };
+    let ts = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let _ = append_line_to_log_path(log_path, &format!("[{ts}] fatal: {message_ref}"));
+}
+
+/// Best-effort panic line for debugging when stderr is unusable (e.g. raw TUI). Chains with the previous hook in `main` / `run_tui_session`.
+pub fn try_write_panic_to_log(info: &std::panic::PanicHookInfo) {
+    let Some(log_path) = UBLX_LOG_FILE_PATH.get() else {
+        return;
+    };
+    let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+        *s
+    } else if let Some(s) = info.payload().downcast_ref::<String>() {
+        s.as_str()
+    } else {
+        "(panic payload not a string)"
+    };
+    let loc = info.location().map_or_else(
+        || "unknown location".to_string(),
+        |l| format!("{}:{}:{}", l.file(), l.line(), l.column()),
+    );
+    let ts = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let _ = append_line_to_log_path(log_path, &format!("[{ts}] panic at {loc}: {payload}"));
+}
+
+fn append_line_to_log_path(log_path: &Path, line: &str) -> std::io::Result<()> {
+    let mut f = File::options().create(true).append(true).open(log_path)?;
+    writeln!(f, "{line}")?;
+    Ok(())
+}
 
 /// User-facing `log::error!` text and related log-line prefixes for nefax + zahir during indexing.
 pub struct NefaxZahirErrors;

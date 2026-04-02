@@ -1,10 +1,10 @@
 pub mod app;
+pub mod cli_parser;
 pub mod config;
 pub mod engine;
 pub mod handlers;
 pub mod integrations;
 pub mod layout;
-pub mod macros;
 pub mod modules;
 pub mod render;
 pub mod themes;

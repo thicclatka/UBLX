@@ -486,10 +486,7 @@ pub fn draw_settings_pane(f: &mut Frame, area: Rect, state: &mut UblxState, dir_
         || UI_STRINGS.settings_pane.path_global_unavailable.to_owned(),
         |p| p.display().to_string(),
     );
-    let local_path_str = paths.toml_path().map_or_else(
-        || UI_STRINGS.settings_pane.path_local_missing.to_owned(),
-        |p| p.display().to_string(),
-    );
+    let local_path_str = paths.local_config_path_for_write().display().to_string();
 
     let overlay =
         settings::resolve_config_path(&paths, scope).and_then(|p| load_ublx_toml(Some(p), None));

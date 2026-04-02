@@ -11,14 +11,14 @@ use ublx::render::path_lines::wrap_path_string_segments;
 
 #[test]
 fn never_in_snapshot_only_mode() {
-    assert!(!should_show_initial_prompt(true, false));
-    assert!(!should_show_initial_prompt(true, true));
+    assert!(!should_show_initial_prompt(true, false, false));
+    assert!(!should_show_initial_prompt(true, true, false));
 }
 
 #[test]
 fn initial_prompt_only_if_no_ubli_db_when_not_snapshot_only() {
-    assert!(should_show_initial_prompt(false, false));
-    assert!(!should_show_initial_prompt(false, true));
+    assert!(should_show_initial_prompt(false, false, false));
+    assert!(!should_show_initial_prompt(false, true, false));
 }
 
 #[test]

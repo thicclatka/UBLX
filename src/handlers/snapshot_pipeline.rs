@@ -5,10 +5,9 @@ use std::time::Instant;
 
 use crate::config::{OPERATION_NAME, UblxOpts, UblxOptsForDirExtras, UblxPaths};
 use crate::engine::{db_ops, orchestrator};
-use crate::fatal;
 use crate::integrations::NefaxResult;
 use crate::themes;
-use crate::utils::BumperBuffer;
+use crate::utils::{BumperBuffer, fatal_error_handler};
 
 /// Run snapshot pipeline headlessly (no TUI), e.g. `--snapshot-only`.
 /// Returns `Err` on failure.
@@ -22,13 +21,13 @@ pub fn run_snapshot_pipeline_headless(
     prior_nefax: Option<&NefaxResult>,
     start_time: Option<Instant>,
 ) -> Result<(), anyhow::Error> {
-    fatal!(
+    fatal_error_handler(
         orchestrator::run(dir_to_ublx, ublx_opts, prior_nefax),
-        "pipeline failed: {}"
+        "pipeline failed: {}",
     );
-    fatal!(
+    fatal_error_handler(
         db_ops::UblxCleanup::new(dir_to_ublx).post_run_cleanup(),
-        "failed to cleanup: {}"
+        "failed to cleanup: {}",
     );
     if let Some(t) = start_time {
         debug!(

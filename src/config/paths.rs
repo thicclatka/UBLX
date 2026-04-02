@@ -9,6 +9,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use log::debug;
+
 pub struct UblxNames {
     pub pkg_name: &'static str,
     pub pkg_name_plural: &'static str,
@@ -233,8 +235,17 @@ pub fn has_recents_entry_for_dir(dir: &Path) -> bool {
 /// Callers should compute `had_ubli_db_file` with `UblxPaths::new(dir).db().exists()` **before**
 /// `ensure_ublx_and_db` (same order as [`crate::main`]).
 #[must_use]
-pub fn should_show_initial_prompt(snapshot_only: bool, had_index_db_before_ensure: bool) -> bool {
-    !snapshot_only && !had_index_db_before_ensure
+pub fn should_show_initial_prompt(
+    snapshot_only: bool,
+    had_index_db_before_ensure: bool,
+    had_any_cached_db_before_this_root: bool,
+) -> bool {
+    let initial_prompt = !snapshot_only && !had_index_db_before_ensure;
+    debug!(
+        "initial_prompt={initial_prompt} (had_index_db_before_ensure={had_index_db_before_ensure})"
+    );
+    debug!("cached ublx roots seen before startup: {had_any_cached_db_before_this_root}");
+    initial_prompt
 }
 
 /// True when the shared `ubli` directory contains at least one DB file.
@@ -591,6 +602,13 @@ impl UblxPaths {
         } else {
             None
         }
+    }
+
+    /// Path used when creating or updating local config: existing hidden or visible file if present, otherwise
+    /// [`Self::hidden_toml`] (same default as other local-config writers in this crate).
+    #[must_use]
+    pub fn local_config_path_for_write(&self) -> PathBuf {
+        self.toml_path().unwrap_or_else(|| self.hidden_toml())
     }
 
     /// Main DB file under `cache_dir()` / [`PKG_NAME_PLURAL`] (basename + [`INDEX_DB_FILE_EXT`]). `SQLite` creates it if missing.

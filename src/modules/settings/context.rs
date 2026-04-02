@@ -8,7 +8,9 @@ use crate::layout::setup::{SettingsConfigScope, SettingsPaneState, UblxState};
 use crate::themes::default_theme_for_new_config_file;
 use crate::utils::opacity_is_solid;
 
-/// Resolve which file is edited for the given scope.
+/// Resolve which file is edited for the given scope. Local scope uses the path where the file will be
+/// created on first save when no `.ublx.toml` / `ublx.toml` exists yet
+/// ([`crate::config::UblxPaths::local_config_path_for_write`]).
 #[must_use]
 pub fn resolve_config_path(
     paths_ref: &UblxPaths,
@@ -16,7 +18,7 @@ pub fn resolve_config_path(
 ) -> Option<std::path::PathBuf> {
     match scope {
         SettingsConfigScope::Global => paths_ref.global_config(),
-        SettingsConfigScope::Local => paths_ref.toml_path(),
+        SettingsConfigScope::Local => Some(paths_ref.local_config_path_for_write()),
     }
 }
 
