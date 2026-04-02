@@ -16,7 +16,7 @@ UBLX is a **TUI that turns any directory into a flat, navigable catalog** — ca
 ```bash
 cargo install ublx
 
-# or clone repo
+# or compile from source
 cargo build --release
 ```
 
