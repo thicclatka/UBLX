@@ -8,17 +8,17 @@ use lofty::picture::PictureType;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 
-use crate::integrations::ZahirFileType as FileType;
+use crate::integrations::ZahirFT;
 
 /// Reject absurdly large blobs (memory / decode time).
 const MAX_COVER_BYTES: usize = 8 * 1024 * 1024;
 
 /// Return raw image bytes (JPEG/PNG/etc.) suitable for [`image::load_from_memory`], if present.
 #[must_use]
-pub fn try_extract_cover(path: &Path, ft: FileType) -> Option<Vec<u8>> {
+pub fn try_extract_cover(path: &Path, ft: ZahirFT) -> Option<Vec<u8>> {
     match ft {
-        FileType::Audio => audio_cover_bytes(path),
-        FileType::Epub => epub_cover_bytes(path),
+        ZahirFT::Audio => audio_cover_bytes(path),
+        ZahirFT::Epub => epub_cover_bytes(path),
         _ => None,
     }
 }

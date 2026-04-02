@@ -15,8 +15,9 @@ use ratatui::widgets::ListState;
 use crate::engine::{
     cache,
     db_ops::{DeltaType, UblxDbCategory},
+    viewer_async::ViewerAsyncState,
 };
-use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
+use crate::integrations::{ZahirFT, file_type_from_metadata_name};
 use crate::render::viewers::pdf_preview::PDFPrefetch;
 use crate::utils::{ClipboardCopyCommand, ToastSlot};
 
@@ -335,6 +336,12 @@ pub struct DuplicateLoadGate {
     pub requested: bool,
 }
 
+/// Background flat Zahir JSON export (Command Mode + `x`).
+#[derive(Default)]
+pub struct ZahirExportGate {
+    pub requested: bool,
+}
+
 /// First real frame vs later ticks; redraw after returning from external editor.
 #[derive(Clone, Copy, Debug)]
 pub struct SessionTickFlags {
@@ -516,14 +523,17 @@ pub struct UblxState {
     pub viewer_disk_cache: Option<ViewerDiskContentCache>,
     /// Viewer: large markdown only — cached styled [`Text`] + viewport slice on scroll.
     pub viewer_text_cache: Option<cache::ViewerTextCacheEntry>,
-    /// Viewer: up to [`crate::render::cache::CSV_VIEWER_TEXT_LRU_CAP`] delimiter-table `Text` bodies by path/width/theme/revision.
+    /// Viewer: up to [`crate::engine::cache::VIEWER_TEXT_CACHE`] `csv_lru_cap` delimiter-table `Text` bodies by path/width/theme/revision.
     pub csv_table_text_lru:
         cache::LruCache<cache::ViewerTableCacheKey, cache::ViewerTextCacheEntry>,
+    /// Large markdown / syntect / CSV table builds off the UI thread ([`crate::render::viewers::async_render`]).
+    pub viewer_async: ViewerAsyncState,
     /// Image category viewer ([`RightPaneContent::derived`] `abs_path` + [`crate::render::viewers::image`]).
     pub viewer_image: ViewerImageState,
     pub last_key_for_double: Option<char>,
     pub snapshot_bg: BackgroundSnapshot,
     pub duplicate_load: DuplicateLoadGate,
+    pub zahir_export_load: ZahirExportGate,
     /// Duplicates tab: paths hidden for this session via Space → Ignore (i); not persisted.
     pub duplicate_ignored_paths: HashSet<String>,
     pub config_written_by_us_at: Option<std::time::Instant>,
@@ -566,10 +576,12 @@ impl UblxState {
             viewer_disk_cache: None,
             viewer_text_cache: None,
             csv_table_text_lru: cache::LruCache::default(),
+            viewer_async: ViewerAsyncState::default(),
             viewer_image: ViewerImageState::default(),
             last_key_for_double: None,
             snapshot_bg: BackgroundSnapshot::default(),
             duplicate_load: DuplicateLoadGate::default(),
+            zahir_export_load: ZahirExportGate::default(),
             duplicate_ignored_paths: HashSet::new(),
             config_written_by_us_at: None,
             session: SessionFlow::default(),
@@ -901,7 +913,8 @@ pub struct RightPaneContent {
     pub templates: String,
     pub metadata: Option<String>,
     pub writing: Option<String>,
-    pub viewer: Option<String>,
+    /// File/tree preview body; shared by reference for async highlight jobs (cheap `Arc::clone`).
+    pub viewer: Option<Arc<str>>,
     pub snap_meta: SnapshotEntryMeta,
     pub derived: RightPaneContentDerived,
 }
@@ -915,7 +928,7 @@ impl RightPaneContent {
 
     /// Zahir / viewer routing type from snapshot `category` (see [`crate::integrations::file_type_from_metadata_name`]).
     #[must_use]
-    pub fn zahir_file_type(&self) -> Option<FileType> {
+    pub fn zahir_file_type(&self) -> Option<ZahirFT> {
         file_type_from_metadata_name(self.snap_meta.category.as_deref().unwrap_or(""))
     }
 

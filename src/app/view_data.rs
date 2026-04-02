@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::layout::setup;
-use crate::modules::search::{self, fuzzy_matches_field};
+use crate::modules::catalog_filter::{self, fuzzy_matches_field};
 use crate::utils::{clamp_selection, clamp_selection_opt};
 
 fn sort_indices_by_mode(
@@ -162,11 +162,12 @@ pub fn build_view_data(
     mtimes_by_path: Option<&HashMap<String, Option<i64>>>,
 ) -> setup::ViewData {
     let search_query = state_mut.search.query.trim();
-    let filtered_categories = search::categories_for_search(categories, all_rows, search_query);
+    let filtered_categories =
+        catalog_filter::categories_for_search(categories, all_rows, search_query);
     let category_idx = state_mut.panels.category_state.selected().unwrap_or(0);
     let selected_category = selected_category(&filtered_categories, category_idx);
     let mut contents_indices =
-        search::content_indices_for_view(all_rows, selected_category, search_query);
+        catalog_filter::content_indices_for_view(all_rows, selected_category, search_query);
     if search_query.is_empty() {
         sort_indices_by_mode(
             &mut contents_indices,

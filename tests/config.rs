@@ -3,7 +3,7 @@
 use ublx::config::{
     EnhancePolicy, EnhancePolicyEntry, LayoutOverlay, Osc11BackgroundFormat, UblxOpts, UblxOverlay,
 };
-use ublx::integrations::{NefaxOpts, ZahirRuntimeConfig};
+use ublx::integrations::{NefaxOpts, ZahirRC};
 
 #[test]
 fn layout_overlay_default() {
@@ -29,6 +29,23 @@ right_pct = 40
 }
 
 #[test]
+fn ublx_overlay_merge_local_does_not_override_global_only_keys() {
+    let global = UblxOverlay {
+        opacity_format: Some(Osc11BackgroundFormat::Rgba),
+        ask_enhance_on_new_root: Some(true),
+        ..Default::default()
+    };
+    let local = UblxOverlay {
+        opacity_format: Some(Osc11BackgroundFormat::Hex8),
+        ask_enhance_on_new_root: Some(false),
+        ..Default::default()
+    };
+    let m = UblxOverlay::merge(Some(global), Some(local));
+    assert_eq!(m.opacity_format, Some(Osc11BackgroundFormat::Rgba));
+    assert_eq!(m.ask_enhance_on_new_root, Some(true));
+}
+
+#[test]
 fn ublx_overlay_merge_layout() {
     let mut base = UblxOverlay::default();
     let other = UblxOverlay {
@@ -48,8 +65,8 @@ fn ublx_overlay_merge_layout() {
 
 fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> UblxOpts {
     UblxOpts {
-        nefax: NefaxOpts::default(),
-        zahir: ZahirRuntimeConfig::new(),
+        nefax_opts: NefaxOpts::default(),
+        zahir_rc: ZahirRC::new(),
         max_workers_available: 1,
         nefax_workers_override: None,
         zahir_workers_override: None,

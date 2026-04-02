@@ -56,6 +56,10 @@ pub struct EnhancePolicyEntry {
 
 /// Config overlay read from config files. Only present keys override; used for global + local overlay.
 /// Apply in order: defaults → global `~/.config/ublx/ublx.toml` → local `.ublx.toml` or `ublx.toml` in indexed dir.
+///
+/// **Global-only keys** (see [`strip_global_only_keys_from_local_overlay`]): [`Self::opacity_format`],
+/// [`Self::ask_enhance_on_new_root`]. Project-local files must not override these; they are stripped before merge and when saving local TOML.
+///
 /// [theme], [layout], [hash], [`show_hidden_files`], and [`UblxOverlay::bg_opacity`] are hot-reloadable; [exclude] is applied only at startup.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
@@ -81,7 +85,7 @@ pub struct UblxOverlay {
     /// When `false` (default), only nefax + path-based category from `ZahirScan` file-type hints; empty `zahir_json` until per-file "Enhance with `ZahirScan`" or flip to `true` (next run re-enhances all). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_enhance_all: Option<bool>,
-    /// When `false`, skip the first-run "Enhance all files" prompt for a new root; use [`Self::enable_enhance_all`] from config instead. Set in `~/.config/ublx/ublx.toml` to stop being asked.
+    /// When `false`, skip the first-run "Enhance all files" prompt for a new root; use [`Self::enable_enhance_all`] from config instead. **Global config only** (same rule as [`Self::opacity_format`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ask_enhance_on_new_root: Option<bool>,
     /// Optional per-path subtree rules for index-time Zahir (`[[enhance_policy]]`). Hot-reloadable.
@@ -91,8 +95,16 @@ pub struct UblxOverlay {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bg_opacity: Option<f32>,
     /// OSC 11 payload style when [`Self::bg_opacity`] &lt; 1. Default: [`Osc11BackgroundFormat::Rgba`].
+    /// **Global config only** (see struct-level “global-only keys” note).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opacity_format: Option<Osc11BackgroundFormat>,
+}
+
+/// Remove keys that apply only from global `ublx.toml`, so project-local merge and local file writes cannot set them.
+#[inline]
+pub(crate) fn strip_global_only_keys_from_local_overlay(overlay: &mut UblxOverlay) {
+    overlay.opacity_format = None;
+    overlay.ask_enhance_on_new_root = None;
 }
 
 impl UblxOverlay {
@@ -133,14 +145,15 @@ impl UblxOverlay {
         }
     }
 
-    /// Merge global then local into one overlay (local wins). Used to apply once and to cache the effective config.
+    /// Merge global then local into one overlay (local wins for most keys). Global-only fields are taken from global only ([`strip_global_only_keys_from_local_overlay`]).
     #[must_use]
     pub fn merge(global: Option<UblxOverlay>, local: Option<UblxOverlay>) -> UblxOverlay {
         let mut out = UblxOverlay::default();
         if let Some(g) = global {
             out.merge_from(&g);
         }
-        if let Some(l) = local {
+        if let Some(mut l) = local {
+            strip_global_only_keys_from_local_overlay(&mut l);
             out.merge_from(&l);
         }
         out

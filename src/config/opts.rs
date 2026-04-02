@@ -6,14 +6,14 @@
 //! Tokio (async TUI / right-pane resolve) uses [`TOKIO_RUNTIME_WORKERS`] via [`UblxOpts::effective_tokio_runtime_workers`] — not TOML.
 //! For zahir-only (e.g. single file, no nefax), use [`UblxOpts::for_zahir_only`] with a chosen max (e.g. from tuning).
 //!
-//! Config overlay: global `~/.config/ublx/ublx.toml` (if present) is applied first, then local (`.ublx.toml` or `ublx.toml` in the indexed dir). Only keys present in each file override defaults.
+//! Config overlay: global config (if present) is applied first, then local (`.ublx.toml` or `ublx.toml` in the indexed dir). Only keys present in each file override defaults. Some keys are **global-only** ([`profile::strip_global_only_keys_from_local_overlay`]); local files cannot override them.
 
 use std::path::Path;
 use std::path::PathBuf;
 
 use crate::config::profile;
 use crate::integrations::{
-    NefaxDriveType, NefaxOpts, ZahirOutputMode, ZahirRuntimeConfig, pre_opts_for_nefaxer,
+    NefaxDriveType, NefaxOpts, ZahirOutputMode, ZahirRC, pre_opts_for_nefaxer,
 };
 use crate::utils::BumperBuffer;
 
@@ -69,9 +69,9 @@ const HIDDEN_EXCLUDE_PATTERN: &str = ".*";
 #[derive(Clone, Debug)]
 pub struct UblxOpts {
     /// Options passed to the nefaxer indexer (base; use [`Self::nefax_opts_with_workers`] for run).
-    pub nefax: NefaxOpts,
+    pub nefax_opts: NefaxOpts,
     /// `ZahirScan` runtime config. Use [`Self::zahir_runtime_config`] to get config with ublx overrides applied.
-    pub zahir: ZahirRuntimeConfig,
+    pub zahir_rc: ZahirRC,
     /// Max workers suggested by tuning (drive-type aware). From nefax [`tuning_for_path`] in [`Self::for_dir`].
     pub max_workers_available: usize,
     /// Override workers for nefaxer. When unset and >= [`STREAMING_THRESHOLD`], uses share from 1:1:1 ratio.
@@ -92,13 +92,13 @@ pub struct UblxOpts {
     pub layout: profile::LayoutOverlay,
     /// Page background opacity `0.0`–`1.0` (OSC 11 + main pane reset). `None` = solid (`1.0`). Hot-reloadable.
     pub bg_opacity: Option<f32>,
-    /// OSC 11 encoding when [`Self::bg_opacity`] is &lt; 1. Hot-reloadable.
+    /// OSC 11 encoding when [`Self::bg_opacity`] is &lt; 1. Hot-reloadable. Global-only ([`profile::strip_global_only_keys_from_local_overlay`]).
     pub opacity_format: profile::Osc11BackgroundFormat,
     /// Editor for Open (Terminal). When None, use $EDITOR.
     pub editor_path: Option<String>,
     /// When true, run full `ZahirScan` on indexed files; when false, path-only category + space-menu enhance.
     pub enable_enhance_all: bool,
-    /// When true (default), show the first-run enhance prompt for a new empty root. Set `ask_enhance_on_new_root = false` in global `ublx.toml` to skip and use `enable_enhance_all` from config instead.
+    /// When true (default), show the first-run enhance prompt for a new empty root. Set `ask_enhance_on_new_root = false` in global `ublx.toml` to skip and use `enable_enhance_all` from config instead. Global-only ([`profile::strip_global_only_keys_from_local_overlay`]).
     pub ask_enhance_on_new_root: bool,
     /// `enable_enhance_all` from the config cache **before** [`Self::for_dir`] applied the current overlay and called [`Self::save_overlay_to_cache`]. Used by snapshot `force_full` Zahir when flipping the flag to `true`.
     pub enable_enhance_all_cache_before_apply: Option<bool>,
@@ -135,7 +135,7 @@ impl UblxOpts {
     /// Apply full overlay at startup (exclude + hot-reloadable fields). [exclude] is only applied here.
     fn apply_overlay(&mut self, overlay: &profile::UblxOverlay) {
         if let Some(ref extra) = overlay.exclude {
-            self.nefax.exclude.extend(extra.iter().cloned());
+            self.nefax_opts.exclude.extend(extra.iter().cloned());
         }
         self.apply_hot_reload_overlay(overlay);
     }
@@ -145,21 +145,25 @@ impl UblxOpts {
     pub fn apply_hot_reload_overlay(&mut self, overlay: &profile::UblxOverlay) {
         let show_hidden = overlay.show_hidden_files.unwrap_or(false);
         if show_hidden {
-            self.nefax.exclude.retain(|p| p != HIDDEN_EXCLUDE_PATTERN);
-            self.zahir.flags.ignore_hidden_files = false;
+            self.nefax_opts
+                .exclude
+                .retain(|p| p != HIDDEN_EXCLUDE_PATTERN);
+            self.zahir_rc.flags.ignore_hidden_files = false;
         } else {
             if !self
-                .nefax
+                .nefax_opts
                 .exclude
                 .iter()
                 .any(|p| p == HIDDEN_EXCLUDE_PATTERN)
             {
-                self.nefax.exclude.push(HIDDEN_EXCLUDE_PATTERN.to_string());
+                self.nefax_opts
+                    .exclude
+                    .push(HIDDEN_EXCLUDE_PATTERN.to_string());
             }
-            self.zahir.flags.ignore_hidden_files = true;
+            self.zahir_rc.flags.ignore_hidden_files = true;
         }
         if let Some(hash) = overlay.hash {
-            self.nefax.with_hash = hash;
+            self.nefax_opts.with_hash = hash;
         }
         if overlay.theme.is_some() {
             self.theme.clone_from(&overlay.theme);
@@ -240,9 +244,9 @@ impl UblxOpts {
         config: &UblxOptsForDirExtras<'_>,
     ) -> Self {
         let exclude = ublx_paths.exclude();
-        let nefax = pre_opts_for_nefaxer(dir_to_ublx, &exclude, cached_settings);
-        let num_threads = nefax.num_threads.unwrap_or(1);
-        let zahir = ZahirRuntimeConfig::new();
+        let nefax_opts = pre_opts_for_nefaxer(dir_to_ublx, &exclude, cached_settings);
+        let num_threads = nefax_opts.num_threads.unwrap_or(1);
+        let zahir_rc = ZahirRC::new();
         let streaming = num_threads >= STREAMING_THRESHOLD;
         let config_source = cached_settings.and_then(|s| s.config_source.clone());
         let enable_enhance_all_cache_before_apply =
@@ -250,8 +254,8 @@ impl UblxOpts {
         let with_hash_cache_before_apply =
             Self::load_overlay_from_cache(ublx_paths).and_then(|o| o.hash);
         let mut opts = Self {
-            nefax,
-            zahir,
+            nefax_opts,
+            zahir_rc,
             max_workers_available: num_threads,
             nefax_workers_override,
             zahir_workers_override,
@@ -299,25 +303,24 @@ impl UblxOpts {
         UblxSettings {
             num_threads: self.max_workers_available,
             drive_type: self
-                .nefax
+                .nefax_opts
                 .drive_type
                 .map_or("Unknown", drive_type_to_string)
                 .to_string(),
-            parallel_walk: self.nefax.use_parallel_walk.unwrap_or(false),
+            parallel_walk: self.nefax_opts.use_parallel_walk.unwrap_or(false),
             config_source: self.config_source.clone(),
         }
     }
 
     /// Build opts when running zahir only (e.g. single file, no nefax). You supply [`Self::max_workers_available`] (e.g. from tuning on a path); all are used for zahir.
     /// [`Self::streaming`] is set true when workers >= [`STREAMING_THRESHOLD`].
-    #[allow(dead_code)]
     #[must_use]
-    pub fn for_zahir_only(max_workers_available: usize, zahir: ZahirRuntimeConfig) -> Self {
-        let nefax = NefaxOpts::default();
+    pub fn for_zahir_only(max_workers_available: usize, zahir_rc: ZahirRC) -> Self {
+        let nefax_opts = NefaxOpts::default();
         let streaming = max_workers_available >= STREAMING_THRESHOLD;
         Self {
-            nefax,
-            zahir,
+            nefax_opts,
+            zahir_rc,
             max_workers_available,
             nefax_workers_override: Some(0),
             zahir_workers_override: Some(max_workers_available),
@@ -402,26 +405,23 @@ impl UblxOpts {
     }
 
     /// Reference to the inner [`NefaxOpts`] (base, no worker override applied).
-    #[allow(dead_code)]
     #[must_use]
     pub fn nefax_opts(&self) -> &NefaxOpts {
-        &self.nefax
+        &self.nefax_opts
     }
 
     /// [`NefaxOpts`] with [`Self::effective_nefax_workers`] applied to `num_threads` for use with [`nefax_ops::run_nefaxer`].
-    #[allow(dead_code)]
     #[must_use]
     pub fn nefax_opts_with_workers(&self) -> NefaxOpts {
-        let mut opts = self.nefax.clone();
+        let mut opts = self.nefax_opts.clone();
         opts.num_threads = Some(self.effective_nefax_workers());
         opts
     }
 
     /// `ZahirScan` runtime config with ublx overrides: [`OutputMode::Templates`], [`Self::effective_zahir_workers`] for `max_workers`.
-    #[allow(dead_code)]
     #[must_use]
-    pub fn zahir_runtime_config(&self) -> ZahirRuntimeConfig {
-        let mut config = self.zahir.clone();
+    pub fn zahir_runtime_config(&self) -> ZahirRC {
+        let mut config = self.zahir_rc.clone();
         config.output_mode = ZahirOutputMode::Templates;
         config.max_workers = self.effective_zahir_workers();
         config

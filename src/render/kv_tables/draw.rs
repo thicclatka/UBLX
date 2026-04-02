@@ -3,7 +3,7 @@
 use ratatui::layout::Rect;
 
 use crate::layout::{setup::UblxState, style};
-use crate::modules::viewer_find;
+use crate::modules::viewer_search;
 use crate::ui::UI_STRINGS;
 
 use super::consts::TABLE_GAP;
@@ -277,7 +277,7 @@ pub fn draw_tables(
     let viewport = table_area.height;
     let visible_start = scroll_y;
     let visible_end = scroll_y + viewport;
-    let line_starts_vec = if viewer_find::option_needle_nonempty(find_needle)
+    let line_starts_vec = if viewer_search::option_needle_nonempty(find_needle)
         && !state.viewer_find.ranges.is_empty()
     {
         let hay = sections::searchable_text_from_json(json);

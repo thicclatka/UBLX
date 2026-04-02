@@ -4,14 +4,28 @@
 use serde_json::{self, Value};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 use crate::engine::db_ops;
-use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
+use crate::integrations::{ZahirFT, file_type_from_metadata_name};
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, RightPaneContentDerived, SectionedPreview,
     SnapshotEntryMeta, TuiRow, UblxState, ViewData, ViewerDiskContentCache,
 };
 use crate::utils;
+
+/// Minified JSON is often one physical line, so `lines().count()` stays 1 while the pane wraps to
+/// many rows → scrollbar / `content_width` thrash with async syntect. Valid JSON is replaced with
+/// [`serde_json::to_string_pretty`] so line estimates match the rendered body.
+fn pretty_json_viewer_body(s: String) -> String {
+    if s.is_empty() {
+        return s;
+    }
+    match serde_json::from_str::<Value>(&s) {
+        Ok(v) => serde_json::to_string_pretty(&v).unwrap_or(s),
+        Err(_) => s,
+    }
+}
 
 /// Run `tree` on `full_path`; use cached result if keyed by `path`. Updates `state.cached_tree`.
 fn tree_for_path(state_mut: &mut UblxState, path_ref: &str, full_path_ref: &Path) -> String {
@@ -55,7 +69,7 @@ fn tree_viewer(
         templates: String::new(),
         metadata: None,
         writing: None,
-        viewer: Some(tree_str),
+        viewer: Some(Arc::from(tree_str)),
         snap_meta: SnapshotEntryMeta {
             path: Some(rel_path.to_string()),
             category: Some(CATEGORY_DIRECTORY.to_string()),
@@ -95,6 +109,79 @@ pub struct NonDirectoryRightPaneBuild<'a> {
     pub disk_cache_hint: Option<&'a ViewerDiskContentCache>,
 }
 
+/// Load viewer text, cover raster, openability, and optional new disk-cache row (cache miss only).
+fn resolve_viewer_disk_payload(
+    path: &str,
+    category: &str,
+    full_path: &Path,
+    viewer_zahir_type: Option<ZahirFT>,
+    meta_opt_ref: Option<&std::fs::Metadata>,
+    disk_cache_hit: Option<&ViewerDiskContentCache>,
+) -> (
+    Option<String>,
+    Option<Vec<u8>>,
+    bool,
+    Option<ViewerDiskContentCache>,
+) {
+    if let Some(c) = disk_cache_hit {
+        let viewer_str = match viewer_zahir_type {
+            Some(ZahirFT::Json) => c.viewer_str.clone().map(pretty_json_viewer_body),
+            _ => c.viewer_str.clone(),
+        };
+        return (
+            viewer_str,
+            c.embedded_cover_raster.clone(),
+            c.viewer_can_open,
+            None,
+        );
+    }
+
+    let embedded_cover = match viewer_zahir_type {
+        Some(ft @ (ZahirFT::Audio | ZahirFT::Epub)) => utils::try_extract_cover(full_path, ft),
+        _ => None,
+    };
+    let viewer_str = if embedded_cover.is_some() {
+        Some(String::new())
+    } else {
+        utils::file_content_for_viewer(full_path, viewer_zahir_type)
+    };
+    let viewer_str = match viewer_zahir_type {
+        Some(ZahirFT::Json) => viewer_str.map(pretty_json_viewer_body),
+        _ => viewer_str,
+    };
+    let viewer_can_open = !utils::is_likely_binary(full_path)
+        || matches!(
+            viewer_zahir_type,
+            Some(ZahirFT::Image | ZahirFT::Pdf | ZahirFT::Video | ZahirFT::Audio | ZahirFT::Epub)
+        );
+    let cache = meta_opt_ref.map(|meta| ViewerDiskContentCache {
+        rel_path: path.to_string(),
+        category: category.to_string(),
+        file_len: meta.len(),
+        modified: meta.modified().ok(),
+        viewer_str: viewer_str.clone(),
+        embedded_cover_raster: embedded_cover.clone(),
+        viewer_can_open,
+    });
+    (viewer_str, embedded_cover, viewer_can_open, cache)
+}
+
+fn zahir_derived_pane_fields(
+    zahir_json: &str,
+    enable_enhance_all: bool,
+) -> (String, Option<String>, Option<String>, bool) {
+    if zahir_json.is_empty() {
+        return (String::new(), None, None, !enable_enhance_all);
+    }
+    match serde_json::from_str::<Value>(zahir_json) {
+        Ok(v) => {
+            let s = sectioned_preview_from_zahir(&v);
+            (s.templates, s.metadata, s.writing, false)
+        }
+        _ => (String::new(), None, None, false),
+    }
+}
+
 /// Build file-row right pane (not a directory on disk): disk read, optional cover, DB zahir JSON.
 /// `disk_cache_hint` is usually [`UblxState::viewer_disk_cache`] on the UI thread; background workers pass [`None`].
 #[must_use]
@@ -119,54 +206,18 @@ pub fn build_non_directory_right_pane_inner(
     let viewer_zahir_type = file_type_from_metadata_name(category);
 
     let meta_opt = std::fs::metadata(full_path).ok();
-    let disk_cache_hit = meta_opt.as_ref().and_then(|meta| {
-        disk_cache_hint
-            .as_ref()
-            .filter(|c| c.matches(path, category, meta))
-    });
+    let disk_cache_hit = meta_opt
+        .as_ref()
+        .and_then(|meta| disk_cache_hint.filter(|c| c.matches(path, category, meta)));
 
-    let (viewer_str, embedded_cover, viewer_can_open, new_disk_cache) =
-        if let Some(c) = disk_cache_hit {
-            (
-                c.viewer_str.clone(),
-                c.embedded_cover_raster.clone(),
-                c.viewer_can_open,
-                None,
-            )
-        } else {
-            let embedded_cover = match viewer_zahir_type {
-                Some(ft @ (FileType::Audio | FileType::Epub)) => {
-                    utils::try_extract_cover(full_path, ft)
-                }
-                _ => None,
-            };
-            let viewer_str = if embedded_cover.is_some() {
-                Some(String::new())
-            } else {
-                utils::file_content_for_viewer(full_path, viewer_zahir_type)
-            };
-            let viewer_can_open = !utils::is_likely_binary(full_path)
-                || matches!(
-                    viewer_zahir_type,
-                    Some(
-                        FileType::Image
-                            | FileType::Pdf
-                            | FileType::Video
-                            | FileType::Audio
-                            | FileType::Epub
-                    )
-                );
-            let cache = meta_opt.as_ref().map(|meta| ViewerDiskContentCache {
-                rel_path: path.to_string(),
-                category: category.to_string(),
-                file_len: meta.len(),
-                modified: meta.modified().ok(),
-                viewer_str: viewer_str.clone(),
-                embedded_cover_raster: embedded_cover.clone(),
-                viewer_can_open,
-            });
-            (viewer_str, embedded_cover, viewer_can_open, cache)
-        };
+    let (viewer_str, embedded_cover, viewer_can_open, new_disk_cache) = resolve_viewer_disk_payload(
+        path,
+        category,
+        full_path,
+        viewer_zahir_type,
+        meta_opt.as_ref(),
+        disk_cache_hit,
+    );
 
     let viewer_byte_size = viewer_str.as_ref().map(|_| size);
     let zahir_json: String = db_ops::load_zahir_json_for_path(db_path_ref, path)
@@ -174,23 +225,14 @@ pub fn build_non_directory_right_pane_inner(
         .flatten()
         .unwrap_or_default();
 
-    let (templates, metadata, writing, viewer_offer_enhance_zahir) = if zahir_json.is_empty() {
-        (String::new(), None, None, !enable_enhance_all)
-    } else {
-        match serde_json::from_str::<Value>(&zahir_json) {
-            Ok(v) => {
-                let s = sectioned_preview_from_zahir(&v);
-                (s.templates, s.metadata, s.writing, false)
-            }
-            _ => (String::new(), None, None, false),
-        }
-    };
+    let (templates, metadata, writing, viewer_offer_enhance_zahir) =
+        zahir_derived_pane_fields(&zahir_json, enable_enhance_all);
 
     let content = RightPaneContent {
         templates,
         metadata,
         writing,
-        viewer: viewer_str,
+        viewer: viewer_str.map(Arc::from),
         snap_meta: SnapshotEntryMeta {
             path: Some(path.to_string()),
             category: Some(category.to_string()),

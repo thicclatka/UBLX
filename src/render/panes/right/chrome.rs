@@ -9,10 +9,10 @@ use crate::layout::{
     setup::{RightPaneContent, RightPaneMode, UblxState, ViewData},
     style,
 };
-use crate::render::{panes, viewers::image as viewer_image};
+use crate::render::{panes, viewers::images};
 use crate::themes;
 use crate::ui::{UI_STRINGS, chord_chrome_active};
-use crate::utils::{StringObjTraits, format_bytes};
+use crate::utils::{StringObjTraits, format_bytes, shorten_path_for_title};
 
 use super::content::{haystack_for_right_pane_mode, literal_match_count};
 
@@ -56,8 +56,8 @@ pub fn right_pane_footer_line(
     right_content: &RightPaneContent,
     transparent_page_chrome: bool,
 ) -> Option<Line<'static>> {
-    viewer_image::sync_pdf_selection_state(state, right_content);
-    let pdf_footer = viewer_image::pdf_page_footer_text(right_content, &state.viewer_image);
+    images::sync_pdf_selection_state(state, right_content);
+    let pdf_footer = images::pdf_page_footer_text(right_content, &state.viewer_image);
     let show_footer = state.right_pane_mode == RightPaneMode::Viewer
         && (right_content.snap_meta.size.is_some()
             || right_content.snap_meta.mtime_ns.is_some()
@@ -177,6 +177,22 @@ pub fn right_pane_tab_spans(
     out
 }
 
+/// Fullscreen top border: padded tab label, optional ` - ` + [`shorten_path_for_title`] path in the palette’s hint color, then the fullscreen suffix.
+#[must_use]
+pub fn right_pane_fullscreen_title_line(state: &UblxState, path: Option<&str>) -> Line<'static> {
+    let base = style::text_style();
+    let hint_fg = themes::current().hint;
+    match path {
+        Some(p) => Line::from(vec![
+            Span::styled(title(state), base),
+            Span::raw("- "),
+            Span::styled(shorten_path_for_title(p), Style::default().fg(hint_fg)),
+            Span::raw(" "),
+        ]),
+        None => Line::from(vec![Span::styled(title(state), base)]),
+    }
+}
+
 pub fn right_pane_footer_line_fullscreen(
     state: &mut UblxState,
     right_content: &RightPaneContent,
@@ -207,15 +223,15 @@ pub fn right_pane_footer_line_fullscreen(
     }
 }
 
-pub fn right_pane_block<'a>(
-    top_title: Option<&'a str>,
-    footer_line: Option<&'a Line<'static>>,
-) -> Block<'a> {
+pub fn right_pane_block(
+    top_title: Option<Line<'static>>,
+    footer_line: Option<&Line<'static>>,
+) -> Block<'static> {
     let b = Block::default()
         .borders(Borders::ALL)
         .style(style::text_style());
     let b = match top_title {
-        Some(t) => b.title(t),
+        Some(line) => b.title(line),
         None => b,
     };
     match footer_line {

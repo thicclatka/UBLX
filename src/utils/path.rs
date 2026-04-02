@@ -47,6 +47,23 @@ pub fn snapshot_rel_path_buf(path_str: &str) -> PathBuf {
     PathBuf::from(normalize_snapshot_rel_path_str(path_str))
 }
 
+/// Collapse long slash-separated paths for compact UI titles.
+///
+/// If there are more than [`TAIL`] non-empty components (after normalizing `\\` to `/`), returns
+/// `.../x/y/z` using only the last [`TAIL`] segments. Otherwise returns the trimmed path with `\`
+/// normalized to `/`.
+#[must_use]
+pub fn shorten_path_for_title(path: &str) -> String {
+    const TAIL: usize = 3;
+    let normalized = path.trim().replace('\\', "/");
+    let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() <= TAIL {
+        return normalized;
+    }
+    let tail = parts[parts.len() - TAIL..].join("/");
+    format!(".../{tail}")
+}
+
 /// True if `path`'s file extension equals any of `exts` (ASCII case-insensitive, OR semantics).
 #[must_use]
 pub fn path_has_extension(path: &str, exts: &[&str]) -> bool {
@@ -80,4 +97,30 @@ macro_rules! define_path_ext_predicate {
             $crate::utils::path_has_extension(path, &[$($ext),+])
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shorten_path_for_title;
+
+    #[test]
+    fn shorten_path_for_title_short_unchanged() {
+        assert_eq!(shorten_path_for_title("a/b"), "a/b");
+        assert_eq!(shorten_path_for_title("a/b/c"), "a/b/c");
+        assert_eq!(shorten_path_for_title("file.rs"), "file.rs");
+    }
+
+    #[test]
+    fn shorten_path_for_title_long_keeps_last_three() {
+        assert_eq!(shorten_path_for_title("a/b/c/d"), ".../b/c/d");
+        assert_eq!(
+            shorten_path_for_title("/usr/local/bin/tool"),
+            ".../local/bin/tool"
+        );
+    }
+
+    #[test]
+    fn shorten_path_for_title_normalizes_backslashes() {
+        assert_eq!(shorten_path_for_title(r"a\b\c\d"), ".../b/c/d");
+    }
 }

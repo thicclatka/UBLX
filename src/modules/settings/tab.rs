@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::app::RunUblxParams;
 use crate::config::{
     LayoutOverlay, Osc11BackgroundFormat, UblxOpts, UblxOverlay, UblxPaths, load_ublx_toml,
-    write_ublx_overlay_at,
+    strip_global_only_keys_from_local_overlay, write_ublx_overlay_at,
 };
 use crate::handlers::state_transitions::PREVIEW_SCROLL_STEP_LINES;
 use crate::layout::setup::{SettingsConfigScope, UblxState};
@@ -34,12 +34,17 @@ pub fn on_enter_settings(state_mut: &mut UblxState, params_ref: &RunUblxParams<'
 fn persist_overlay_reload_refresh(
     path: &Path,
     overlay: &UblxOverlay,
+    scope: SettingsConfigScope,
     state_mut: &mut UblxState,
     params_mut: &mut RunUblxParams<'_>,
     ublx_opts_mut: &mut UblxOpts,
     after_apply: impl FnOnce(&mut UblxState),
 ) {
-    write_ublx_overlay_at(path, overlay);
+    let mut to_write = overlay.clone();
+    if scope == SettingsConfigScope::Local {
+        strip_global_only_keys_from_local_overlay(&mut to_write);
+    }
+    write_ublx_overlay_at(path, &to_write);
     state_mut.config_written_by_us_at = Some(std::time::Instant::now());
     apply_config_reload(params_mut, ublx_opts_mut, state_mut, None::<&str>);
     after_apply(state_mut);
@@ -64,6 +69,7 @@ fn submit_settings_bool_row(
     persist_overlay_reload_refresh(
         path.as_path(),
         &overlay,
+        scope,
         state_mut,
         params_mut,
         ublx_opts_mut,
@@ -101,6 +107,7 @@ fn submit_settings_opacity_format_row(
     persist_overlay_reload_refresh(
         path.as_path(),
         &overlay,
+        scope,
         state_mut,
         params_mut,
         ublx_opts_mut,
@@ -153,6 +160,7 @@ fn submit_settings_layout_row(
         persist_overlay_reload_refresh(
             path.as_path(),
             &overlay,
+            scope,
             state_mut,
             params_mut,
             ublx_opts_mut,
@@ -214,6 +222,7 @@ fn submit_settings_bg_opacity_row(
         persist_overlay_reload_refresh(
             path.as_path(),
             &overlay,
+            scope,
             state_mut,
             params_mut,
             ublx_opts_mut,
@@ -260,7 +269,7 @@ fn handle_settings_search_submit(
     let cur = state_mut.settings.left_cursor;
     if cur < bool_rows::bool_row_count(scope) {
         submit_settings_bool_row(state_mut, params_mut, ublx_opts_mut, scope, cur);
-    } else if cur == layout_edit::opacity_format_row_index(scope) {
+    } else if Some(cur) == layout_edit::opacity_format_row_index(scope) {
         submit_settings_opacity_format_row(state_mut, params_mut, ublx_opts_mut, scope);
     } else if cur == layout_btn {
         submit_settings_layout_row(state_mut, params_mut, ublx_opts_mut, scope, layout_btn);

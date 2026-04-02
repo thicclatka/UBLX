@@ -1,7 +1,7 @@
-//! Syntect-based syntax highlighting for the Viewer tab.
+//! Code-based syntax highlighting for the Viewer tab.
 //!
 //! **Whether** to highlight comes only from the snapshot [`UblxDbCategory`] (same strings as the DB
-//! `category` column). **Which** syntect grammar to use follows that type; for [`FileType::Code`] the
+//! `category` column). **Which** syntect grammar to use follows that type; for [`ZahirFT::Code`] the
 //! path/filename selects the language (Rust vs TypeScript, etc.), since the DB only stores “Code”.
 //!
 //! Extra grammars (e.g. TOML, TypeScript) come from the `sublime_syntaxes` crate (bat-sourced
@@ -18,7 +18,7 @@ use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 use crate::engine::db_ops::UblxDbCategory;
-use crate::integrations::ZahirFileType as FileType;
+use crate::integrations::ZahirFT;
 use crate::themes::{self, Appearance, SYNTECT_THEME_KEYS};
 
 static DEFAULT_SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
@@ -102,30 +102,30 @@ fn syn_style_to_ratatui(s: &SynStyle) -> RatStyle {
 fn pick_syntax<'a>(
     default: &'a SyntaxSet,
     extra: &'a SyntaxSet,
-    ft: FileType,
+    ft: ZahirFT,
     path: &str,
     raw: &str,
 ) -> (&'a SyntaxSet, &'a SyntaxReference) {
     let first_line = raw.lines().next().unwrap_or("");
     match ft {
-        FileType::Json => {
+        ZahirFT::Json => {
             find_by_extension(default, extra, "json").unwrap_or_else(|| plain(default))
         }
-        FileType::Toml => {
+        ZahirFT::Toml => {
             find_by_extension(default, extra, "toml").unwrap_or_else(|| plain(default))
         }
-        FileType::Yaml => {
+        ZahirFT::Yaml => {
             find_by_extension(default, extra, "yaml").unwrap_or_else(|| plain(default))
         }
-        FileType::Xml => find_by_extension(default, extra, "xml").unwrap_or_else(|| plain(default)),
-        FileType::Html => {
+        ZahirFT::Xml => find_by_extension(default, extra, "xml").unwrap_or_else(|| plain(default)),
+        ZahirFT::Html => {
             find_by_extension(default, extra, "html").unwrap_or_else(|| plain(default))
         }
-        FileType::Ini => find_by_extension(default, extra, "ini").unwrap_or_else(|| plain(default)),
-        FileType::Log => find_by_extension(default, extra, "log")
+        ZahirFT::Ini => find_by_extension(default, extra, "ini").unwrap_or_else(|| plain(default)),
+        ZahirFT::Log => find_by_extension(default, extra, "log")
             .or_else(|| find_by_first_line(default, extra, first_line))
             .unwrap_or_else(|| plain(default)),
-        FileType::Code => pick_syntax_by_path(default, extra, path, raw),
+        ZahirFT::Code => pick_syntax_by_path(default, extra, path, raw),
         _ => plain(default),
     }
 }
@@ -133,13 +133,24 @@ fn pick_syntax<'a>(
 /// Syntax-highlight using DB [`UblxDbCategory`]; caller should only invoke for zahir types that use syntect.
 #[must_use]
 pub fn highlight_viewer(raw: &str, path: &str, cat: UblxDbCategory) -> Text<'static> {
+    highlight_viewer_with_appearance(raw, path, cat, themes::current().appearance)
+}
+
+/// Same as [`highlight_viewer`], but with an explicit [`Appearance`] (e.g. background worker without `themes::current()`).
+#[must_use]
+pub fn highlight_viewer_with_appearance(
+    raw: &str,
+    path: &str,
+    cat: UblxDbCategory,
+    appearance: Appearance,
+) -> Text<'static> {
     let UblxDbCategory::Zahir(ft) = cat else {
         return Text::from(raw.to_string());
     };
     let default = &*DEFAULT_SYNTAX_SET;
     let extra = &*EXTRA_SYNTAX_SET;
     let (ss, syntax) = pick_syntax(default, extra, ft, path, raw);
-    let theme = theme_for_appearance(themes::current().appearance);
+    let theme = theme_for_appearance(appearance);
     let mut h = HighlightLines::new(syntax, theme);
     let mut lines = Vec::new();
     for line in LinesWithEndings::from(raw) {

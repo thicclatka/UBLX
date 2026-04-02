@@ -18,9 +18,9 @@ use super::nefax_ops;
 pub type ZahirResult = zahirscan::ZahirScanResult;
 pub type ZahirOutput = zahirscan::Output;
 pub type ZahirOutputSink = zahirscan::OutputSink;
-pub type ZahirFileType = zahirscan::FileType;
+pub type ZahirFT = zahirscan::FileType;
 pub type ZahirOutputMode = zahirscan::OutputMode;
-pub type ZahirRuntimeConfig = zahirscan::RuntimeConfig;
+pub type ZahirRC = zahirscan::RuntimeConfig;
 
 /// Safe ffprobe invocation (JSON format/streams). Delegates to [`zahirscan::utils::ffprobe_handler::run_ffprobe_safe`].
 pub use zahirscan::utils::ffprobe_handler::run_ffprobe_safe;

@@ -1,10 +1,10 @@
 //! Apply key actions to TUI state. Moved from layout so "what happens on key" lives with other behavior.
 
-use crate::integrations::ZahirFileType as FileType;
+use crate::integrations::ZahirFT;
 use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
 };
-use crate::modules::viewer_find;
+use crate::modules::viewer_search;
 use crate::ui::UblxAction;
 use crate::utils::clamp_selection;
 
@@ -48,6 +48,7 @@ fn apply_mode_switch(
         UblxAction::MainModeDuplicates => state_mut.main_mode = MainMode::Duplicates,
         UblxAction::MainModeLenses => state_mut.main_mode = MainMode::Lenses,
         UblxAction::LoadDuplicates => state_mut.duplicate_load.requested = true,
+        UblxAction::ExportZahirJson => state_mut.zahir_export_load.requested = true,
         UblxAction::MainModeToggle => {
             state_mut.main_mode = state_mut.main_mode.next(has_duplicates, has_lenses);
         }
@@ -74,7 +75,7 @@ fn apply_preview_scroll(state_mut: &mut UblxState, action: UblxAction) {
 /// Check if PDF page navigation applies
 fn pdf_page_nav_applies(state_ref: &UblxState, right_content_ref: &RightPaneContent) -> bool {
     state_ref.right_pane_mode == RightPaneMode::Viewer
-        && right_content_ref.zahir_file_type() == Some(FileType::Pdf)
+        && right_content_ref.zahir_file_type() == Some(ZahirFT::Pdf)
         && right_content_ref.derived.abs_path.is_some()
 }
 
@@ -148,11 +149,12 @@ impl<'a> UblxActionContext<'a> {
             | UblxAction::MainModeDuplicates
             | UblxAction::MainModeLenses
             | UblxAction::MainModeToggle
-            | UblxAction::LoadDuplicates => {
+            | UblxAction::LoadDuplicates
+            | UblxAction::ExportZahirJson => {
                 apply_mode_switch(state_mut, action, has_duplicates, has_lenses);
             }
             UblxAction::SearchStart => {
-                viewer_find::clear(state_mut);
+                viewer_search::clear(state_mut);
                 state_mut.search.active = true;
             }
             UblxAction::ViewerFindOpen => {

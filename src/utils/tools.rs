@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::UBLX_NAMES;
-use crate::integrations::ZahirFileType as FileType;
+use crate::integrations::ZahirFT;
 use crate::utils::exit_error;
 
 /// Binary prefixes (1024-based), shared with [`format_bytes`].
@@ -57,14 +57,14 @@ pub fn binary_file_label(path: &Path) -> String {
 ///
 /// Cap is [`HALF_MIB_BYTES_USIZE`]. When `zahir_type` is [`FileType::Image`], [`FileType::Pdf`], or [`FileType::Video`], returns empty string for a normal file so the render layer loads the preview.
 #[must_use]
-pub fn file_content_for_viewer(path: &Path, zahir_type: Option<FileType>) -> Option<String> {
+pub fn file_content_for_viewer(path: &Path, zahir_type: Option<ZahirFT>) -> Option<String> {
     let Ok(meta) = fs::metadata(path) else {
         return Some("(file not found)".to_string());
     };
     if meta.is_file()
         && matches!(
             zahir_type,
-            Some(FileType::Image | FileType::Pdf | FileType::Video)
+            Some(ZahirFT::Image | ZahirFT::Pdf | ZahirFT::Video)
         )
     {
         return Some(String::new());

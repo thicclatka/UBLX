@@ -14,7 +14,7 @@ use crate::integrations;
 use crate::utils;
 
 use super::consts::{DeltaType, UblxDbSchema, UblxDbStatements};
-use super::lens::load_lens_names_from_conn;
+use super::lens_storage::load_lens_names_from_conn;
 use super::path_resolver::{SnapshotReaderPreference, snapshot_reader_path_with};
 use super::utils::{self as db_ops_utils, SnapshotPriorContext};
 

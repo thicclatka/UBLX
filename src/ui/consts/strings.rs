@@ -69,7 +69,6 @@ pub struct UiStringsPaths {
 
 pub struct UiStringsBrand {
     pub brand: &'static str,
-    pub fullscreen_suffix: &'static str,
 }
 
 pub struct UiStringsTables {
@@ -145,6 +144,10 @@ pub struct UiStringsToasts {
     pub bulk_enhanced_zahir_n: &'static str,
     /// Duplicates tab: Space → Ignore (i); path hidden until reload or session end.
     pub duplicate_member_ignored: &'static str,
+    /// Replace `{N}` with file count (Command Mode export to `ublx-export/`).
+    pub export_zahir_ok: &'static str,
+    pub export_zahir_none: &'static str,
+    pub export_zahir_failed_prefix: &'static str,
 }
 
 pub struct UiStringsLens {
@@ -365,10 +368,7 @@ impl UiStrings {
     }
 
     const fn brand() -> UiStringsBrand {
-        UiStringsBrand {
-            brand: "UBLX",
-            fullscreen_suffix: "(Esc to exit fullscreen)",
-        }
+        UiStringsBrand { brand: "UBLX" }
     }
 
     const fn tables() -> UiStringsTables {
@@ -432,6 +432,9 @@ impl UiStrings {
             bulk_removed_n_from_lens: r#"Removed {N} path(s) from lens "{LENS}""#,
             bulk_enhanced_zahir_n: "Enhanced {N} file(s) with ZahirScan",
             duplicate_member_ignored: "Hidden from Duplicates for this session",
+            export_zahir_ok: "Exported {N} Zahir JSON file(s)",
+            export_zahir_none: "No Zahir JSON to export retake snapshot after adjusting settings/enhance policy",
+            export_zahir_failed_prefix: "Zahir export failed: ",
         }
     }
 
@@ -501,7 +504,7 @@ impl UiStrings {
             layout_right_pct: "right_pct ",
             edit_opacity_template: "Edit background opacity ({})",
             opacity_value_label: "value ",
-            opacity_format_footnote: "select format to achieve desired background opacity. May require full restart",
+            opacity_format_footnote: "OSC 11 encoding for transparent background; may require full restart",
             external_apps_title: "External apps",
             ffmpeg_label: "FFmpeg: ",
             tool_available: "available",

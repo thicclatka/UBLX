@@ -7,7 +7,7 @@ use crate::layout::setup::{
     MainMode, PanelFocus, RightPaneContent, RightPaneMode, UblxState, ViewData,
 };
 use crate::layout::style;
-use crate::render::{overlays, panes, viewers::image as viewer_image};
+use crate::render::{overlays, panes, viewers::images};
 use crate::ui::MainTabFlags;
 use crate::ui::consts::{UI_CONSTANTS, main_tab_bar_modes_and_labels};
 use crate::utils::{format_bytes, format_timestamp_ns};
@@ -124,11 +124,9 @@ fn fullscreen_viewer_footer_width(
     if state_mut.right_pane_mode != RightPaneMode::Viewer {
         return 0;
     }
-    viewer_image::sync_pdf_selection_state(state_mut, right_content_ref);
+    images::sync_pdf_selection_state(state_mut, right_content_ref);
     let mut width = 0usize;
-    if let Some(pdf) =
-        viewer_image::pdf_page_footer_text(right_content_ref, &state_mut.viewer_image)
-    {
+    if let Some(pdf) = images::pdf_page_footer_text(right_content_ref, &state_mut.viewer_image) {
         width = width.saturating_add(panes::node_display_width(&pdf));
     }
     if let Some(size) = right_content_ref.snap_meta.size {

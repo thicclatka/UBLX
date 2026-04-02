@@ -2,7 +2,7 @@
 
 /// String keys for the built-in themedump (`base16-ocean.dark`, `InspiredGitHub`, …).
 #[derive(Clone, Copy, Debug)]
-pub struct SyntectThemeKeys {
+pub struct CodeThemeKeys {
     pub dark: &'static str,
     pub light: &'static str,
     /// If `dark` / `light` is missing from the set, use this (must exist in syntect defaults).
@@ -12,7 +12,7 @@ pub struct SyntectThemeKeys {
 /// Viewer highlighter: dark vs light from [`Appearance`], aligned with syntect defaults.
 ///
 /// [`Appearance`]: crate::themes::Appearance
-pub const SYNTECT_THEME_KEYS: SyntectThemeKeys = SyntectThemeKeys {
+pub const SYNTECT_THEME_KEYS: CodeThemeKeys = CodeThemeKeys {
     dark: "base16-ocean.dark",
     light: "InspiredGitHub",
     fallback: "base16-ocean.dark",

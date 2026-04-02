@@ -7,6 +7,7 @@ pub struct CommandModeDescriptions {
     pub theme: &'static str,
     pub snapshot: &'static str,
     pub reload: &'static str,
+    pub export_zahir: &'static str,
     pub project: &'static str,
 }
 
@@ -15,5 +16,6 @@ pub const COMMAND_MODE_DESCRIPTIONS: CommandModeDescriptions = CommandModeDescri
     theme: "Theme selector",
     snapshot: "Take snapshot",
     reload: "Reload config from disk",
+    export_zahir: "Export Zahir JSON (ublx-export/)",
     project: "Switch UBLX project",
 };

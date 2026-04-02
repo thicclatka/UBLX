@@ -10,7 +10,7 @@ use rayon::prelude::*;
 
 use crate::config::PARALLEL;
 use crate::layout::style;
-use crate::modules::viewer_find;
+use crate::modules::viewer_search;
 use crate::ui::UI_STRINGS;
 use crate::utils::truncate_middle;
 
@@ -48,8 +48,8 @@ fn table_with_chrome(t: Table<'static>) -> Table<'static> {
 /// Owned cell text so [`Table`] rows are `'static` (find highlights are already owned [`Line`]s).
 #[inline]
 fn cell_for_str(s: &str, find_needle: Option<&str>) -> Cell<'static> {
-    if viewer_find::option_needle_nonempty(find_needle) {
-        Cell::from(viewer_find::highlight_cell_line(s, find_needle.unwrap()))
+    if viewer_search::option_needle_nonempty(find_needle) {
+        Cell::from(viewer_search::highlight_cell_line(s, find_needle.unwrap()))
     } else {
         Cell::from(Line::from(s.to_string()))
     }
@@ -123,13 +123,13 @@ pub fn section_to_table(
                 let li = f.first_data_line_idx + f.row_skip + i;
                 let key_off = f.line_starts.get(li).copied().unwrap_or(0);
                 let value_off = key_off.saturating_add(k.len()).saturating_add(1);
-                let key_cell = Cell::from(viewer_find::highlight_table_cell_line(
+                let key_cell = Cell::from(viewer_search::highlight_table_cell_line(
                     k.as_str(),
                     key_off,
                     f.ranges,
                     f.current,
                 ));
-                let value_cell = Cell::from(viewer_find::highlight_table_cell_line(
+                let value_cell = Cell::from(viewer_search::highlight_table_cell_line(
                     v.as_str(),
                     value_off,
                     f.ranges,
@@ -138,7 +138,7 @@ pub fn section_to_table(
                 (key_cell, value_cell)
             } else {
                 let key_cell = cell_for_str(k.as_str(), find_needle);
-                let value_cell = if viewer_find::option_needle_nonempty(find_needle) {
+                let value_cell = if viewer_search::option_needle_nonempty(find_needle) {
                     cell_for_str(v.as_str(), find_needle)
                 } else {
                     match format::value_cell_style(v.as_str()) {

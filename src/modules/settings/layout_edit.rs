@@ -8,15 +8,22 @@ use crate::utils::clamp_selection;
 use super::bool_rows::bool_row_count;
 
 /// Row index for OSC 11 opacity payload format (`rgba` | `hex8`), directly after bool rows.
+/// [`None`] on Local — that row exists only on the Global settings tab.
 #[must_use]
-pub fn opacity_format_row_index(scope: SettingsConfigScope) -> usize {
-    bool_row_count(scope)
+pub fn opacity_format_row_index(scope: SettingsConfigScope) -> Option<usize> {
+    match scope {
+        SettingsConfigScope::Global => Some(bool_row_count(scope)),
+        SettingsConfigScope::Local => None,
+    }
 }
 
-/// "Edit layout" button row (after opacity format row).
+/// "Edit layout" button row (after bool rows on Local; after bool rows + opacity format on Global).
 #[must_use]
 pub fn layout_button_index(scope: SettingsConfigScope) -> usize {
-    bool_row_count(scope) + 1
+    match scope {
+        SettingsConfigScope::Global => bool_row_count(scope) + 1,
+        SettingsConfigScope::Local => bool_row_count(scope),
+    }
 }
 
 /// First row after the layout block (opacity button).

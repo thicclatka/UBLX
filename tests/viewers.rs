@@ -3,15 +3,11 @@
 use std::path::Path;
 
 use ublx::integrations::{
-    ZahirFileType as FileType, ZahirOutput, file_type_from_metadata_name,
-    zahir_output_to_json_for_path,
+    ZahirFT, ZahirOutput, file_type_from_metadata_name, zahir_output_to_json_for_path,
 };
-use ublx::render::viewers::csv_handler::parse_csv;
-use ublx::render::viewers::image::label_body_error;
-use ublx::render::viewers::markdown::{Block, MarkdownDoc, parse_markdown};
-use ublx::render::viewers::pretty_tables::{
-    VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS, prepare_multiline_grid, word_wrap_cell_text, word_wrap_text,
-};
+use ublx::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerFindState};
+use ublx::modules::viewer_search;
+use ublx::render::{kv_tables, panes, viewers};
 use ublx::ui::UI_GLYPHS;
 
 // --- CSV --------------------------------------------------------------------
@@ -19,21 +15,21 @@ use ublx::ui::UI_GLYPHS;
 #[test]
 fn path_hint_tsv_uses_tab() {
     let raw = "a\tb\nc\td\n";
-    let rows = parse_csv(raw, Some("dir/file.tsv")).unwrap();
+    let rows = viewers::csv_handler::parse_csv(raw, Some("dir/file.tsv")).unwrap();
     assert_eq!(rows, vec![vec!["a", "b"], vec!["c", "d"]]);
 }
 
 #[test]
 fn path_hint_psv_uses_pipe() {
     let raw = "a|b\nc|d\n";
-    let rows = parse_csv(raw, Some("data.psv")).unwrap();
+    let rows = viewers::csv_handler::parse_csv(raw, Some("data.psv")).unwrap();
     assert_eq!(rows, vec![vec!["a", "b"], vec!["c", "d"]]);
 }
 
 #[test]
 fn comma_without_hint_still_parses() {
     let raw = "a,b\n1,2\n";
-    let rows = parse_csv(raw, None).unwrap();
+    let rows = viewers::csv_handler::parse_csv(raw, None).unwrap();
     assert_eq!(rows, vec![vec!["a", "b"], vec!["1", "2"]]);
 }
 
@@ -41,7 +37,7 @@ fn comma_without_hint_still_parses() {
 
 #[test]
 fn paragraph_wraps_to_width() {
-    let doc = parse_markdown("aa bb cc dd ee");
+    let doc = viewers::markdown::parse_markdown("aa bb cc dd ee");
     let text = doc.to_text(8);
     assert!(
         text.lines.len() >= 2,
@@ -55,8 +51,9 @@ fn paragraph_wraps_to_width() {
 
 #[test]
 fn blockquote_wrap_respects_width() {
-    let doc =
-        parse_markdown("> this is a long quoted line that must wrap when the viewport is narrow");
+    let doc = viewers::markdown::parse_markdown(
+        "> this is a long quoted line that must wrap when the viewport is narrow",
+    );
     let text = doc.to_text(12);
     for line in &text.lines {
         assert!(line.width() <= 12, "quote line {:?} exceeds width 12", line);
@@ -65,7 +62,9 @@ fn blockquote_wrap_respects_width() {
 
 #[test]
 fn list_item_wrap_respects_width() {
-    let doc = parse_markdown("- short prefix then many words here that should wrap across lines");
+    let doc = viewers::markdown::parse_markdown(
+        "- short prefix then many words here that should wrap across lines",
+    );
     let w = 18u16;
     let text = doc.to_text(w);
     for line in &text.lines {
@@ -78,7 +77,7 @@ fn list_item_wrap_respects_width() {
     }
 }
 
-fn assert_lines_within_width(doc: &MarkdownDoc, w: u16) {
+fn assert_lines_within_width(doc: &viewers::markdown::MarkdownDoc, w: u16) {
     let text = doc.to_text(w);
     for line in &text.lines {
         assert!(
@@ -92,13 +91,13 @@ fn assert_lines_within_width(doc: &MarkdownDoc, w: u16) {
 
 #[test]
 fn fenced_code_block_parses_and_respects_width() {
-    let doc = parse_markdown(
+    let doc = viewers::markdown::parse_markdown(
         r"```rust
 fn main() {}
 ```",
     );
     let code = doc.blocks.iter().find_map(|b| match b {
-        Block::Code { lang, text } => Some((lang.as_deref(), text.as_str())),
+        viewers::markdown::Block::Code { lang, text } => Some((lang.as_deref(), text.as_str())),
         _ => None,
     });
     assert!(code.is_some(), "expected Block::Code, got {:?}", doc.blocks);
@@ -114,9 +113,11 @@ fn gfm_table_parses_header_and_rows() {
 | --- | --- |
 | a | b |
 ";
-    let doc = parse_markdown(md);
+    let doc = viewers::markdown::parse_markdown(md);
     let table = doc.blocks.iter().find_map(|b| match b {
-        Block::Table { header, rows } => Some((header.as_slice(), rows.as_slice())),
+        viewers::markdown::Block::Table { header, rows } => {
+            Some((header.as_slice(), rows.as_slice()))
+        }
         _ => None,
     });
     assert!(
@@ -132,9 +133,9 @@ fn gfm_table_parses_header_and_rows() {
 
 #[test]
 fn heading_block_has_level() {
-    let doc = parse_markdown("# Title\n\nBody.");
+    let doc = viewers::markdown::parse_markdown("# Title\n\nBody.");
     let heading = doc.blocks.iter().find_map(|b| match b {
-        Block::Heading { level, .. } => Some(*level),
+        viewers::markdown::Block::Heading { level, .. } => Some(*level),
         _ => None,
     });
     assert_eq!(heading, Some(1));
@@ -142,7 +143,7 @@ fn heading_block_has_level() {
 
 #[test]
 fn heading_to_text_respects_width() {
-    let doc = parse_markdown("# Short\n");
+    let doc = viewers::markdown::parse_markdown("# Short\n");
     assert_lines_within_width(&doc, 20);
 }
 
@@ -150,7 +151,7 @@ fn heading_to_text_respects_width() {
 
 #[test]
 fn label_body_error_includes_markdown_image_glyph() {
-    let s = label_body_error("not found");
+    let s = viewers::images::label_body_error("not found");
     assert!(s.contains("not found"));
     assert!(s.contains(UI_GLYPHS.markdown_image));
 }
@@ -169,7 +170,7 @@ fn short_column_skips_wrap_but_pads() {
         "first body line is long enough to wrap here yes".into(),
         "x".into(),
     ]];
-    let (h, b) = prepare_multiline_grid(&header, &body, 24);
+    let (h, b) = viewers::pretty_tables::prepare_multiline_grid(&header, &body, 24);
     assert!(h[0].contains('\n'), "first col should wrap: {:?}", h);
     let header_h = cell_visual_lines(&h[0]);
     assert_eq!(
@@ -200,10 +201,10 @@ fn short_column_skips_wrap_but_pads() {
 fn header_with_spaces_breaks_at_words_not_mid_word() {
     let header = vec!["Completion Date".into(), "B".into()];
     let body = vec![vec![
-        "x".repeat(VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS + 1),
+        "x".repeat(viewers::pretty_tables::VIEWER_TABLE_NO_WRAP_COL_MAX_CHARS + 1),
         "y".into(),
     ]];
-    let (h, _) = prepare_multiline_grid(&header, &body, 24);
+    let (h, _) = viewers::pretty_tables::prepare_multiline_grid(&header, &body, 24);
     let lines: Vec<&str> = h[0].split('\n').collect();
     assert!(
         lines.contains(&"Completion"),
@@ -224,25 +225,25 @@ fn header_with_spaces_breaks_at_words_not_mid_word() {
 
 #[test]
 fn word_wrap_breaks_long_word() {
-    let lines = word_wrap_text("abcdefghij", 4);
+    let lines = viewers::pretty_tables::word_wrap_text("abcdefghij", 4);
     assert_eq!(lines, vec!["abcd", "efgh", "ij"]);
 }
 
 #[test]
 fn word_wrap_spaces() {
-    let lines = word_wrap_text("aa bb cc", 5);
+    let lines = viewers::pretty_tables::word_wrap_text("aa bb cc", 5);
     assert_eq!(lines, vec!["aa bb", "cc"]);
 }
 
 #[test]
 fn word_wrap_cell_splits_isodate_on_hyphens_not_mid_digit() {
-    let lines = word_wrap_cell_text("2025-10-25", 4);
+    let lines = viewers::pretty_tables::word_wrap_cell_text("2025-10-25", 4);
     assert_eq!(lines, vec!["2025", "-10", "-25"]);
 }
 
 #[test]
 fn word_wrap_cell_hyphen_long_word_fallback() {
-    let lines = word_wrap_cell_text("abcdefghij", 4);
+    let lines = viewers::pretty_tables::word_wrap_cell_text("abcdefghij", 4);
     assert_eq!(lines, vec!["abcd", "efgh", "ij"]);
 }
 
@@ -250,10 +251,10 @@ fn word_wrap_cell_hyphen_long_word_fallback() {
 
 #[test]
 fn wrapper_matches_zahirscan_api() {
-    assert_eq!(file_type_from_metadata_name("CSV"), Some(FileType::Csv));
+    assert_eq!(file_type_from_metadata_name("CSV"), Some(ZahirFT::Csv));
     assert_eq!(
         file_type_from_metadata_name("Markdown"),
-        Some(FileType::Markdown)
+        Some(ZahirFT::Markdown)
     );
 }
 
@@ -273,4 +274,132 @@ fn zahir_json_for_path_injects_file_type_when_empty() {
         j.contains(r#""file_type":"Code""#),
         "expected path-based Code for .rs, got {j}"
     );
+}
+
+#[test]
+fn viewer_total_lines_kv_tables_matches_content_height() {
+    let json = r#"{"field": "value"}"#;
+    let mut state = UblxState::new();
+    state.right_pane_mode = RightPaneMode::Metadata;
+    let mut rc = RightPaneContent::empty();
+    rc.metadata = Some(json.to_string());
+    let w = 80u16;
+    let n = panes::viewer_total_lines(&rc, w, Some(json), &mut state, None);
+    assert_eq!(n, kv_tables::content_height(json) as usize);
+}
+
+#[test]
+fn literal_match_ranges_empty_needle() {
+    assert!(viewer_search::literal_match_ranges("hello world", "").is_empty());
+    assert!(viewer_search::literal_match_ranges("hello world", "   ").is_empty());
+}
+
+#[test]
+fn literal_match_ranges_no_matches() {
+    assert!(viewer_search::literal_match_ranges("abc", "z").is_empty());
+}
+
+#[test]
+fn literal_match_ranges_multiple() {
+    assert_eq!(
+        viewer_search::literal_match_ranges("abab", "ab"),
+        vec![(0, 2), (2, 4)]
+    );
+}
+
+#[test]
+fn line_byte_to_index_empty_haystack() {
+    assert_eq!(viewer_search::line_byte_to_index("", 0), 0);
+    assert_eq!(viewer_search::line_byte_to_index("", 5), 0);
+}
+
+#[test]
+fn line_byte_to_index_newlines() {
+    let s = "a\nb\nc";
+    assert_eq!(viewer_search::line_byte_to_index(s, 0), 0);
+    assert_eq!(viewer_search::line_byte_to_index(s, 2), 1);
+    assert_eq!(viewer_search::line_byte_to_index(s, 4), 2);
+}
+
+#[test]
+fn scroll_preview_to_current_first_last_viewport_1() {
+    let hay = "line0\nline1\nline2\nline3";
+    let mut state = UblxState::new();
+    state.viewer_find = ViewerFindState {
+        ranges: vec![(0, 4)], // "line" at start of line0
+        current: 0,
+        ..Default::default()
+    };
+    viewer_search::scroll_preview_to_current(&mut state, hay, 1);
+    assert_eq!(state.panels.preview_scroll, 0);
+
+    state.viewer_find.ranges = vec![(hay.len().saturating_sub(5), hay.len())];
+    state.viewer_find.current = 0;
+    viewer_search::scroll_preview_to_current(&mut state, hay, 1);
+    // last line index 3, v/2 = 0 -> scroll 3
+    assert_eq!(state.panels.preview_scroll, 3);
+}
+
+#[test]
+fn scroll_preview_to_current_viewport_centers() {
+    let hay = (0..10)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let line5_start = hay
+        .match_indices('\n')
+        .nth(4)
+        .map(|(i, _)| i + 1)
+        .unwrap_or(0);
+    let mut state = UblxState::new();
+    state.viewer_find.ranges = vec![(line5_start, line5_start + 4)];
+    state.viewer_find.current = 0;
+    viewer_search::scroll_preview_to_current(&mut state, &hay, 4);
+    let line = viewer_search::line_byte_to_index(&hay, line5_start);
+    let expected = line.saturating_sub(4 / 2);
+    assert_eq!(state.panels.preview_scroll, expected);
+}
+
+#[test]
+fn highlight_table_cell_line_match_inside_line() {
+    let line = viewer_search::highlight_table_cell_line("foo bar baz", 10, &[(13, 16)], 0);
+    assert!(line.spans.len() > 1, "expected highlighted segment split");
+}
+
+#[test]
+fn highlight_cell_line_two_occurrences() {
+    let line = viewer_search::highlight_cell_line("a x a x", "x");
+    assert!(line.spans.len() >= 3);
+}
+
+#[test]
+fn highlighted_body_empty_ranges_is_raw() {
+    let mut state = UblxState::new();
+    state.viewer_find.ranges = vec![];
+    let t = viewer_search::highlighted_body(&state, "one\ntwo");
+    assert_eq!(ublx::render::panes::text_to_plain_string(&t), "one\ntwo");
+}
+
+#[test]
+fn viewer_find_state_predicates() {
+    let mut vf = ViewerFindState::default();
+    assert!(!vf.needle_nonempty());
+    assert!(!vf.find_affects_view());
+    assert!(!vf.title_bottom_visible());
+
+    vf.query = "  hi  ".to_string();
+    assert!(vf.needle_nonempty());
+    assert!(vf.title_bottom_visible());
+    assert!(!vf.find_affects_view());
+
+    vf.active = true;
+    assert!(vf.find_affects_view());
+}
+
+#[test]
+fn option_needle_nonempty_trims() {
+    assert!(!viewer_search::option_needle_nonempty(None));
+    assert!(!viewer_search::option_needle_nonempty(Some("")));
+    assert!(!viewer_search::option_needle_nonempty(Some("  ")));
+    assert!(viewer_search::option_needle_nonempty(Some(" x ")));
 }

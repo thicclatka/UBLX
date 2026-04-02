@@ -64,7 +64,7 @@ pub fn spawn_if_requested(
     state.duplicate_load.requested = false;
     let db_path = params.db_path.clone();
     let dir_to_ublx = params.dir_to_ublx.clone();
-    let config_wants_hash = ublx_opts.nefax.with_hash;
+    let config_wants_hash = ublx_opts.nefax_opts.with_hash;
     let (tx, rx) = std::sync::mpsc::channel();
     params.duplicate_groups_rx = Some(rx);
     std::thread::spawn(move || {

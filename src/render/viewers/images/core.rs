@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, TryRecvError};
 use image::imageops::FilterType;
 use ratatui_image::{Resize, StatefulImage, protocol::StatefulProtocol};
 
-use crate::integrations::ZahirFileType as FileType;
+use crate::integrations::ZahirFT;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
 use crate::render::viewers::{pdf_preview, video_preview};
 use crate::ui::{UI_GLYPHS, UI_STRINGS};
@@ -23,7 +23,7 @@ pub const ASYNC_DECODE_MIN_BYTES: u64 = HALF_MIB_BYTES;
 #[inline]
 #[must_use]
 pub fn is_image_category(rc: &RightPaneContent) -> bool {
-    rc.zahir_file_type() == Some(FileType::Image)
+    rc.zahir_file_type() == Some(ZahirFT::Image)
 }
 
 /// True when the viewer should show a **raster** preview (image file, PDF page, video preview frame, or embedded audio/EPUB cover).
@@ -36,25 +36,25 @@ pub fn is_raster_preview_category(rc: &RightPaneContent) -> bool {
         .is_some_and(|b| !b.is_empty())
         || matches!(
             rc.zahir_file_type(),
-            Some(FileType::Image | FileType::Pdf | FileType::Video)
+            Some(ZahirFT::Image | ZahirFT::Pdf | ZahirFT::Video)
         )
 }
 
 /// Right-pane text under the **Image** heading (e.g. loading line).
 #[must_use]
 pub fn label_body(raw: &str) -> String {
-    format!("{}: {raw}", FileType::Image.as_metadata_name())
+    format!("{}: {raw}", ZahirFT::Image.as_metadata_name())
 }
 
 /// Label for image or PDF raster preview (uses snapshot category name).
 #[must_use]
 pub fn raster_preview_label_body(rc: &RightPaneContent, raw: &str) -> String {
     let name = match rc.zahir_file_type() {
-        Some(FileType::Pdf) => FileType::Pdf.as_metadata_name(),
-        Some(FileType::Video) => FileType::Video.as_metadata_name(),
-        Some(FileType::Audio) => FileType::Audio.as_metadata_name(),
-        Some(FileType::Epub) => FileType::Epub.as_metadata_name(),
-        _ => FileType::Image.as_metadata_name(),
+        Some(ZahirFT::Pdf) => ZahirFT::Pdf.as_metadata_name(),
+        Some(ZahirFT::Video) => ZahirFT::Video.as_metadata_name(),
+        Some(ZahirFT::Audio) => ZahirFT::Audio.as_metadata_name(),
+        Some(ZahirFT::Epub) => ZahirFT::Epub.as_metadata_name(),
+        _ => ZahirFT::Image.as_metadata_name(),
     };
     format!("{name}: {raw}")
 }
@@ -62,7 +62,7 @@ pub fn raster_preview_label_body(rc: &RightPaneContent, raw: &str) -> String {
 /// Footer line for PDF page position (`Page 2 / 10`).
 #[must_use]
 pub fn pdf_page_footer_text(right: &RightPaneContent, viewer: &ViewerImageState) -> Option<String> {
-    if right.zahir_file_type() != Some(FileType::Pdf) || right.derived.abs_path.is_none() {
+    if right.zahir_file_type() != Some(ZahirFT::Pdf) || right.derived.abs_path.is_none() {
         return None;
     }
     let p = viewer.pdf.page.max(1);
@@ -75,7 +75,7 @@ pub fn pdf_page_footer_text(right: &RightPaneContent, viewer: &ViewerImageState)
 pub fn label_body_error(raw: &str) -> String {
     format!(
         "{}: {}{}",
-        FileType::Image.as_metadata_name(),
+        ZahirFT::Image.as_metadata_name(),
         UI_GLYPHS.markdown_image,
         raw
     )
@@ -99,7 +99,7 @@ pub fn stateful_widget() -> StatefulImage<StatefulProtocol> {
 
 /// Reset PDF page state when switching files; poll [`ViewerImageState::pdf_page_count_rx`].
 pub fn sync_pdf_selection_state(state: &mut UblxState, right_content: &RightPaneContent) {
-    if right_content.zahir_file_type() != Some(FileType::Pdf) {
+    if right_content.zahir_file_type() != Some(ZahirFT::Pdf) {
         if state.viewer_image.pdf.for_path.take().is_some() {
             state
                 .viewer_image
@@ -299,7 +299,7 @@ fn spawn_or_decode_raster_preview(
 ) {
     let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
     let max_dim = raster_max_dimension_for_file_size(file_size, is_pdf, viewport_cells);
-    let is_video = right_content.zahir_file_type() == Some(FileType::Video);
+    let is_video = right_content.zahir_file_type() == Some(ZahirFT::Video);
 
     if is_pdf {
         let (tx, rx) = mpsc::channel();
@@ -377,7 +377,7 @@ pub fn ensure_viewer_image(
 ) {
     sync_pdf_selection_state(state, right_content);
 
-    if right_content.zahir_file_type() == Some(FileType::Pdf)
+    if right_content.zahir_file_type() == Some(ZahirFT::Pdf)
         && let Some(abs) = right_content.derived.abs_path.as_ref()
     {
         drain_pdf_prefetch_results(state, abs);
@@ -397,7 +397,7 @@ pub fn ensure_viewer_image(
         return;
     };
 
-    let is_pdf = right_content.zahir_file_type() == Some(FileType::Pdf);
+    let is_pdf = right_content.zahir_file_type() == Some(ZahirFT::Pdf);
     let has_embedded_cover = right_content
         .derived
         .embedded_cover_raster

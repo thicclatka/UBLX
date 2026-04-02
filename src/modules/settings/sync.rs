@@ -85,7 +85,7 @@ pub fn apply_config_reload(
         .map(|t| t.name)
         .collect();
     let old_enable_enhance_all = ublx_opts_mut.enable_enhance_all;
-    let old_with_hash = ublx_opts_mut.nefax.with_hash;
+    let old_with_hash = ublx_opts_mut.nefax_opts.with_hash;
     let result = ublx_opts_mut.reload_hot_config(&paths, &valid_themes);
 
     if result.applied {
@@ -95,7 +95,7 @@ pub fn apply_config_reload(
             &mut ublx_opts_mut.enable_enhance_all_cache_before_apply,
         );
         set_snapshot_cache_before_apply_on_flip_to_true(
-            !old_with_hash && ublx_opts_mut.nefax.with_hash,
+            !old_with_hash && ublx_opts_mut.nefax_opts.with_hash,
             &mut ublx_opts_mut.with_hash_cache_before_apply,
         );
         if let Some(msg) = message {

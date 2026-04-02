@@ -16,7 +16,7 @@ pub use color_utils::{
 };
 
 pub use palettes::{DEFAULT_COLORS, OBLIVION_INK, theme_ordered_list, theme_selector_entries};
-pub use syntect::{SYNTECT_THEME_KEYS, SyntectThemeKeys};
+pub use syntect::{CodeThemeKeys, SYNTECT_THEME_KEYS};
 
 /// One row in the theme selector list: a non-selectable section label or a selectable theme.
 #[derive(Clone, Copy)]

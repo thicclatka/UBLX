@@ -74,12 +74,6 @@ pub fn local_opacity_is_explicit(local: Option<&UblxOverlay>) -> bool {
     local.is_some_and(|l| l.bg_opacity.is_some())
 }
 
-/// `true` if `opacity_format` is set in the local file.
-#[must_use]
-pub fn local_opacity_format_is_explicit(local: Option<&UblxOverlay>) -> bool {
-    local.is_some_and(|l| l.opacity_format.is_some())
-}
-
 /// Local scope: follow local file when set; otherwise merged effective values.
 #[must_use]
 pub fn opacity_overlay_for_local_editing<'a>(

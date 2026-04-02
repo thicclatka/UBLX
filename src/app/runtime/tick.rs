@@ -207,7 +207,7 @@ fn tick_applets_and_io(
         match db_ops::load_duplicate_groups(
             &params.db_path,
             &params.dir_to_ublx,
-            ublx_opts.nefax.with_hash,
+            ublx_opts.nefax_opts.with_hash,
         ) {
             Ok((groups, mode)) => {
                 modules::dupe_finder::prune_duplicate_ignores_after_reload(
@@ -228,6 +228,8 @@ fn tick_applets_and_io(
         modules::dupe_finder::on_groups_received(state, params, groups, mode);
     }
 
+    modules::zahir_export_bg::poll_and_finish(state, params);
+
     if let Some(rx) = params.config_reload_rx.as_ref()
         && rx.try_recv().is_ok()
     {
@@ -235,6 +237,7 @@ fn tick_applets_and_io(
     }
 
     modules::dupe_finder::spawn_if_requested(state, params, ublx_opts);
+    modules::zahir_export_bg::spawn_if_requested(state, params);
 }
 
 fn tick_toasts_and_snapshot(

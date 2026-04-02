@@ -23,9 +23,9 @@ cargo build --release
 ## What it does
 
 - **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes a per-root SQLite file under your user cache (`ubli/`; stem is sanitized dir name plus path hash, extension matches the `ublx` package name). Config: `ublx.toml` or `.ublx.toml`.
-- **TUI** — 3 panes: categories (left), contents (middle), right (Templates / Viewer / Metadata / Writing). Main tabs: **Snapshot** | **Delta** | **Lenses** (when present) | **Duplicates** (when present; Ctrl+d to run detection). Search (`/`), vim motions (j/k, h/l, gg/G), theme selector (Ctrl+t), **Space** then a letter for **Open** / **Lens** / … (see in-app help), stacked toasts. **Shift+S** viewer search, **Shift+F** viewer fullscreen. `q` / Esc quit.
-- **Snapshot-only** — Headless index without the TUI (`-s` / `--snapshot-only`); flags `-e`/`-f` control index-time Zahir when creating local config. See **Usage** below for exact behavior.
-- **Export** — Headless `--export` / `-x` writes pretty-printed Zahir JSON from the snapshot DB into `ublx-export/` as flat `{path}.json` files. Use `-x` alone to dump the current DB, or combine with `-f` to snapshot first, then export.
+- **TUI** — 3 panes: categories (left), contents (middle), file viewer (right). Main tabs: **Snapshot** | **Delta** | **Lenses** | **Duplicates** | **Settings**. Search across & within files, vim motions, theme selector, quick actions menu, command mode, toast notifications, fullscreen toggle.
+- **Snapshot-only** — Headless index without the TUI
+- **Export** — Headless `--export` / `-x` writes pretty-printed Zahir JSON from the snapshot DB into `ublx-export/` as flat `{path}.json` files
 
 ## Use case
 
@@ -55,7 +55,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 - **Scroll in the preview** — **Shift+b** / **Shift+e** (jump to top/bottom), **Shift+↑** / **Shift+↓** or **Shift+K** / **Shift+J** (line by line).
 - **Viewer fullscreen** — **Shift+F** toggles fullscreen for the Viewer tab.
 - **Viewer search** — **Shift+S** opens literal in-pane search in the preview (see in-app help for n/N and Esc).
-- **Catalog search** — **/** filters the category and content lists (left and middle) by substring; the right pane updates with the selected row. Press **Esc** to clear the search.
+- **Catalog search** — **/** filters the category and content lists (left and middle) by substring; the right pane updates with the selected row. Press **Esc** to clear filter.
 
 | Tab           | Content                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

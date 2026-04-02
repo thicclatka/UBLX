@@ -202,21 +202,11 @@ fn format_rgba_cell(is_rgba_cell: bool, value_is_rgba: bool, dimmed: bool) -> Sp
     Span::styled(label.to_string(), st)
 }
 
-fn push_opacity_format_row(
-    left_lines: &mut Vec<Line>,
-    scope: SettingsConfigScope,
-    cur: usize,
-    local_ctx: Option<&(Option<UblxOverlay>, UblxOverlay)>,
-    overlay: Option<&UblxOverlay>,
-    format_dimmed: bool,
-) {
-    let row_idx = settings::bool_row_count(scope);
-    let value_is_rgba = if let Some((_local_o, merged)) = local_ctx {
-        merged.opacity_format.unwrap_or_default() == Osc11BackgroundFormat::Rgba
-    } else {
-        overlay.is_none_or(|o| o.opacity_format.unwrap_or_default() == Osc11BackgroundFormat::Rgba)
-    };
-    let dimmed = format_dimmed;
+fn push_opacity_format_row(left_lines: &mut Vec<Line>, cur: usize, overlay: Option<&UblxOverlay>) {
+    let row_idx = settings::bool_row_count(SettingsConfigScope::Global);
+    let value_is_rgba =
+        overlay.is_none_or(|o| o.opacity_format.unwrap_or_default() == Osc11BackgroundFormat::Rgba);
+    let dimmed = false;
     let row_active = cur == row_idx;
     let label_st = label_style(row_active, dimmed);
     let note_mark = settings_opacity_note_mark_if_inactive(row_active);
@@ -344,7 +334,11 @@ fn push_wrapped_hint_footnote(left_lines: &mut Vec<Line>, hint_wrap: usize, mess
 }
 
 /// `FFmpeg` + PDF raster backends (same binaries as video / PDF preview).
-fn push_external_apps_section(left_lines: &mut Vec<Line>, hint_wrap: usize) {
+fn push_external_apps_section(
+    left_lines: &mut Vec<Line>,
+    hint_wrap: usize,
+    scope: SettingsConfigScope,
+) {
     let s = &UI_STRINGS.settings_pane;
     left_lines.push(Line::from(""));
     left_lines.push(Line::from(Span::styled(
@@ -396,7 +390,9 @@ fn push_external_apps_section(left_lines: &mut Vec<Line>, hint_wrap: usize) {
         s.snapshot_applied_footnote,
         style::hint_text(),
     )));
-    push_wrapped_hint_footnote(left_lines, hint_wrap, s.opacity_format_footnote);
+    if matches!(scope, SettingsConfigScope::Global) {
+        push_wrapped_hint_footnote(left_lines, hint_wrap, s.opacity_format_footnote);
+    }
 }
 
 fn render_settings_toml_preview(
@@ -504,10 +500,6 @@ pub fn draw_settings_pane(f: &mut Frame, area: Rect, state: &mut UblxState, dir_
         .as_ref()
         .is_some_and(|(loc, _)| !settings::local_opacity_is_explicit(loc.as_ref()));
 
-    let opacity_format_dimmed = local_ctx
-        .as_ref()
-        .is_some_and(|(loc, _)| !settings::local_opacity_format_is_explicit(loc.as_ref()));
-
     let path_wrap = usize::from(left_inner.width).max(1);
 
     let mut left_lines: Vec<Line> = vec![Line::from(scope_spans), Line::from("")];
@@ -528,18 +520,17 @@ pub fn draw_settings_pane(f: &mut Frame, area: Rect, state: &mut UblxState, dir_
         local_ctx.as_ref(),
         overlay.as_ref(),
     );
-    push_opacity_format_row(
-        &mut left_lines,
-        scope,
-        state.settings.left_cursor,
-        local_ctx.as_ref(),
-        overlay.as_ref(),
-        opacity_format_dimmed,
-    );
+    if matches!(scope, SettingsConfigScope::Global) {
+        push_opacity_format_row(
+            &mut left_lines,
+            state.settings.left_cursor,
+            overlay.as_ref(),
+        );
+    }
     left_lines.push(Line::from(""));
     push_layout_edit_section(&mut left_lines, state, layout_dimmed);
     push_opacity_edit_section(&mut left_lines, state, opacity_dimmed);
-    push_external_apps_section(&mut left_lines, path_wrap);
+    push_external_apps_section(&mut left_lines, path_wrap, scope);
 
     f.render_widget(
         Paragraph::new(left_lines).style(style::text_style()),

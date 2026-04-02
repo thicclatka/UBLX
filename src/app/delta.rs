@@ -2,7 +2,7 @@
 
 use crate::engine::db_ops::{self, DELTA_CATEGORY_COUNT, DeltaType};
 use crate::layout::setup;
-use crate::modules::search;
+use crate::modules::catalog_filter;
 use crate::ui::UI_STRINGS;
 use crate::utils::{clamp_selection, clamp_selection_opt, format_timestamp_ns};
 
@@ -91,7 +91,7 @@ pub fn view_data_for_delta_mode(
         DELTA_CATEGORY_COUNT,
     );
     let raw_rows = delta.rows_by_index(cat_idx);
-    let mut filtered_rows = search::filter_delta_rows(raw_rows, search_query);
+    let mut filtered_rows = catalog_filter::filter_delta_rows(raw_rows, search_query);
     sort_delta_rows_by_time(&mut filtered_rows, state.panels.content_sort);
     let display_lines = build_delta_display_lines(filtered_rows);
     let content_len = display_lines.len();

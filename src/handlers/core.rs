@@ -186,6 +186,7 @@ fn run_tui_mode(
         duplicate_groups: Vec::new(),
         duplicate_mode: db_ops::DuplicateGroupingMode::NameSize,
         duplicate_groups_rx: None,
+        zahir_export_rx: None,
         lens_names,
         config_reload_rx,
         startup: app::RunUblxStartupFlow {

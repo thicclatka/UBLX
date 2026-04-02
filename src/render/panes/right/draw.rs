@@ -12,10 +12,10 @@ use crate::layout::{
     setup::{RightPaneContent, RightPaneMode, UblxState, ViewData},
     style,
 };
-use crate::modules::viewer_find;
-use crate::render::viewers::image as viewer_image;
+use crate::modules::viewer_search;
+use crate::render::viewers::images;
 use crate::render::{kv_tables, scrollable_content};
-use crate::ui::{UI_CONSTANTS, UI_STRINGS};
+use crate::ui::UI_CONSTANTS;
 
 use super::chrome;
 use super::content;
@@ -33,11 +33,18 @@ fn draw_right_pane_scrollable_body(
         RightPaneMode::Writing => right_content.writing.as_deref(),
         _ => None,
     };
-    viewer_image::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
+    images::ensure_viewer_image(state, right_content, Some((padded.width, padded.height)));
     let mut text_w = padded.width;
     for _ in 0..6 {
-        content::ensure_viewer_text_cache(state, right_content, text_w);
-        let guess_lines = content::viewer_total_lines(right_content, text_w, use_kv_tables, state);
+        // Do not schedule or poll async viewer work here — `text_w` is still converging.
+        // [`content::ensure_viewer_text_cache`] runs once after convergence and polls + schedules.
+        let guess_lines = content::viewer_total_lines(
+            right_content,
+            text_w,
+            use_kv_tables,
+            state,
+            Some(padded.height),
+        );
         let w_next = scrollable_content::viewport_text_width(padded, guess_lines);
         if w_next == text_w {
             break;
@@ -45,8 +52,14 @@ fn draw_right_pane_scrollable_body(
         text_w = w_next;
     }
     content::ensure_viewer_text_cache(state, right_content, text_w);
-    let total_lines = content::viewer_total_lines(right_content, text_w, use_kv_tables, state);
-    viewer_find::sync(state, right_content, text_w, padded.height);
+    let total_lines = content::viewer_total_lines(
+        right_content,
+        text_w,
+        use_kv_tables,
+        state,
+        Some(padded.height),
+    );
+    viewer_search::sync(state, right_content, text_w, padded.height);
     let layout = scrollable_content::layout_scrollable_content(
         scroll_area,
         total_lines,
@@ -60,12 +73,12 @@ fn draw_right_pane_scrollable_body(
         kv_tables::draw_tables(f, text_rect, json, layout.scroll_y, needle, state);
     } else {
         let image_mode = state.right_pane_mode == RightPaneMode::Viewer
-            && viewer_image::is_raster_preview_category(right_content)
+            && images::is_raster_preview_category(right_content)
             && right_content.snap_meta.path.is_some()
             && state.viewer_image.protocol.is_some();
         if image_mode {
             if let Some(proto) = state.viewer_image.protocol.as_mut() {
-                f.render_stateful_widget(viewer_image::stateful_widget(), text_rect, proto);
+                f.render_stateful_widget(images::stateful_widget(), text_rect, proto);
                 let _ = proto.last_encoding_result();
             }
         } else {
@@ -83,7 +96,7 @@ fn draw_right_pane_scrollable_body(
             };
             let body = if use_highlighted_find {
                 let hay = content::viewer_find_haystack_text(state, right_content, text_w);
-                viewer_find::highlighted_body(state, &hay)
+                viewer_search::highlighted_body(state, &hay)
             } else {
                 content::content_display_text(state, right_content, text_w, text_vp)
             };
@@ -157,12 +170,9 @@ pub fn draw_right_pane_fullscreen(
         inner_w,
         transparent_page_chrome,
     );
-    let fullscreen_title = format!(
-        "{} {}",
-        chrome::title(state),
-        UI_STRINGS.brand.fullscreen_suffix
-    );
-    let block = chrome::right_pane_block(Some(fullscreen_title.as_str()), Some(&footer_line));
+    let fullscreen_title =
+        chrome::right_pane_fullscreen_title_line(state, right_content.snap_meta.path.as_deref());
+    let block = chrome::right_pane_block(Some(fullscreen_title), Some(&footer_line));
     let inner = block.inner(area);
     let bottom_pad = UI_CONSTANTS.v_pad;
     f.render_widget(&block, area);

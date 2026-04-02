@@ -93,6 +93,7 @@ const HELP_COMMAND_MODE: &[(&str, &str)] = help_entries![
     ("t", COMMAND_MODE_DESCRIPTIONS.theme),
     ("s", COMMAND_MODE_DESCRIPTIONS.snapshot),
     ("r", COMMAND_MODE_DESCRIPTIONS.reload),
+    ("x", COMMAND_MODE_DESCRIPTIONS.export_zahir),
     ("p", COMMAND_MODE_DESCRIPTIONS.project),
 ];
 

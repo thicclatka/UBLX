@@ -8,7 +8,7 @@ use crate::engine::db_ops;
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, MainMode, MultiselectState, PanelFocus, TuiRow, UblxState, ViewData,
 };
-use crate::modules::{enhance, lens as lens_applet};
+use crate::modules::{enhance, lenses as lens_module};
 use crate::ui::{UI_STRINGS, file_ops, keymap::UblxAction, show_operation_toast};
 
 fn multiselect_applies(main_mode: MainMode) -> bool {
@@ -240,7 +240,7 @@ fn run_bulk_action(
                 };
                 let mut ok = 0usize;
                 for path in &paths {
-                    if lens_applet::remove_path_from_lens(&params.db_path, lens_name, path).is_ok()
+                    if lens_module::remove_path_from_lens(&params.db_path, lens_name, path).is_ok()
                     {
                         ok += 1;
                     }

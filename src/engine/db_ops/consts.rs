@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::config::UblxPaths;
-use crate::integrations::{ZahirFileType as FileType, file_type_from_metadata_name};
+use crate::integrations::{ZahirFT, file_type_from_metadata_name};
 
 /// Schema for the ublx DB
 pub struct UblxDbSchema;
@@ -286,7 +286,7 @@ impl DeltaType {
     }
 }
 
-/// Category for ublx db: ublx-defined variants plus all [`FileType`] (zahirscan) via [`UblxDbCategory::Zahir`].
+/// Category for ublx db: ublx-defined variants plus all [`ZahirFT`] (zahirscan) via [`UblxDbCategory::Zahir`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UblxDbCategory {
     UblxLog,
@@ -294,8 +294,8 @@ pub enum UblxDbCategory {
     // Hidden,
     Directory,
     File,
-    /// All zahirscan file types; use [`FileType::as_metadata_name`] for the display string.
-    Zahir(FileType),
+    /// All zahirscan file types; use [`ZahirFT::as_metadata_name`] for the display string.
+    Zahir(ZahirFT),
 }
 
 impl UblxDbCategory {

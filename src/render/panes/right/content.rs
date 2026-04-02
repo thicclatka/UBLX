@@ -3,14 +3,11 @@
 
 use ratatui::text::Text;
 
-use crate::engine::cache::{self, ViewerContentIdentity, ViewerTextCacheEntry};
+use crate::engine::cache::{self, ViewerTextCacheEntry};
 use crate::engine::db_ops::UblxDbCategory;
-use crate::integrations::{ZahirFileType as FileType, delimiter_from_path_for_viewer};
+use crate::integrations::{ZahirFT, delimiter_from_path_for_viewer};
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
-use crate::render::{
-    kv_tables,
-    viewers::{csv_handler, image as viewer_image, markdown, syntect_text},
-};
+use crate::render::{kv_tables, viewers};
 use crate::themes;
 use crate::ui::UI_STRINGS;
 
@@ -21,8 +18,8 @@ fn syntect_viewer_cache_params<'a>(
     content_width: u16,
     theme_name: &'a str,
     rc: &RightPaneContent,
-) -> cache::SyntectViewerCacheParams<'a> {
-    cache::SyntectViewerCacheParams {
+) -> cache::CodeViewerCacheParams<'a> {
+    cache::CodeViewerCacheParams {
         path,
         raw,
         content_width,
@@ -30,13 +27,12 @@ fn syntect_viewer_cache_params<'a>(
         appearance: themes::current().appearance,
         category: rc.ublx_db_category(),
         mtime_ns: rc.snap_meta.mtime_ns,
-        byte_size: rc.snap_meta.size,
     }
 }
 
 #[inline]
 fn viewer_is_csv(rc: &RightPaneContent) -> bool {
-    rc.zahir_file_type() == Some(FileType::Csv)
+    rc.zahir_file_type() == Some(ZahirFT::Csv)
 }
 
 #[inline]
@@ -55,110 +51,57 @@ fn viewer_show_delimited_table(rc: &RightPaneContent) -> bool {
 
 #[inline]
 fn viewer_is_markdown(rc: &RightPaneContent) -> bool {
-    rc.zahir_file_type() == Some(FileType::Markdown)
+    rc.zahir_file_type() == Some(ZahirFT::Markdown)
 }
 
-/// Syntect only when the snapshot [`UblxDbCategory`] (DB `category` column) is a zahir type we highlight.
+/// Code only when the snapshot [`UblxDbCategory`] (DB `category` column) is a zahir type we highlight.
 #[inline]
 fn viewer_uses_syntect_highlight(rc: &RightPaneContent) -> bool {
     rc.snap_meta.path.is_some()
         && matches!(
             rc.ublx_db_category(),
             UblxDbCategory::Zahir(
-                FileType::Json
-                    | FileType::Toml
-                    | FileType::Yaml
-                    | FileType::Xml
-                    | FileType::Html
-                    | FileType::Ini
-                    | FileType::Log
-                    | FileType::Code
+                ZahirFT::Json
+                    | ZahirFT::Toml
+                    | ZahirFT::Yaml
+                    | ZahirFT::Xml
+                    | ZahirFT::Html
+                    | ZahirFT::Ini
+                    | ZahirFT::Log
+                    | ZahirFT::Code
             )
         )
 }
 
-fn try_build_csv_cache_entry(
-    path: &str,
-    raw: &str,
-    content_width: u16,
-    theme_key: String,
-    content_identity: ViewerContentIdentity,
-) -> Option<ViewerTextCacheEntry> {
-    let rows = csv_handler::parse_csv(raw, Some(path)).ok()?;
-    if rows.is_empty() {
-        return None;
-    }
-    let (table_string, line_count) = csv_handler::table_string_and_line_count(&rows, content_width);
-    let text = csv_handler::table_string_to_text(&table_string);
-    debug_assert_eq!(line_count, text.lines.len());
-    Some(ViewerTextCacheEntry {
-        path: path.to_string(),
-        content_width,
-        theme_name: theme_key,
-        content_identity,
-        line_count,
-        text,
-        syntect: None,
-    })
+fn reset_viewer_cache_and_async(state: &mut UblxState) {
+    state.viewer_text_cache = None;
+    viewers::async_tools::reset_viewer_async(state);
 }
 
-fn try_build_markdown_cache_entry(
-    path: &str,
-    raw: &str,
-    content_width: u16,
-    theme_key: String,
-) -> ViewerTextCacheEntry {
-    let doc = markdown::parse_markdown(raw);
-    let text = doc.to_text(content_width);
-    let line_count = text.lines.len();
-    ViewerTextCacheEntry {
-        path: path.to_string(),
-        content_width,
-        theme_name: theme_key,
-        content_identity: ViewerContentIdentity::BufferPtr {
-            ptr: raw.as_ptr() as usize,
-            len: raw.len(),
-        },
-        line_count,
-        text,
-        syntect: None,
-    }
-}
-
-fn try_build_syntect_cache_entry(p: &cache::SyntectViewerCacheParams<'_>) -> ViewerTextCacheEntry {
-    let text = syntect_text::highlight_viewer(p.raw, p.path, p.category);
-    let line_count = text.lines.len();
-    let content_identity = cache::viewer_content_identity(p.raw, p.mtime_ns, p.byte_size);
-    ViewerTextCacheEntry {
-        path: p.path.to_string(),
-        content_width: p.content_width,
-        theme_name: p.theme_name.to_string(),
-        content_identity,
-        line_count,
-        text,
-        syntect: Some((p.appearance, p.category)),
-    }
-}
-
+/// Run once after width convergence to poll + schedule async viewer work (CSV / markdown / syntect).
 pub fn ensure_viewer_text_cache(
     state: &mut UblxState,
     right_content: &RightPaneContent,
     content_width: u16,
 ) {
+    viewers::async_tools::poll_viewer_async(state, right_content);
+
     if state.right_pane_mode != RightPaneMode::Viewer {
-        state.viewer_text_cache = None;
+        reset_viewer_cache_and_async(state);
         return;
     }
     let Some(path) = right_content.snap_meta.path.as_deref() else {
-        state.viewer_text_cache = None;
+        reset_viewer_cache_and_async(state);
         return;
     };
-    let Some(raw) = right_content.viewer.as_deref() else {
-        state.viewer_text_cache = None;
+    let Some(raw_arc) = right_content.viewer.clone() else {
+        reset_viewer_cache_and_async(state);
         return;
     };
-    let theme_key = themes::current().name.to_string();
-    let theme = themes::current().name;
+    let raw = raw_arc.as_ref();
+    let palette = themes::current();
+    let theme_key = palette.name.to_string();
+    let theme = palette.name;
 
     if viewer_show_delimited_table(right_content) {
         state.viewer_text_cache = None;
@@ -168,14 +111,29 @@ pub fn ensure_viewer_text_cache(
             theme,
             raw,
             right_content.snap_meta.mtime_ns,
-            right_content.snap_meta.size,
         );
         if state.csv_table_text_lru.get(&key).is_some() {
             return;
         }
-        let Some(entry) =
-            try_build_csv_cache_entry(path, raw, content_width, theme_key, key.identity.clone())
-        else {
+        if raw.len() >= cache::VIEWER_TEXT_CACHE.min_csv_bytes {
+            viewers::async_tools::schedule_csv(
+                state,
+                right_content,
+                content_width,
+                path,
+                raw_arc.clone(),
+                theme_key,
+                key,
+            );
+            return;
+        }
+        let Some(entry) = viewers::async_tools::build_csv_cache_entry(
+            path,
+            raw,
+            content_width,
+            theme_key,
+            key.identity.clone(),
+        ) else {
             return;
         };
         state.csv_table_text_lru.insert(key, entry);
@@ -189,12 +147,14 @@ pub fn ensure_viewer_text_cache(
         {
             return;
         }
-        state.viewer_text_cache = Some(try_build_markdown_cache_entry(
-            path,
-            raw,
+        viewers::async_tools::schedule_markdown(
+            state,
+            right_content,
             content_width,
+            path,
+            raw_arc.clone(),
             theme_key,
-        ));
+        );
         return;
     }
 
@@ -207,7 +167,14 @@ pub fn ensure_viewer_text_cache(
         {
             return;
         }
-        state.viewer_text_cache = Some(try_build_syntect_cache_entry(&p));
+        viewers::async_tools::schedule_syntect(
+            state,
+            right_content,
+            content_width,
+            path,
+            raw_arc.clone(),
+            theme_key,
+        );
         return;
     }
 
@@ -228,11 +195,11 @@ fn csv_cached_entry<'a>(
         theme,
         raw,
         right_content.snap_meta.mtime_ns,
-        right_content.snap_meta.size,
     );
     state.csv_table_text_lru.get(&key)
 }
 
+/// True if the active text viewport matches the current viewer cache (async placeholder or cached entry).
 pub fn viewer_text_cache_viewport_active(
     state: &mut UblxState,
     right_content: &RightPaneContent,
@@ -246,6 +213,11 @@ pub fn viewer_text_cache_viewport_active(
     };
     let theme = themes::current().name;
     if viewer_show_delimited_table(right_content) {
+        if raw.len() >= cache::VIEWER_TEXT_CACHE.min_csv_bytes
+            && viewers::async_tools::viewer_async_placeholder_active(state, right_content)
+        {
+            return false;
+        }
         return csv_cached_entry(state, right_content, content_width, theme).is_some();
     }
     state
@@ -267,15 +239,28 @@ pub fn viewer_text_cache_viewport_active(
         })
 }
 
+/// `scroll_viewport_h` — height of the scrollable content area (e.g. padded body height). When
+/// [`viewer_async_placeholder_active`] is true and this is `Some`, we return a line count **above**
+/// the viewport so [`scrollable_content::viewport_text_width`] reserves the scrollbar column. If we
+/// instead return `1` while loading, width converges to “full row”; after async completes the real
+/// line count usually needs a scrollbar → width shrinks by 1 → cache key / `content_width` no longer
+/// matches → reschedule and visible flicker.
 pub fn viewer_total_lines(
     right_content: &RightPaneContent,
     content_width: u16,
     use_kv_tables: Option<&str>,
     state: &mut UblxState,
+    scroll_viewport_h: Option<u16>,
 ) -> usize {
     match (state.right_pane_mode, use_kv_tables) {
         (_, Some(json)) => kv_tables::content_height(json) as usize,
         (RightPaneMode::Viewer, _) => {
+            if viewers::async_tools::viewer_async_placeholder_active(state, right_content) {
+                if let Some(h) = scroll_viewport_h {
+                    return (h as usize).saturating_add(1);
+                }
+                return 1;
+            }
             let theme = themes::current().name;
             if viewer_show_delimited_table(right_content) {
                 if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
@@ -306,18 +291,18 @@ pub fn viewer_total_lines(
             if viewer_show_delimited_table(right_content)
                 && let Some(raw) = right_content.viewer.as_deref()
                 && let Some(vp) = right_content.snap_meta.path.as_deref()
-                && let Ok(rows) = csv_handler::parse_csv(raw, Some(vp))
+                && let Ok(rows) = viewers::csv_handler::parse_csv(raw, Some(vp))
                 && !rows.is_empty()
             {
-                return csv_handler::table_line_count(&rows, content_width);
+                return viewers::csv_handler::table_line_count(&rows, content_width);
             }
-            if viewer_image::is_raster_preview_category(right_content) {
+            if viewers::images::is_raster_preview_category(right_content) {
                 if state.viewer_image.protocol.is_some() {
                     return 1;
                 }
                 if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
                     return wrapped_line_count(
-                        &viewer_image::raster_preview_label_body(
+                        &viewers::images::raster_preview_label_body(
                             right_content,
                             UI_STRINGS.loading.general,
                         ),
@@ -326,26 +311,30 @@ pub fn viewer_total_lines(
                 }
                 if let Some(e) = state.viewer_image.err.as_deref() {
                     return wrapped_line_count(
-                        &viewer_image::raster_preview_label_body(right_content, e),
+                        &viewers::images::raster_preview_label_body(right_content, e),
                         content_width,
                     ) as usize;
                 }
                 let msg = right_content.viewer.as_deref().unwrap_or("");
                 return wrapped_line_count(
-                    &viewer_image::raster_preview_label_body(right_content, msg),
+                    &viewers::images::raster_preview_label_body(right_content, msg),
                     content_width,
                 ) as usize;
             }
             if viewer_is_markdown(right_content) {
                 let raw = right_content.viewer.as_deref().unwrap_or("");
-                let doc = markdown::parse_markdown(raw);
+                let doc = viewers::markdown::parse_markdown(raw);
                 return doc.to_text(content_width).lines.len();
             }
             if viewer_uses_syntect_highlight(right_content) {
-                return right_content
-                    .viewer
-                    .as_deref()
-                    .map_or(0, |t| t.lines().count());
+                return right_content.viewer.as_deref().map_or(0, |t| {
+                    let n = t.lines().count();
+                    if n > 1 {
+                        n
+                    } else {
+                        wrapped_line_count(t, content_width) as usize
+                    }
+                });
             }
             right_content
                 .viewer
@@ -374,7 +363,7 @@ fn viewer_uses_preformatted_layout(
     if viewer_uses_syntect_highlight(right_content) {
         return true;
     }
-    if viewer_image::is_raster_preview_category(right_content)
+    if viewers::images::is_raster_preview_category(right_content)
         && state.viewer_image.protocol.is_some()
     {
         return true;
@@ -389,7 +378,7 @@ fn viewer_uses_preformatted_layout(
     let Some(raw) = right_content.viewer.as_deref() else {
         return false;
     };
-    csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
+    viewers::csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
         .map(|r| !r.is_empty())
         .unwrap_or(false)
 }
@@ -413,6 +402,22 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
         .min(u16::MAX as usize) as u16
 }
 
+#[inline]
+fn text_from_viewer_raw(raw: &str) -> Text<'static> {
+    Text::from(raw.to_string())
+}
+
+#[inline]
+fn text_from_cache_entry(
+    entry: &ViewerTextCacheEntry,
+    text_viewport: Option<(u16, u16)>,
+) -> Text<'static> {
+    match text_viewport {
+        Some((sy, vh)) => entry.viewport_text(sy, vh),
+        None => entry.text.clone(),
+    }
+}
+
 fn viewer_display_text(
     state: &mut UblxState,
     right_content: &RightPaneContent,
@@ -426,67 +431,77 @@ fn viewer_display_text(
     if right_content.snap_meta.path.is_some() {
         if viewer_show_delimited_table(right_content) {
             let theme = themes::current().name;
-            if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
-                return match text_viewport {
-                    Some((sy, vh)) => e.viewport_text(sy, vh),
-                    None => e.text.clone(),
-                };
+            if raw.len() >= cache::VIEWER_TEXT_CACHE.min_csv_bytes
+                && viewers::async_tools::viewer_async_placeholder_active(state, right_content)
+            {
+                return Text::from(UI_STRINGS.loading.general.to_string());
             }
-            if let Ok(rows) = csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
+            if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
+                return text_from_cache_entry(e, text_viewport);
+            }
+            if let Ok(rows) =
+                viewers::csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
                 && !rows.is_empty()
             {
-                return csv_handler::table_to_text(&rows, content_width);
+                return viewers::csv_handler::table_to_text(&rows, content_width);
             }
         } else if viewer_is_markdown(right_content) {
             let theme = themes::current().name;
+            if raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
+                && viewers::async_tools::viewer_async_placeholder_active(state, right_content)
+            {
+                return text_from_viewer_raw(raw);
+            }
             if raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
                 && let Some(ref path) = right_content.snap_meta.path
                 && let Some(ref e) = state.viewer_text_cache
                 && e.matches_markdown_viewer(path.as_str(), content_width, theme, raw)
             {
-                return match text_viewport {
-                    Some((sy, vh)) => e.viewport_text(sy, vh),
-                    None => e.text.clone(),
-                };
+                return text_from_cache_entry(e, text_viewport);
             }
-            let doc = markdown::parse_markdown(raw);
+            let doc = viewers::markdown::parse_markdown(raw);
             return doc.to_text(content_width);
         } else if viewer_uses_syntect_highlight(right_content) {
             let Some(path) = right_content.snap_meta.path.as_deref() else {
-                return Text::from(raw.to_string());
+                return text_from_viewer_raw(raw);
             };
             let theme = themes::current().name;
             let syntect_args =
                 syntect_viewer_cache_params(path, raw, content_width, theme, right_content);
             let cat = syntect_args.category;
             if raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
+                && viewers::async_tools::viewer_async_placeholder_active(state, right_content)
+            {
+                return text_from_viewer_raw(raw);
+            }
+            if raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
                 && let Some(ref e) = state.viewer_text_cache
                 && e.matches_syntect_viewer(&syntect_args)
             {
-                return match text_viewport {
-                    Some((sy, vh)) => e.viewport_text(sy, vh),
-                    None => e.text.clone(),
-                };
+                return text_from_cache_entry(e, text_viewport);
             }
-            return syntect_text::highlight_viewer(raw, path, cat);
-        } else if viewer_image::is_raster_preview_category(right_content) {
+            return viewers::syntect_text::highlight_viewer(raw, path, cat);
+        } else if viewers::images::is_raster_preview_category(right_content) {
             if state.viewer_image.protocol.is_some() {
                 return Text::default();
             }
             if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
-                return Text::from(viewer_image::raster_preview_label_body(
+                return Text::from(viewers::images::raster_preview_label_body(
                     right_content,
                     UI_STRINGS.loading.general,
                 ));
             }
             if let Some(e) = state.viewer_image.err.as_deref() {
-                return Text::from(viewer_image::raster_preview_label_body(right_content, e));
+                return Text::from(viewers::images::raster_preview_label_body(right_content, e));
             }
             let msg = right_content.viewer.as_deref().unwrap_or("");
-            return Text::from(viewer_image::raster_preview_label_body(right_content, msg));
+            return Text::from(viewers::images::raster_preview_label_body(
+                right_content,
+                msg,
+            ));
         }
     }
-    Text::from(raw.to_string())
+    text_from_viewer_raw(raw)
 }
 
 pub fn content_display_text(
@@ -499,14 +514,14 @@ pub fn content_display_text(
         RightPaneMode::Viewer => {
             viewer_display_text(state, right_content, content_width, text_viewport)
         }
-        RightPaneMode::Templates => ratatui::text::Text::from(right_content.templates.clone()),
-        RightPaneMode::Metadata => ratatui::text::Text::from(
+        RightPaneMode::Templates => Text::from(right_content.templates.clone()),
+        RightPaneMode::Metadata => Text::from(
             right_content
                 .metadata
                 .clone()
                 .unwrap_or_else(|| UI_STRINGS.pane.not_available.to_string()),
         ),
-        RightPaneMode::Writing => ratatui::text::Text::from(
+        RightPaneMode::Writing => Text::from(
             right_content
                 .writing
                 .clone()

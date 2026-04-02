@@ -188,7 +188,7 @@ fn handle_post_modal_chrome_keys(
         return true;
     }
     if matches!(action, keymap::UblxAction::ViewerFindClear) {
-        modules::viewer_find::clear(state_mut);
+        modules::viewer_search::clear(state_mut);
         return true;
     }
     if matches!(action, keymap::UblxAction::SearchClear) {

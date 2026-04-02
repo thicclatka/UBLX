@@ -72,6 +72,8 @@ pub enum UblxAction {
     OpenConfigInEditor,
     /// Reload hot-reloadable config (theme, layout, `enable_enhance_all`, hash, `show_hidden`, etc.) from disk (Command Mode: Ctrl+A, then r).
     ReloadConfig,
+    /// Export Zahir JSON files to `ublx-export/` (same as `ublx -x`; Command Mode: Ctrl+A, then x).
+    ExportZahirJson,
     /// Middle-pane multi-select: toggle current row (Space while multi-select is on).
     MultiselectToggleRow,
     /// Open bulk action menu (**a** with multi-select on, contents focused, modals closed).

@@ -364,7 +364,7 @@ fn qa_menu_file_actions_submit(
         else {
             return;
         };
-        if modules::lens::remove_path_from_lens(&params.db_path, lens_name, &path).is_ok() {
+        if modules::lenses::remove_path_from_lens(&params.db_path, lens_name, &path).is_ok() {
             show_operation_toast(
                 state,
                 params,
