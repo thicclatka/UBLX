@@ -15,8 +15,8 @@ categories = [
   "command-line-utilities",
   "database",
   "development-tools",
-  "file-browser",
-  "tui",
+  "text-processing",
+  "visualization",
 ]
 
 [dependencies]
