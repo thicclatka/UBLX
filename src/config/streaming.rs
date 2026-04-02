@@ -1,4 +1,4 @@
-//! Stream vs sequential run mode: branch pipeline on [RunMode] (from [UblxOpts]).
+//! Stream vs sequential run mode: branch pipeline on [`RunMode`] (from [`UblxOpts`]).
 
 use crate::config::UblxOpts;
 
@@ -12,7 +12,8 @@ pub enum RunMode {
 }
 
 impl RunMode {
-    /// Derive mode from opts: [UblxOpts::streaming] ⇒ Stream, else Sequential.
+    /// Derive mode from opts: [`UblxOpts::streaming`] ⇒ Stream, else Sequential.
+    #[must_use]
     pub fn from_opts(opts: &UblxOpts) -> Self {
         if opts.streaming {
             Self::Stream

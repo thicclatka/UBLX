@@ -1,10 +1,10 @@
-pub mod consts;
 pub mod core;
-pub mod delta;
-pub mod formatters;
-pub mod panels;
-pub mod right_pane;
-pub mod search;
-pub mod snapshot_panels;
+pub mod kv_tables;
+pub mod marquee;
+pub mod overlays;
+pub mod panes;
+pub mod path_lines;
+pub mod scrollable_content;
+pub mod viewers;
 
 pub use core::*;

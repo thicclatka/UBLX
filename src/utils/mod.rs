@@ -1,9 +1,21 @@
-pub mod error_writer;
-pub mod format;
-pub mod glyphs;
-pub mod notifications;
-pub mod tools;
+mod clipboard;
+mod embedded_cover;
+mod error_writer;
+mod external_tools;
+mod format;
+mod notifications;
+mod path;
+mod perf;
+mod terminal_osc;
+mod tools;
 
+pub use clipboard::*;
+pub use embedded_cover::*;
+pub use error_writer::*;
+pub use external_tools::*;
 pub use format::*;
-pub use glyphs::UI_GLYPHS;
+pub use notifications::*;
+pub use path::*;
+pub use perf::*;
+pub use terminal_osc::*;
 pub use tools::*;
