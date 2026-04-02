@@ -17,8 +17,9 @@ pub struct UblxNames {
     pub index_db_file_ext: &'static str,
     pub local_config_visible_toml: &'static str,
     pub local_config_hidden_toml: &'static str,
-    pub export_folder_name: &'static str,
     pub nefax_db: &'static str,
+    pub zahir_export_dir_name: &'static str,
+    pub lens_export_dir_name: &'static str,
 }
 
 impl Default for UblxNames {
@@ -37,7 +38,8 @@ impl UblxNames {
             local_config_visible_toml: concat!(env!("CARGO_PKG_NAME"), ".toml"),
             local_config_hidden_toml: concat!(".", env!("CARGO_PKG_NAME"), ".toml"),
             nefax_db: ".nefaxer",
-            export_folder_name: concat!(env!("CARGO_PKG_NAME"), "-export"),
+            zahir_export_dir_name: concat!(env!("CARGO_PKG_NAME"), "-export"),
+            lens_export_dir_name: concat!(env!("CARGO_PKG_NAME"), "-lenses"),
         }
     }
 }
@@ -687,14 +689,15 @@ impl UblxPaths {
 
     /// Paths to exclude from indexing (nefax + local config). DB files under `ubli/` use [`INDEX_DB_FILE_EXT`] and are not listed here (nefax matches path components).
     /// Local `ublx.toml` / `.ublx.toml` are edited from the Settings tab, not listed as a snapshot category.
-    /// [`UblxNames::export_folder_name`] (flat Zahir JSON export) is excluded so re-indexing does not ingest exported snapshots.
+    /// [`UblxNames::zahir_export_dir_name`] (flat Zahir JSON export) and [`UblxNames::lens_export_dir_name`] (lens Markdown export) are excluded so re-indexing does not ingest them.
     #[must_use]
     pub fn exclude(&self) -> Vec<String> {
         vec![
             UBLX_NAMES.nefax_db.to_string(),
             UBLX_NAMES.local_config_visible_toml.to_string(),
             UBLX_NAMES.local_config_hidden_toml.to_string(),
-            UBLX_NAMES.export_folder_name.to_string(),
+            UBLX_NAMES.zahir_export_dir_name.to_string(),
+            UBLX_NAMES.lens_export_dir_name.to_string(),
         ]
     }
 

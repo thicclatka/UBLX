@@ -15,5 +15,5 @@ Small, named features used from handlers and UI: their own state and/or key hand
 | **catalog_filter**  | Fuzzy catalog search over paths/categories (pure helpers; callers update `ViewData`).               |
 | **ublx_switch**     | Switch indexed project: recents-backed roots, in-process root change.                               |
 | **viewer_search**   | Literal in-pane viewer search (Shift+S): ranges, scroll, highlight.                                 |
-| **zahir_export_bg** | Background flat Zahir JSON export (command mode / `x`); toasts on completion.                       |
+| **exporter**        | Background Zahir JSON (`x`) and lens Markdown (`l`) exports; worker thread + toasts.              |
 | **file_ops**        | Rename/delete under indexed root (quick actions menu (spacebar)); DB and lens path updates.         |

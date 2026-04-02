@@ -156,6 +156,7 @@ pub fn perform_session_switch<'a>(
     params.duplicate_mode = db_ops::DuplicateGroupingMode::NameSize;
     params.duplicate_groups_rx = None;
     params.zahir_export_rx = None;
+    params.lens_export_rx = None;
     params.lens_names = lens_names;
     params.config_reload_rx = config_reload_rx;
     params.startup = RunUblxStartupFlow {

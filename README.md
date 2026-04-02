@@ -7,7 +7,7 @@
 
 [_Ublx ... Safe when taken as directed._](https://bookshop.org/p/books/ubik-philip-k-dick/1fc432e3ade32290)
 
-UBLX is a **TUI that turns any directory into a flat, navigable catalog** — index once, then browse categories, previews, metadata, and templates in the terminal. (Driven by [nefaxer](https://github.com/thicclatka/nefaxer) and [zahirscan](https://github.com/thicclatka/zahirscan))
+UBLX is a **TUI that turns any directory into a flat, navigable catalog** — categories, previews, metadata, and templates in the terminal. (Driven by [nefaxer](https://github.com/thicclatka/nefaxer) and [zahirscan](https://github.com/thicclatka/zahirscan))
 
 **_Currently in development, expect breaking changes._**
 
@@ -22,10 +22,10 @@ cargo build --release
 
 ## What it does
 
-- **Index once, then browse** — One run gives you a flat catalog with categories, file list, previews, metadata tables, and templates. Prior index is used for fast diffs. Writes a per-root SQLite file under your user cache (`ubli/`; stem is sanitized dir name plus path hash, extension matches the `ublx` package name). Config: `ublx.toml` or `.ublx.toml`.
-- **TUI** — 3 panes: categories (left), contents (middle), file viewer (right). Main tabs: **Snapshot** | **Delta** | **Lenses** | **Duplicates** | **Settings**. Search across & within files, vim motions, theme selector, quick actions menu, command mode, toast notifications, fullscreen toggle.
-- **Snapshot-only** — Headless index without the TUI
-- **Export** — Headless `--export` / `-x` writes pretty-printed Zahir JSON from the snapshot DB into `ublx-export/` as flat `{path}.json` files
+- **Index once, then browse** — One run updates the catalog; the prior index enables fast diffs. Per-root SQLite under your user cache (`ubli/`; stem is sanitized dir name plus path hash; extension matches the `ublx` package name). Config file names and paths: [Configuration](#configuration).
+- **TUI** — Main tabs: **Snapshot** | **Delta** | **Lenses** | **Duplicates** | **Settings**. Three-pane layout and keys: [Modes](#modes) and [Panes overview](#panes-overview). Search across & within files, vim motions, theme selector, quick actions menu, command mode, toast notifications, fullscreen toggle.
+- **Snapshot-only** — Index without the TUI (`-s` / `--snapshot-only`; [Usage](#usage)).
+- **Export** — Pretty-printed Zahir JSON to `ublx-export/` (`-x` / `--export`; [Usage](#usage)).
 
 ## Use case
 
@@ -39,7 +39,7 @@ Looking for a file manager? Use [yazi](https://github.com/sxyazi/yazi) for that;
 
 | Tab            | Description                                                                                                                                                                       |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Snapshot**   | Categories (left) and file list (middle) from the current index; right pane shows Templates / Viewer / Metadata / Writing for the selected row.                                   |
+| **Snapshot**   | From the current index: categories and file list; right pane shows Templates / Viewer / Metadata / Writing for the selected row.                                                  |
 | **Delta**      | Added / Mod / Removed since last snapshot; same 3-pane layout with overview in the right pane.                                                                                    |
 | **Lenses**     | Saved lists of items with a specific focus (e.g. a “lens” on a subset of files); left = lens names, middle = paths in the selected lens. Shown when the DB has at least one lens. |
 | **Duplicates** | Groups of duplicate files by content hash; left = group names, middle = paths in the group. Run duplicate detection (Ctrl+d) to populate; tab appears when groups exist.          |
@@ -55,7 +55,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 - **Scroll in the preview** — **Shift+b** / **Shift+e** (jump to top/bottom), **Shift+↑** / **Shift+↓** or **Shift+K** / **Shift+J** (line by line).
 - **Viewer fullscreen** — **Shift+F** toggles fullscreen for the Viewer tab.
 - **Viewer search** — **Shift+S** opens literal in-pane search in the preview (see in-app help for n/N and Esc).
-- **Catalog search** — **/** fuzzy-filters the category and content lists (left and middle) by path/category; the right pane updates with the selected row. Press **Esc** to clear filter.
+- **Catalog search** — **/** fuzzy-filters the category and content lists (left and middle) by path/category. Press **Esc** to clear filter.
 
 | Tab           | Content                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -78,7 +78,7 @@ Press **?** to open the full keybinding help.
 
 ## Configuration
 
-Config is optional. If present, **global** config is applied first, then **local** overrides from the indexed directory. Successful configs are cached per indexed directory.
+Config is optional. If present, **global** config is applied first, then **local** overrides from the indexed directory.
 
 | Platform      | Global config              | Config Cache                   |
 | ------------- | -------------------------- | ------------------------------ |

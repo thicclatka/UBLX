@@ -74,13 +74,15 @@ pub enum UblxAction {
     ReloadConfig,
     /// Export Zahir JSON files to `ublx-export/` (same as `ublx -x`; Command Mode: Ctrl+A, then x).
     ExportZahirJson,
+    /// Export lens Markdown files to `ublx-lenses/` (Command Mode: Ctrl+A, then l).
+    ExportLensMarkdown,
     /// Middle-pane multi-select: toggle current row (Space while multi-select is on).
     MultiselectToggleRow,
     /// Open bulk action menu (**a** with multi-select on, contents focused, modals closed).
     MultiselectOpenBulkMenu,
     /// Lenses tab, contents, single-select: **a** opens Add to other lens (same picker as bulk **a**; excludes active lens).
     AddToOtherLens,
-    /// Bulk menu row by letter (r / a / d; Lenses third row is d for delete-from-current-lens).
+    /// Bulk menu row by letter (a / r / d; optional z for Zahir).
     BulkMenuHotkeySelect(usize),
     /// Esc while multi-select is active (no search): leave multi-select without quitting.
     MultiselectCancel,

@@ -1,4 +1,4 @@
-//! **Command Mode** (after **Ctrl+A**): the next letter runs the matching shortcut (d, t, s, r, x, p),
+//! **Command Mode** (after **Ctrl+A**): the next letter runs the matching shortcut (d, t, s, r, x, l, p),
 //! or after a short timeout a centered menu lists them. Viewer search is **Shift+S**, not Command Mode.
 //! Jump-by-10 stays **Ctrl+j** / **Ctrl+k** (or arrows), not Command Mode.
 //! **Ctrl+Space** toggles middle-pane multi-select when contents are focused; Command Mode uses **Ctrl+A**.
@@ -70,6 +70,7 @@ fn chord_action_for_key(c: char) -> Option<UblxAction> {
         's' => Some(UblxAction::TakeSnapshot),
         'r' => Some(UblxAction::ReloadConfig),
         'x' => Some(UblxAction::ExportZahirJson),
+        'l' => Some(UblxAction::ExportLensMarkdown),
         _ => None,
     }
 }
@@ -149,5 +150,6 @@ pub const CTRL_MENU_ROWS: &[(&str, &str)] = &[
     ("s", COMMAND_MODE_DESCRIPTIONS.snapshot),
     ("r", COMMAND_MODE_DESCRIPTIONS.reload),
     ("x", COMMAND_MODE_DESCRIPTIONS.export_zahir),
+    ("l", COMMAND_MODE_DESCRIPTIONS.export_lenses),
     ("p", COMMAND_MODE_DESCRIPTIONS.project),
 ];

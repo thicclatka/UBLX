@@ -11,7 +11,7 @@ use crate::config::UBLX_NAMES;
 
 use super::load_snapshot_zahir_json_map;
 
-/// Write each non-empty snapshot `zahir_json` to `dir_to_ublx/{export_folder_name}/` as a flat file.
+/// Write each non-empty snapshot `zahir_json` to `dir_to_ublx/{zahir_export_dir_name}/` as a flat file.
 /// JSON is pretty-printed when valid; otherwise bytes are written as stored.
 /// Each filename is derived from the indexed relative path: `\` and `/` become `_`, other non-safe
 /// characters become `_`, then `.json` is appended. If two paths map to the same stem, `__2`, `__3`, …
@@ -22,7 +22,7 @@ use super::load_snapshot_zahir_json_map;
 /// Returns [`anyhow::Error`] on I/O or DB errors.
 pub fn export_zahir_json_flat(dir_to_ublx: &Path, db_path: &Path) -> Result<usize, anyhow::Error> {
     let map = load_snapshot_zahir_json_map(db_path)?;
-    let out_dir = dir_to_ublx.join(UBLX_NAMES.export_folder_name);
+    let out_dir = dir_to_ublx.join(UBLX_NAMES.zahir_export_dir_name);
     fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
 
     let mut taken = HashSet::<String>::new();

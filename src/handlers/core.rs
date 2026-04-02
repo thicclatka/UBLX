@@ -96,7 +96,7 @@ pub fn run_app(params: &mut RunAppParams<'_>) -> std::io::Result<()> {
 fn headless_export_zahir_mode(dir_to_ublx: &Path, db_path: &Path) -> std::io::Result<()> {
     match db_ops::export_zahir_json_flat(dir_to_ublx, db_path) {
         Ok(n) => {
-            let dest = dir_to_ublx.join(config::UBLX_NAMES.export_folder_name);
+            let dest = dir_to_ublx.join(config::UBLX_NAMES.zahir_export_dir_name);
             if n == 0 {
                 debug!(
                     "export: wrote 0 Zahir JSON files under {}; run `ublx --full-snapshot --export` for a full pass, or tune enhance policy in config",
@@ -187,6 +187,7 @@ fn run_tui_mode(
         duplicate_mode: db_ops::DuplicateGroupingMode::NameSize,
         duplicate_groups_rx: None,
         zahir_export_rx: None,
+        lens_export_rx: None,
         lens_names,
         config_reload_rx,
         startup: app::RunUblxStartupFlow {

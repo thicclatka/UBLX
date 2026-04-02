@@ -148,6 +148,10 @@ pub struct UiStringsToasts {
     pub export_zahir_ok: &'static str,
     pub export_zahir_none: &'static str,
     pub export_zahir_failed_prefix: &'static str,
+    /// Replace `{N}` with lens file count (Command Mode export to `ublx-lenses/`).
+    pub export_lenses_ok: &'static str,
+    pub export_lenses_none: &'static str,
+    pub export_lenses_failed_prefix: &'static str,
 }
 
 pub struct UiStringsLens {
@@ -435,6 +439,9 @@ impl UiStrings {
             export_zahir_ok: "Exported {N} Zahir JSON file(s)",
             export_zahir_none: "No Zahir JSON to export retake snapshot after adjusting settings/enhance policy",
             export_zahir_failed_prefix: "Zahir export failed: ",
+            export_lenses_ok: "Exported {N} lens Markdown file(s)",
+            export_lenses_none: "No lenses to export create a lens in the Lenses tab first",
+            export_lenses_failed_prefix: "Lens export failed: ",
         }
     }
 

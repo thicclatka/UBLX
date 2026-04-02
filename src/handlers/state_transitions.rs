@@ -49,6 +49,7 @@ fn apply_mode_switch(
         UblxAction::MainModeLenses => state_mut.main_mode = MainMode::Lenses,
         UblxAction::LoadDuplicates => state_mut.duplicate_load.requested = true,
         UblxAction::ExportZahirJson => state_mut.zahir_export_load.requested = true,
+        UblxAction::ExportLensMarkdown => state_mut.lens_export_load.requested = true,
         UblxAction::MainModeToggle => {
             state_mut.main_mode = state_mut.main_mode.next(has_duplicates, has_lenses);
         }
@@ -150,7 +151,8 @@ impl<'a> UblxActionContext<'a> {
             | UblxAction::MainModeLenses
             | UblxAction::MainModeToggle
             | UblxAction::LoadDuplicates
-            | UblxAction::ExportZahirJson => {
+            | UblxAction::ExportZahirJson
+            | UblxAction::ExportLensMarkdown => {
                 apply_mode_switch(state_mut, action, has_duplicates, has_lenses);
             }
             UblxAction::SearchStart => {

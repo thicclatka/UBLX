@@ -8,7 +8,7 @@ use crate::engine::db_ops;
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, MainMode, MultiselectState, PanelFocus, TuiRow, UblxState, ViewData,
 };
-use crate::modules::{enhance, lenses as lens_module};
+use crate::modules::{enhancer, lenses as lens_module};
 use crate::ui::{UI_STRINGS, file_ops, keymap::UblxAction, show_operation_toast};
 
 fn multiselect_applies(main_mode: MainMode) -> bool {
@@ -169,7 +169,7 @@ fn run_bulk_enhance_zahir(
         if !zahir_json.is_empty() {
             continue;
         }
-        match enhance::enhance_single_path(&params.dir_to_ublx, &params.db_path, path, ublx_opts) {
+        match enhancer::enhance_single_path(&params.dir_to_ublx, &params.db_path, path, ublx_opts) {
             Ok(()) => ok += 1,
             Err(e) => {
                 failed += 1;
@@ -216,12 +216,8 @@ fn run_bulk_action(
     }
     if mode == MainMode::Lenses {
         match index {
+            // Bulk menu order: Add to other lens (a), Rename (r), Remove from lens (d), Zahir (z).
             0 => {
-                if !paths.is_empty() {
-                    file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
-                }
-            }
-            1 => {
                 if paths.is_empty() {
                     return;
                 }
@@ -230,6 +226,11 @@ fn run_bulk_action(
                     .get(state.panels.category_state.selected().unwrap_or(0))
                     .cloned();
                 state.open_lens_menu(paths, ex);
+            }
+            1 => {
+                if !paths.is_empty() {
+                    file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
+                }
             }
             2 => {
                 let Some(lens_name) = view
@@ -263,14 +264,15 @@ fn run_bulk_action(
     }
 
     match index {
+        // Bulk menu order: Add to lens (a), Rename (r), Delete (d), Zahir (z).
         0 => {
             if !paths.is_empty() {
-                file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
+                state.open_lens_menu(paths, None);
             }
         }
         1 => {
             if !paths.is_empty() {
-                state.open_lens_menu(paths, None);
+                file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
             }
         }
         2 => {

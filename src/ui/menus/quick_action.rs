@@ -212,7 +212,7 @@ fn qa_menu_enhance_zahir_if_disabled(
     if ublx_opts.enable_enhance_all {
         return;
     }
-    match modules::enhance::enhance_single_path(
+    match modules::enhancer::enhance_single_path(
         &params.dir_to_ublx,
         &params.db_path,
         path,

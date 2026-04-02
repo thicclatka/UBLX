@@ -194,7 +194,7 @@ pub fn render_enhance_policy_menu(
     );
 }
 
-/// Multi-select bulk: non-Lenses **r** / **a** / **d** and optional **z**; Lenses **r** / **a** / **d** (add elsewhere / delete from current lens) and optional **z**.
+/// Multi-select bulk: **a** / **r** / **d** (Add, Rename, Delete) and optional **z**; Lenses uses add-to-other / rename / remove-from-lens.
 pub fn render_multiselect_bulk_menu(
     f: &mut Frame,
     selected_index: usize,
@@ -209,8 +209,8 @@ pub fn render_multiselect_bulk_menu(
     let enhance_z = label_with_hotkey(UI_STRINGS.space.enhance_with_zahirscan, 'z');
 
     let mut items_owned: Vec<String> = match main_mode {
-        MainMode::Lenses => vec!["Rename (r)".to_string(), add_other, delete_from_lens],
-        _ => vec!["Rename (r)".to_string(), add_lens, "Delete (d)".to_string()],
+        MainMode::Lenses => vec![add_other, "Rename (r)".to_string(), delete_from_lens],
+        _ => vec![add_lens, "Rename (r)".to_string(), "Delete (d)".to_string()],
     };
     if show_zahir_row {
         items_owned.push(enhance_z);

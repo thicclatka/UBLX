@@ -342,6 +342,12 @@ pub struct ZahirExportGate {
     pub requested: bool,
 }
 
+/// Background lens Markdown export (Command Mode + `l`).
+#[derive(Default)]
+pub struct LensExportGate {
+    pub requested: bool,
+}
+
 /// First real frame vs later ticks; redraw after returning from external editor.
 #[derive(Clone, Copy, Debug)]
 pub struct SessionTickFlags {
@@ -534,6 +540,7 @@ pub struct UblxState {
     pub snapshot_bg: BackgroundSnapshot,
     pub duplicate_load: DuplicateLoadGate,
     pub zahir_export_load: ZahirExportGate,
+    pub lens_export_load: LensExportGate,
     /// Duplicates tab: paths hidden for this session via Space → Ignore (i); not persisted.
     pub duplicate_ignored_paths: HashSet<String>,
     pub config_written_by_us_at: Option<std::time::Instant>,
@@ -582,6 +589,7 @@ impl UblxState {
             snapshot_bg: BackgroundSnapshot::default(),
             duplicate_load: DuplicateLoadGate::default(),
             zahir_export_load: ZahirExportGate::default(),
+            lens_export_load: LensExportGate::default(),
             duplicate_ignored_paths: HashSet::new(),
             config_written_by_us_at: None,
             session: SessionFlow::default(),

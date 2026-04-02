@@ -67,12 +67,12 @@ const HELP_VIEWER: &[(&str, &str)] = help_entries![
     ("Shift+F", "Toggle fullscreen"),
 ];
 
-/// Multi-select: contents pane, Snapshot or Lenses (not Duplicates). Bulk menu: Snapshot vs Lenses on **a** / **d**.
+/// Multi-select: contents pane, Snapshot or Lenses (not Duplicates). Bulk menu rows: **a** Add · **r** Rename · **d** Delete.
 const HELP_MULTISELECT: &[(&str, &str)] = help_entries![
     ("Spacebar", "Toggle row for multi-select"),
     ("a", "Open Bulk menu"),
-    ("Bulk menu → r", "Rename paths in $EDITOR"),
     ("Bulk menu → a", "Add to Lens/other Lens"),
+    ("Bulk menu → r", "Rename paths in $EDITOR"),
     ("Bulk menu → d", "Delete files/remove from current Lens"),
     ("Bulk menu → z", "Enhance with ZahirScan"),
     ("Esc", "Exit Multi-select mode"),
@@ -94,6 +94,7 @@ const HELP_COMMAND_MODE: &[(&str, &str)] = help_entries![
     ("s", COMMAND_MODE_DESCRIPTIONS.snapshot),
     ("r", COMMAND_MODE_DESCRIPTIONS.reload),
     ("x", COMMAND_MODE_DESCRIPTIONS.export_zahir),
+    ("l", COMMAND_MODE_DESCRIPTIONS.export_lenses),
     ("p", COMMAND_MODE_DESCRIPTIONS.project),
 ];
 

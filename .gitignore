@@ -65,8 +65,7 @@ Thumbs.db
 .env.*
 !.env.example
 .ublx.toml
-ublx.toml
-ublx.log
-ublx-export/
+ublx.*
+ublx-*/
 .nefaxer
 TODO.md

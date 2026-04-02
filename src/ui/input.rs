@@ -82,12 +82,7 @@ fn dispatch_modal_handlers(
         modules::ublx_switch::handle_key(state_mut, params_mut, action);
         return true;
     }
-    if modules::enhance_policy::handle_enhance_policy_menu(
-        state_mut,
-        params_mut,
-        ublx_opts_mut,
-        action,
-    ) {
+    if modules::enhancer::handle_enhance_policy_menu(state_mut, params_mut, ublx_opts_mut, action) {
         return true;
     }
     if menus::handle_qa_menu(state_mut, view_ref, params_mut, ublx_opts_mut, action) {
@@ -328,11 +323,11 @@ fn apply_overlay_key_overrides(
         && let KeyCode::Char(c) = e.code
     {
         match c.to_ascii_lowercase() {
-            'r' => {
+            'a' => {
                 *action = keymap::UblxAction::BulkMenuHotkeySelect(0);
                 state_mut.last_key_for_double = None;
             }
-            'a' => {
+            'r' => {
                 *action = keymap::UblxAction::BulkMenuHotkeySelect(1);
                 state_mut.last_key_for_double = None;
             }

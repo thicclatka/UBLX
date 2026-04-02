@@ -48,6 +48,8 @@ pub struct RunUblxParams<'a> {
     pub duplicate_groups_rx: Option<mpsc::Receiver<(Vec<DuplicateGroup>, DuplicateGroupingMode)>>,
     /// When some, background [`crate::engine::db_ops::export_zahir_json_flat`] is running; main loop receives via `try_recv`.
     pub zahir_export_rx: Option<mpsc::Receiver<Result<usize, String>>>,
+    /// When some, background [`crate::engine::db_ops::export_lenses_markdown_flat`] is running; main loop receives via `try_recv`.
+    pub lens_export_rx: Option<mpsc::Receiver<Result<usize, String>>>,
     /// Lens names for the Lenses tab (loaded at startup). When non-empty, Lenses tab is shown.
     pub lens_names: Vec<String>,
     /// When some, a file watcher sends () on global/local config save; main loop triggers hot reload.
