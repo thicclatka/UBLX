@@ -94,7 +94,7 @@ fn config_dir() -> Option<PathBuf> {
     {
         env::var("APPDATA")
             .ok()
-            .map(|p| PathBuf::from(p).join(PKG_NAME))
+            .map(|p| PathBuf::from(p).join(UBLX_NAMES.pkg_name))
     }
     #[cfg(not(windows))]
     {
@@ -113,7 +113,7 @@ fn cache_dir() -> Option<PathBuf> {
     {
         env::var("LOCALAPPDATA")
             .ok()
-            .map(|p| PathBuf::from(p).join(PKG_NAME))
+            .map(|p| PathBuf::from(p).join(UBLX_NAMES.pkg_name))
     }
     #[cfg(not(windows))]
     {
@@ -611,7 +611,7 @@ impl UblxPaths {
         self.toml_path().unwrap_or_else(|| self.hidden_toml())
     }
 
-    /// Main DB file under `cache_dir()` / [`PKG_NAME_PLURAL`] (basename + [`INDEX_DB_FILE_EXT`]). `SQLite` creates it if missing.
+    /// Main DB file under `cache_dir()` / [`UBLX_NAMES.pkg_name_plural`] (basename + [`INDEX_DB_FILE_EXT`]). `SQLite` creates it if missing.
     #[must_use]
     pub fn db(&self) -> PathBuf {
         self.db_dir()

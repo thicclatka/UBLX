@@ -14,7 +14,7 @@ pub const KIB: u64 = 1024;
 pub const MIB: u64 = KIB * 1024;
 pub const GIB: u64 = MIB * 1024;
 
-/// Half a mebibyte (512 KiB): max single-file text load in the viewer and minimum file size for
+/// Half a megabyte (512 KiB): max single-file text load in the viewer and minimum file size for
 /// off-thread image decode — keep these policies in sync unless intentionally diverging.
 pub const HALF_MIB_BYTES: u64 = MIB / 2;
 
