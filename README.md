@@ -55,7 +55,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 - **Scroll in the preview** — **Shift+b** / **Shift+e** (jump to top/bottom), **Shift+↑** / **Shift+↓** or **Shift+K** / **Shift+J** (line by line).
 - **Viewer fullscreen** — **Shift+F** toggles fullscreen for the Viewer tab.
 - **Viewer search** — **Shift+S** opens literal in-pane search in the preview (see in-app help for n/N and Esc).
-- **Catalog search** — **/** filters the category and content lists (left and middle) by substring; the right pane updates with the selected row. Press **Esc** to clear filter.
+- **Catalog search** — **/** fuzzy-filters the category and content lists (left and middle) by path/category; the right pane updates with the selected row. Press **Esc** to clear filter.
 
 | Tab           | Content                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
