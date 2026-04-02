@@ -7,7 +7,9 @@ use super::consts::UblxTabNumber;
 /// Actions for the 3-panel TUI (categories, contents, preview).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UblxAction {
+    /// Exit the TUI (`q` when not searching; Esc when search is inactive).
     Quit,
+    /// Open the full keybinding help overlay (`?`).
     Help,
     /// Switch to Snapshot main tab.
     MainModeSnapshot,
@@ -23,9 +25,13 @@ pub enum UblxAction {
     MainModeToggle,
     /// Run duplicate detection in background and show Duplicates tab (Command Mode: Ctrl+A, then d).
     LoadDuplicates,
+    /// Open the catalog path filter (`/`).
     SearchStart,
+    /// Type into the catalog search bar (while active).
     SearchChar(char),
+    /// Delete in the catalog search bar.
     SearchBackspace,
+    /// Commit catalog search (Enter).
     SearchSubmit,
     /// Esc when search is active (clear search); when inactive, use Quit.
     SearchClear,
@@ -39,13 +45,19 @@ pub enum UblxAction {
     ViewerFindPrev,
     /// Cycle right pane tab (Shift+Tab).
     CycleRightPane,
+    /// Focus the Viewer tab in the right pane (`v`).
     RightPaneViewer,
     /// Toggle right-pane fullscreen (current tab).
     ViewerFullscreenToggle,
+    /// Focus the Templates tab (`t`).
     RightPaneTemplates,
+    /// Focus the Metadata tab (`m`).
     RightPaneMetadata,
+    /// Focus the Writing tab (`w`).
     RightPaneWriting,
+    /// Scroll the right-pane preview up (Shift+↑ / Shift+K, or `K` when mapped as navigation).
     ScrollPreviewUp,
+    /// Scroll the right-pane preview down (Shift+↓ / Shift+J, or `J` when mapped as navigation).
     ScrollPreviewDown,
     /// gg: go to top of list (categories or contents).
     ListTop,
@@ -55,12 +67,19 @@ pub enum UblxAction {
     PreviewTop,
     /// Shift+e: scroll preview to bottom.
     PreviewBottom,
+    /// Move selection up in the focused list (`k` / Up).
     MoveUp,
+    /// Move selection down (`j` / Down).
     MoveDown,
+    /// Page-style move up (Ctrl+k / Ctrl+Up).
     MoveUpFast,
+    /// Page-style move down (Ctrl+j / Ctrl+Down).
     MoveDownFast,
+    /// Focus the categories (left) pane (`h` / Left).
     FocusCategories,
+    /// Focus the contents (middle) pane (`l` / Right).
     FocusContents,
+    /// Cycle focus between left and middle panes (Tab).
     Tab,
     /// Run take-snapshot pipeline in background; completion shows in log bumper (Command Mode: Ctrl+A, then s).
     TakeSnapshot,
@@ -94,6 +113,7 @@ pub enum UblxAction {
     ConfirmYes,
     /// Second option (`n`).
     ConfirmNo,
+    /// Key had no mapping; may carry `last_key_for_double` for a pending `g` → `gg`.
     Noop,
 }
 

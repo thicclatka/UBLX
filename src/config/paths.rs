@@ -11,14 +11,25 @@ use std::{
 
 use log::debug;
 
+/// Stable names for on-disk artifacts under an indexed root (`ubli/` cache, project `ublx.toml`, export dirs).
+///
+/// Values follow the Cargo package name where noted (`ublx` → e.g. `ublx.toml`, `.ublx`, `ublx-export/`).
 pub struct UblxNames {
+    /// Crate / CLI name (`CARGO_PKG_NAME`).
     pub pkg_name: &'static str,
+    /// User cache directory name for per-root DB files (e.g. `ubli`).
     pub pkg_name_plural: &'static str,
+    /// Index SQLite file extension (e.g. `.ublx`).
     pub index_db_file_ext: &'static str,
+    /// Visible local config basename (e.g. `ublx.toml`).
     pub local_config_visible_toml: &'static str,
+    /// Hidden local config basename (e.g. `.ublx.toml`).
     pub local_config_hidden_toml: &'static str,
+    /// Nefaxer DB directory name
     pub nefax_db: &'static str,
+    /// Subdirectory for Zahir JSON export (e.g. `ublx-export/`; CLI `-x` / Command Mode).
     pub zahir_export_dir_name: &'static str,
+    /// Subdirectory for lens Markdown export (e.g. `ublx-lenses/`; Command Mode).
     pub lens_export_dir_name: &'static str,
 }
 

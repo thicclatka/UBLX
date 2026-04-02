@@ -174,7 +174,8 @@ pub fn run_tick(
     Ok(quit)
 }
 
-/// First-tick hooks, snapshot row reload, background channel drains, dupe-finder spawn.
+/// Runs before view build: settings first-tick, reload flags, snapshot row reload, duplicate/export/config
+/// channel drains, then spawn background dupe detection and on-disk exports if requested.
 fn tick_applets_and_io(
     state: &mut setup::UblxState,
     categories: &mut Vec<String>,
@@ -242,6 +243,7 @@ fn tick_applets_and_io(
     modules::exporter::lens_spawn_if_requested(state, params);
 }
 
+/// Prune expired toasts, then handle snapshot request, completion, and in-progress polling (live DB reload).
 fn tick_toasts_and_snapshot(
     state: &mut setup::UblxState,
     categories: &mut Vec<String>,

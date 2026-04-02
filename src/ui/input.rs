@@ -16,15 +16,23 @@ use crate::ui::{
     ctrl_chord, file_ops, keymap, menus, mouse, multiselect,
 };
 
+/// Everything [`handle_ublx_input`] needs to resolve keys and route to modals: current view, optional
+/// row slice, right-pane payload, theme popup state, full terminal area, layout percentages, and which main tabs exist.
 #[derive(Clone)]
 pub struct InputContext<'a> {
+    /// Filtered categories + middle list for this tick.
     pub view: &'a ViewData,
     /// Snapshot rows for resolving paths in multi-select (`None` in modes without a shared row slice).
     pub all_rows: Option<&'a [TuiRow]>,
+    /// Viewer / templates / metadata / writing content for the selected item.
     pub right_content: &'a RightPaneContent,
+    /// Theme selector popup: open/closed state and list position.
     pub theme_ctx: modules::theme_selector::ThemeContext,
+    /// Full terminal rectangle (for overlay placement and mouse hit tests).
     pub frame_area: Rect,
+    /// Hot-reloaded left/middle/right width percentages.
     pub layout: &'a LayoutOverlay,
+    /// Whether Duplicates / Lenses tabs are shown and duplicate grouping mode.
     pub tabs: MainTabFlags,
 }
 
