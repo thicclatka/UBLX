@@ -2,7 +2,7 @@
 
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{ContentArrangement, Table};
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
 use rayon::prelude::*;
 
@@ -532,14 +532,21 @@ pub fn table_string_rows_only(
     table.to_string()
 }
 
-/// Convert a pre-rendered table string into lines styled with theme text color.
+/// Convert a pre-rendered table string into lines with the given foreground (e.g. from a captured
+/// [`crate::themes::Palette`] when rendering off the UI thread or on Rayon workers).
 #[must_use]
-pub fn table_string_to_lines(table_str: &str) -> Vec<Line<'static>> {
-    let style = Style::default().fg(themes::current().text);
+pub fn table_string_to_lines_with_fg(table_str: &str, fg: Color) -> Vec<Line<'static>> {
+    let style = Style::default().fg(fg);
     table_str
         .lines()
         .map(|l| Line::from(Span::styled(l.to_string(), style)))
         .collect()
+}
+
+/// Convert a pre-rendered table string into lines styled with [`themes::current`] text color.
+#[must_use]
+pub fn table_string_to_lines(table_str: &str) -> Vec<Line<'static>> {
+    table_string_to_lines_with_fg(table_str, themes::current().text)
 }
 
 /// Convert a pre-rendered table string into styled text.

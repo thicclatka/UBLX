@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, Borders, HighlightSpacing, List, ListItem};
 use crate::layout::style;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
 
-/// Split content area into main area and one status line (Latest Snapshot + Search:).
+/// Split content area into main area and one status line (Last Snapshot + Search:).
 #[must_use]
 pub fn split_main_and_status(content_area: Rect) -> (Rect, Rect) {
     let vertical = style::split_vertical(content_area, &UI_CONSTANTS.status_line_constraints());

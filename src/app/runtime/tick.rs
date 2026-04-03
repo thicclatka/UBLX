@@ -120,7 +120,7 @@ pub fn run_tick(
 
     ui::tick_chord_menu_timeout(state, now);
 
-    let latest_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(&params.db_path)
+    let last_snapshot_ns = db_ops::load_delta_log_snapshot_timestamps(&params.db_path)
         .ok()
         .and_then(|v| v.into_iter().next());
     let theme_name_owned = theme_name_for_tick(state, params);
@@ -134,7 +134,7 @@ pub fn run_tick(
             delta_data: delta_data.as_ref(),
             rows_for_draw,
             theme_name,
-            latest_snapshot_ns,
+            last_snapshot_ns,
         };
         draw_one_frame(terminal, state, &view, &right_content, &draw_inputs)?;
     }
@@ -167,7 +167,7 @@ pub fn run_tick(
             delta_data: delta_data.as_ref(),
             rows_for_draw,
             theme_name,
-            latest_snapshot_ns,
+            last_snapshot_ns,
         };
         draw_one_frame(terminal, state, &view, &right_content, &draw_inputs)?;
     }

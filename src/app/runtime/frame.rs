@@ -17,7 +17,7 @@ pub struct DrawInputs<'a> {
     pub delta_data: Option<&'a setup::DeltaViewData>,
     pub rows_for_draw: Option<&'a [setup::TuiRow]>,
     pub theme_name: Option<&'a str>,
-    pub latest_snapshot_ns: Option<i64>,
+    pub last_snapshot_ns: Option<i64>,
 }
 
 /// Draw one frame using current view and right content. Used for the normal tick draw and for the post-editor refresh.
@@ -33,7 +33,7 @@ pub fn draw_one_frame(
         draw_inputs.delta_data,
         draw_inputs.rows_for_draw,
         draw_inputs.theme_name,
-        draw_inputs.latest_snapshot_ns,
+        draw_inputs.last_snapshot_ns,
     );
     terminal
         .draw(|f| draw_ublx_frame(f, state, view, right_content, &draw_args))
@@ -46,7 +46,7 @@ fn build_draw_args<'a>(
     delta_data: Option<&'a setup::DeltaViewData>,
     rows_for_draw: Option<&'a [setup::TuiRow]>,
     theme_name: Option<&'a str>,
-    latest_snapshot_ns: Option<i64>,
+    last_snapshot_ns: Option<i64>,
 ) -> DrawFrameArgs<'a> {
     DrawFrameArgs {
         delta_data,
@@ -56,7 +56,7 @@ fn build_draw_args<'a>(
         layout: &params.layout,
         bg_opacity: params.bg_opacity,
         transparent_page_chrome: params.bg_opacity < OPACITY_SOLID_MIN,
-        latest_snapshot_ns,
+        last_snapshot_ns,
         dev: params.display.dev,
         duplicate_groups: if params.duplicate_groups.is_empty() {
             None

@@ -32,7 +32,7 @@ pub struct DrawFrameArgs<'a> {
     /// When true, powerline status/footer nodes use [`Color::Reset`] for page-adjacent cell backgrounds (matches [`Self::bg_opacity`] &lt; ~1).
     pub transparent_page_chrome: bool,
     /// Latest snapshot timestamp from `delta_log` (for categories panel footer). Set in Snapshot mode.
-    pub latest_snapshot_ns: Option<i64>,
+    pub last_snapshot_ns: Option<i64>,
     /// When true, show dev-mode toast notifications.
     pub dev: bool,
     /// When non-empty, Duplicates tab is shown and this slice is the duplicate groups.
@@ -450,7 +450,7 @@ fn draw_main_content_status_or_input_popups(
         draw_status_line(
             f,
             body.status_area,
-            args.latest_snapshot_ns,
+            args.last_snapshot_ns,
             state.search.active,
             &state.search.query,
             chord_chrome_active(&state.chrome),
@@ -538,12 +538,12 @@ fn draw_main_tabs(
     );
 }
 
-/// Status line: Latest Snapshot powerline node, or catalog search (same popup look as find) in that slot.
+/// Status line: Last Snapshot powerline node, or catalog search (same popup look as find) in that slot.
 /// Esc clears search and the snapshot node returns.
 pub fn draw_status_line(
     f: &mut Frame,
     area: Rect,
-    latest_snapshot_ns: Option<i64>,
+    last_snapshot_ns: Option<i64>,
     search_active: bool,
     search_query: &str,
     chord_mode: bool,
@@ -551,12 +551,12 @@ pub fn draw_status_line(
 ) {
     let search_replaces_snapshot = search_active || !search_query.trim().is_empty();
     let mut spans: Vec<Span<'static>> = Vec::new();
-    if let Some(ns) = latest_snapshot_ns
+    if let Some(ns) = last_snapshot_ns
         && !search_replaces_snapshot
     {
         let node_content = format!(
             "{}: {}",
-            UI_STRINGS.search.latest_snapshot,
+            UI_STRINGS.search.last_snapshot,
             utils::format_timestamp_ns(ns)
         );
         spans.extend(layout::style::status_node_spans(

@@ -117,7 +117,7 @@ fn draw_one_snapshot_frame_renders_main_chrome() {
         dir_to_ublx: None,
         theme_name: None,
         layout: &layout,
-        latest_snapshot_ns: None,
+        last_snapshot_ns: None,
         dev: false,
         duplicate_groups: None,
         duplicate_mode: DuplicateGroupingMode::Hash,

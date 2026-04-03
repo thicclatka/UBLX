@@ -51,7 +51,7 @@ pub struct UiStringsList {
 pub struct UiStringsSearchStatus {
     pub search_label: &'static str,
     pub find_label: &'static str,
-    pub latest_snapshot: &'static str,
+    pub last_snapshot: &'static str,
 }
 
 /// UBLX settings source labels (global vs local config).
@@ -352,7 +352,7 @@ impl UiStrings {
         UiStringsSearchStatus {
             search_label: "Search (Categories & Contents): ",
             find_label: "Search: ",
-            latest_snapshot: "Latest Snapshot",
+            last_snapshot: "Last Snapshot",
         }
     }
 

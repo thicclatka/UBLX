@@ -434,7 +434,8 @@ fn viewer_display_text(
             if raw.len() >= cache::VIEWER_TEXT_CACHE.min_csv_bytes
                 && viewers::async_tools::viewer_async_placeholder_active(state, right_content)
             {
-                return Text::from(UI_STRINGS.loading.general.to_string());
+                return text_from_viewer_raw(raw);
+                // return Text::from(UI_STRINGS.loading.general.to_string());
             }
             if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
                 return text_from_cache_entry(e, text_viewport);

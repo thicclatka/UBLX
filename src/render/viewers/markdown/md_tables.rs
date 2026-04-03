@@ -3,6 +3,7 @@ use ratatui::text::Line;
 use crate::render::viewers::pretty_tables::{
     self, collapse_viewer_cell_whitespace, pad_row_to_cols,
 };
+use crate::themes::Palette;
 
 fn is_separator_row(row: &[String]) -> bool {
     let is_separator_cell = |s: &str| {
@@ -30,6 +31,7 @@ pub fn render_markdown_table_lines(
     header: &[String],
     rows: &[Vec<String>],
     width: u16,
+    theme: &Palette,
 ) -> Vec<Line<'static>> {
     let data_rows = markdown_table_body_rows(rows);
     let col_count = header
@@ -44,5 +46,5 @@ pub fn render_markdown_table_lines(
         .collect();
 
     let table_str = pretty_tables::table_string_header_body_smart_wrap(&header_cells, &body, width);
-    pretty_tables::table_string_to_lines(&table_str)
+    pretty_tables::table_string_to_lines_with_fg(&table_str, theme.text)
 }

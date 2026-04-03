@@ -122,6 +122,33 @@ fn spawn_job(
         });
 }
 
+/// Worker threads start with no palette in TLS; install it before any code that calls [`themes::current`].
+fn sync_worker_palette(theme_name: &str) {
+    themes::set_current(Some(theme_name));
+}
+
+/// Clear prior async state, open a channel, and return the sender + job key; [`None`] if we should
+/// skip (no path, or identical job already pending).
+fn begin_viewer_async_job(
+    state: &mut UblxState,
+    rc: &RightPaneContent,
+    content_width: u16,
+    kind: viewer_async::ViewerAsyncJobKind,
+) -> Option<(
+    mpsc::Sender<viewer_async::ViewerAsyncDone>,
+    viewer_async::ViewerAsyncJobKey,
+)> {
+    let key = job_key_for(rc, content_width, kind)?;
+    if state.viewer_async.pending_key.as_ref() == Some(&key) && state.viewer_async.rx.is_some() {
+        return None;
+    }
+    state.viewer_async.clear();
+    let (tx, rx) = mpsc::channel();
+    state.viewer_async.rx = Some(rx);
+    state.viewer_async.pending_key = Some(key.clone());
+    Some((tx, key))
+}
+
 /// Apply one completed viewer-async message if any.
 ///
 /// Completion is matched against [`ViewerAsyncState::pending_key`] only — not against a trial
@@ -188,24 +215,18 @@ pub fn schedule_markdown(
     raw: Arc<str>,
     theme_key: String,
 ) {
-    let Some(key) = job_key_for(
+    let Some((tx, done_key)) = begin_viewer_async_job(
+        state,
         rc,
         content_width,
         viewer_async::ViewerAsyncJobKind::Markdown,
     ) else {
         return;
     };
-    if state.viewer_async.pending_key.as_ref() == Some(&key) && state.viewer_async.rx.is_some() {
-        return;
-    }
-    state.viewer_async.clear();
-    let (tx, rx) = mpsc::channel();
-    state.viewer_async.rx = Some(rx);
-    state.viewer_async.pending_key = Some(key.clone());
     let content_identity = cache::viewer_content_identity(raw.as_ref(), rc.snap_meta.mtime_ns);
     let path = path.to_string();
-    let done_key = key;
     spawn_job(tx, done_key, move || {
+        sync_worker_palette(theme_key.as_str());
         viewer_async::ViewerAsyncResult::Markdown(build_markdown_cache_entry(
             &path,
             raw.as_ref(),
@@ -224,22 +245,19 @@ pub fn schedule_syntect(
     raw: Arc<str>,
     theme_name: String,
 ) {
-    let Some(key) = job_key_for(rc, content_width, viewer_async::ViewerAsyncJobKind::Code) else {
+    let Some((tx, done_key)) = begin_viewer_async_job(
+        state,
+        rc,
+        content_width,
+        viewer_async::ViewerAsyncJobKind::Code,
+    ) else {
         return;
     };
-    if state.viewer_async.pending_key.as_ref() == Some(&key) && state.viewer_async.rx.is_some() {
-        return;
-    }
-    state.viewer_async.clear();
-    let (tx, rx) = mpsc::channel();
-    state.viewer_async.rx = Some(rx);
-    state.viewer_async.pending_key = Some(key.clone());
     let content_identity = cache::viewer_content_identity(raw.as_ref(), rc.snap_meta.mtime_ns);
     let path_owned = path.to_string();
     let appearance = themes::current().appearance;
     let category = rc.ublx_db_category();
     let mtime_ns = rc.snap_meta.mtime_ns;
-    let done_key = key;
     spawn_job(tx, done_key, move || {
         let p = cache::CodeViewerCacheParams {
             path: path_owned.as_str(),
@@ -263,21 +281,19 @@ pub fn schedule_csv(
     theme_key: String,
     table_key: cache::ViewerTableCacheKey,
 ) {
-    let Some(key) = job_key_for(rc, content_width, viewer_async::ViewerAsyncJobKind::Csv) else {
+    let Some((tx, done_key)) = begin_viewer_async_job(
+        state,
+        rc,
+        content_width,
+        viewer_async::ViewerAsyncJobKind::Csv,
+    ) else {
         return;
     };
-    if state.viewer_async.pending_key.as_ref() == Some(&key) && state.viewer_async.rx.is_some() {
-        return;
-    }
-    state.viewer_async.clear();
-    let (tx, rx) = mpsc::channel();
-    state.viewer_async.rx = Some(rx);
-    state.viewer_async.pending_key = Some(key.clone());
     let path = path.to_string();
     let identity = table_key.identity.clone();
     let cache_key = table_key;
-    let done_key = key;
     spawn_job(tx, done_key, move || {
+        sync_worker_palette(theme_key.as_str());
         let entry = build_csv_cache_entry(&path, raw.as_ref(), content_width, theme_key, identity);
         viewer_async::ViewerAsyncResult::Csv(cache_key, entry)
     });

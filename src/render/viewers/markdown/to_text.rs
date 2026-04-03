@@ -74,7 +74,7 @@ pub fn block_to_lines(
             }
         }
         Block::Table { header, rows } => {
-            lines.extend(render_markdown_table_lines(header, rows, width));
+            lines.extend(render_markdown_table_lines(header, rows, width, theme));
             lines.push_blank();
         }
         Block::Quote(s) => {

@@ -60,7 +60,7 @@ fn node_spans(content: &str, circle_style: Style, node_style: Style) -> Vec<Span
     ]
 }
 
-/// Single-node footer line with the given alignment (e.g. viewer size = Right, categories "Latest Snapshot" = Left).
+/// Single-node footer line with the given alignment (e.g. viewer size = Right, categories "Last Snapshot" = Left).
 #[must_use]
 pub fn node_line(
     text: &str,
@@ -77,7 +77,7 @@ pub fn node_line(
     Line::from(node_spans(text, circle_style, node_style)).alignment(alignment)
 }
 
-/// Powerline-style node spans for use in a combined status line (e.g. Latest Snapshot, not in a border).
+/// Powerline-style node spans for use in a combined status line (e.g. Last Snapshot, not in a border).
 #[must_use]
 pub fn status_node_spans(
     content: &str,
@@ -126,7 +126,7 @@ pub fn popup_input_line_spans(
     ]
 }
 
-/// Catalog `/` search on the status line. Callers hide the Latest Snapshot node while this is visible.
+/// Catalog `/` search on the status line. Callers hide the Last Snapshot node while this is visible.
 #[must_use]
 pub fn search_catalog_popup_spans(
     search_active: bool,
