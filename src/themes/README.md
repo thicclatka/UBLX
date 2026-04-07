@@ -1,6 +1,6 @@
 # Themes
 
-Theme names match `Palette::name` in `palettes.rs`: use them as `theme = "..."` in `ublx.toml` or `.ublx.toml`. The in-app theme picker (**Ctrl+t**) previews and can save the choice.
+Theme names match `Palette::name` in `palettes.rs`: use them as `theme = "..."` in `ublx.toml` or `.ublx.toml`. The in-app theme picker (**Command Mode + t**) previews and can save the choice.
 
 ## Picker order
 

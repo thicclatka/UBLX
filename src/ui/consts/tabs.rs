@@ -31,7 +31,7 @@ pub fn main_tab_title(label: &str, key_digit: u8) -> String {
     format!("{label} [{key_digit}]")
 }
 
-/// Main mode tab bar: Snapshot | Delta | …
+/// Main mode tab bar labels (see [`crate::ui::consts::main_tab_bar_modes_and_labels`] for order).
 pub struct UiStringsMainTabs {
     pub snapshot: &'static str,
     pub delta: &'static str,

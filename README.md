@@ -11,6 +11,19 @@ UBLX is a **TUI that turns any directory into a flat, navigable catalog** — ca
 
 **_Currently in development, expect breaking changes._**
 
+## Before you start
+
+- a terminal emulator with **truecolor** (24-bit color) & image support
+- Strongly recommend using a terminal with a [**Nerd Font**](https://github.com/ryanoasis/nerd-fonts)
+
+**Optional**:
+
+| Tool                                     | Role                                           |
+| ---------------------------------------- | ---------------------------------------------- |
+| `tree`                                   | Directory preview in the Viewer when on `PATH` |
+| Poppler (`pdftoppm`) or MuPDF (`mutool`) | PDF page raster preview                        |
+| `ffmpeg`                                 | Video frame preview                            |
+
 ## Install
 
 ```bash
@@ -23,7 +36,8 @@ cargo build --release
 ## What it does
 
 - **Index once, then browse** — One run updates the catalog; the prior index enables fast diffs. Per-root SQLite under your user cache (`ubli/`; stem is sanitized dir name plus path hash; extension matches the `ublx` package name). Config file names and paths: [Configuration](#configuration).
-- **TUI** — Main tabs: **Snapshot** | **Delta** | **Lenses** | **Duplicates** | **Settings**. Three-pane layout and keys: [Modes](#modes) and [Panes overview](#panes-overview). Search across & within files, vim motions, theme selector, quick actions menu, command mode, toast notifications, fullscreen toggle.
+- **Path catalog vs full metadata** — By default, indexing records **paths and filetype/category** hints (fast, lightweight). **ZahirScan** adds the rich **Zahir JSON** used for deep previews, Templates, Writing stats, and Metadata tables. Batch that with `enable_enhance_all`, scope it with **`[[enhance_policy]]`**, or run **Enhance with ZahirScan** on demand (quick actions / multi-select). Keys and behavior: [Configuration](#configuration).
+- **TUI** — Main tabs (left to right when all are shown): **Snapshot** | **Lenses** | **Delta** | **Duplicates** | **Settings** — **Lenses** and **Duplicates** appear only when the DB has lenses or duplicate groups. Three-pane layout and keys: [Modes](#modes) and [Panes overview](#panes-overview). Search across & within files, vim motions, theme selector, quick actions menu, command mode, toast notifications, fullscreen toggle.
 - **Snapshot-only** — Index without the TUI (`-s` / `--snapshot-only`; [Usage](#usage)).
 - **Export** — Pretty-printed Zahir JSON ([Usage](#usage)); Lenses converted to markdown.
 
@@ -80,7 +94,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 | -------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Quick actions** (context menu) | **Space**      | Actions for the current row: open, reveal in folder, enhance / lens / copy / rename / delete — depends on tab and row type.                                                                        |
 | **Multi-select**                 | **Ctrl+Space** | Toggles multi-select on the **contents** pane (**Snapshot** or **Lenses** only). While on: **Space** toggles selection on the current row; **a** opens the bulk menu; **Esc** leaves multi-select. |
-| **Command Mode**                 | **Ctrl+A**     | “Leader” — press a second key for a global action, or wait briefly (~½s) to open a centered menu listing the letters below. Not available while the catalog search bar is active.                  |
+| **Command Mode**                 | **Ctrl+A**     | “Leader” — press a second key for a global action, or wait briefly to see a centered menu listing the letters below. Not available while the catalog search bar is active.                         |
 
 **Command Mode** second key (after **Ctrl+A**):
 
@@ -125,7 +139,7 @@ Config is optional. If present, **global** config is applied first, then **local
 | `hash`               | bool                 | If `true`, compute blake3 hash per file (slower; used for duplicate detection and change detection).                                                                                             |
 | `exclude`            | array of strings     | Extra path patterns to exclude from indexing (startup only; not hot-reloadable).                                                                                                                 |
 | `editor_path`        | string               | Path to editor for “Open (Terminal)” (e.g. `"vim"`, `"nvim"`). When unset, uses `$EDITOR`.                                                                                                       |
-| `enable_enhance_all` | bool                 | If `true`, metadata for all files on snapshot. If `false` (default), path-only until **Enhance with ZahirScan** per file.                                                                        |
+| `enable_enhance_all` | bool                 | If `true`, full metadata for all files on snapshot. If `false` (default), only get path plus file-type/category until **Enhance with ZahirScan** per file.                                       |
 | `[[enhance_policy]]` | TOML array of tables | Optional per-subtree rules (see below). Hot-reloadable with the rest of the overlay.                                                                                                             |
 
 All of the above except **`exclude`** are **hot-reloadable** when set in a file that UBLX loads (global and/or local). The **global-only** keys in the previous table are hot-reloadable only via **global** config edits, not from local project files.
