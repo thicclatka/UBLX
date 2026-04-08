@@ -13,7 +13,7 @@ use super::SnapshotTuiRow;
 use super::lens_storage::{load_lens_names, load_lens_paths};
 
 /// Write one Markdown file per lens with `#` title and per-path links relative to each file.
-/// Image rows (snapshot `category` → [`ZahirFT::Image`]) use `![](url)`; others use `[file_name](url)`.
+/// Entries are separated by a blank line; images use `![path](url)`; others use `[path](url)`.
 ///
 /// # Errors
 ///
@@ -55,26 +55,44 @@ fn build_lens_markdown_body(
     s.push_str("# ");
     s.push_str(lens_name.trim().replace('\n', " ").as_str());
     s.push_str("\n\n");
-    for (rel_path, category, _) in rows {
-        let label = Path::new(rel_path.as_str())
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(rel_path.as_str());
+    for (i, (rel_path, category, _)) in rows.iter().enumerate() {
+        if i > 0 {
+            s.push_str("\n\n");
+        }
+        let path_display = rel_path.trim().replace('\\', "/");
+        let esc = md_escape_brackets(&path_display);
         let url = rel_url_from_md_to_target(md_path, dir_to_ublx, rel_path.as_str());
         let target = md_link_target(&url);
         if is_image_category(category) {
-            s.push_str("![](");
-            s.push_str(target.as_str());
-            s.push_str(")\n");
-        } else {
-            s.push('[');
-            s.push_str(label);
+            s.push_str("![");
+            s.push_str(&esc);
             s.push_str("](");
             s.push_str(target.as_str());
-            s.push_str(")\n");
+            s.push(')');
+        } else {
+            s.push('[');
+            s.push_str(&esc);
+            s.push_str("](");
+            s.push_str(target.as_str());
+            s.push(')');
         }
     }
+    s.push('\n');
     s
+}
+
+fn md_escape_brackets(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\\' | '[' | ']' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 fn is_image_category(category: &str) -> bool {

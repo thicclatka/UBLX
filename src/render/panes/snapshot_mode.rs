@@ -114,7 +114,7 @@ fn contents_panel_list_items(
     global_sel: usize,
 ) -> (Vec<ListItem<'static>>, Option<usize>) {
     let total = view.content_len;
-    let max_cols = area.width.saturating_sub(2) as usize;
+    let max_cols = super::list_row_text_max_cols(area.width);
     if total == 0 {
         return (
             vec![ListItem::new(if state.search.query.is_empty() {

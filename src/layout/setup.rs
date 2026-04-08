@@ -529,6 +529,8 @@ pub struct UblxState {
     pub viewer_disk_cache: Option<ViewerDiskContentCache>,
     /// Viewer: large markdown only — cached styled [`Text`] + viewport slice on scroll.
     pub viewer_text_cache: Option<cache::ViewerTextCacheEntry>,
+    /// Last rendered preview fingerprint for invalidating viewer caches when path or buffer identity changes.
+    pub viewer_preview_source: Option<(String, cache::ViewerContentIdentity)>,
     /// Viewer: up to [`crate::engine::cache::VIEWER_TEXT_CACHE`] `csv_lru_cap` delimiter-table `Text` bodies by path/width/theme/revision.
     pub csv_table_text_lru:
         cache::LruCache<cache::ViewerTableCacheKey, cache::ViewerTextCacheEntry>,
@@ -582,6 +584,7 @@ impl UblxState {
             cached_tree: None,
             viewer_disk_cache: None,
             viewer_text_cache: None,
+            viewer_preview_source: None,
             csv_table_text_lru: cache::LruCache::default(),
             viewer_async: ViewerAsyncState::default(),
             viewer_image: ViewerImageState::default(),
@@ -923,6 +926,8 @@ pub struct RightPaneContent {
     pub writing: Option<String>,
     /// File/tree preview body; shared by reference for async highlight jobs (cheap `Arc::clone`).
     pub viewer: Option<Arc<str>>,
+    /// When set with a directory tree [`viewer`] body, shown above the tree (bold + italic in the UI).
+    pub viewer_directory_policy_line: Option<String>,
     pub snap_meta: SnapshotEntryMeta,
     pub derived: RightPaneContentDerived,
 }

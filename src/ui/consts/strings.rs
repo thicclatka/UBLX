@@ -37,6 +37,12 @@ pub struct UiStringsPane {
     pub tab_writing: &'static str,
     pub not_available: &'static str,
     pub viewer_placeholder: &'static str,
+    /// Line above `tree` output for directory rows: label in `"{label}: {value}"`.
+    pub current_enhance_policy_label: &'static str,
+    pub directory_policy_auto: &'static str,
+    pub directory_policy_manual: &'static str,
+    pub directory_policy_inherit_auto: &'static str,
+    pub directory_policy_inherit_manual: &'static str,
 }
 
 /// Middle / list column (All, empty states, row prefix).
@@ -326,6 +332,11 @@ impl UiStrings {
             tab_writing: "Writing (w)",
             not_available: "(not available for this item)",
             viewer_placeholder: "(viewer — file content will load here)",
+            current_enhance_policy_label: "Current enhance policy",
+            directory_policy_auto: "Auto",
+            directory_policy_manual: "Manual",
+            directory_policy_inherit_auto: "Inherit (global auto)",
+            directory_policy_inherit_manual: "Inherit (global manual)",
         }
     }
 

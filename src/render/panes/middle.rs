@@ -224,7 +224,7 @@ pub fn draw_paths_list_with_counter(
         .selected()
         .unwrap_or(0)
         .min(total.saturating_sub(1));
-    let max_cols = area.width.saturating_sub(2) as usize;
+    let max_cols = super::list_row_text_max_cols(area.width);
 
     let (mid_items, window_start) = if total == 0 {
         (

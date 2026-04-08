@@ -427,9 +427,9 @@ impl UblxOpts {
         config
     }
 
-    /// Whether index-time batch `ZahirScan` should run for this relative path (longest `[[enhance_policy]]` prefix wins; else [`Self::enable_enhance_all`]).
+    /// Longest matching `[[enhance_policy]]` row for `rel_path`, if any; `None` means inherit [`Self::enable_enhance_all`].
     #[must_use]
-    pub fn batch_zahir_for_path(&self, rel_path: &str) -> bool {
+    pub fn matching_enhance_policy(&self, rel_path: &str) -> Option<profile::EnhancePolicy> {
         let rel = normalize_rel_path_for_policy(rel_path);
         let mut best: Option<(usize, profile::EnhancePolicy)> = None;
         for e in &self.enhance_policy {
@@ -444,7 +444,13 @@ impl UblxOpts {
                 }
             }
         }
-        match best.map(|(_, pol)| pol) {
+        best.map(|(_, pol)| pol)
+    }
+
+    /// Whether index-time batch `ZahirScan` should run for this relative path (longest `[[enhance_policy]]` prefix wins; else [`Self::enable_enhance_all`]).
+    #[must_use]
+    pub fn batch_zahir_for_path(&self, rel_path: &str) -> bool {
+        match self.matching_enhance_policy(rel_path) {
             Some(profile::EnhancePolicy::Auto) => true,
             Some(profile::EnhancePolicy::Manual) => false,
             None => self.enable_enhance_all,

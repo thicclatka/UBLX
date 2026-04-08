@@ -7,6 +7,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::config::LayoutOverlay;
 use crate::layout::setup::{ContentMarqueeState, MainMode, PanelFocus, TuiRow, ViewData};
+use crate::render::panes;
 
 const MARQUEE_STEP: Duration = Duration::from_millis(110);
 const MARQUEE_PAD: &str = "   ";
@@ -31,14 +32,14 @@ pub struct ContentMarqueeTick<'a> {
 
 #[must_use]
 pub fn left_pane_inner_width_cols(term_width: u16, layout: &LayoutOverlay) -> usize {
-    let w = (u32::from(term_width) * u32::from(layout.left_pct) / 100).max(1);
-    w.saturating_sub(2) as usize
+    let chunk_w = panes::three_pane_chunk_widths(term_width, layout)[0];
+    panes::list_row_text_max_cols(chunk_w)
 }
 
 #[must_use]
 pub fn middle_pane_inner_width_cols(term_width: u16, layout: &LayoutOverlay) -> usize {
-    let w = (u32::from(term_width) * u32::from(layout.middle_pct) / 100).max(1);
-    w.saturating_sub(2) as usize
+    let chunk_w = panes::three_pane_chunk_widths(term_width, layout)[1];
+    panes::list_row_text_max_cols(chunk_w)
 }
 
 /// Display string for one middle-pane row (paths list): snapshot settings labels or raw path.

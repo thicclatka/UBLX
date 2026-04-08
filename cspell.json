@@ -6,6 +6,7 @@
   "words": [
     "Asterion",
     "AUTOINCREMENT",
+    "basenames",
     "blen",
     "cmark",
     "crossterm",

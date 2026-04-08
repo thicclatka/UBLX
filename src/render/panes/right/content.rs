@@ -1,12 +1,16 @@
 //! Right-pane scroll **content**: [`content_display_text`] for every tab, plus **Viewer**-tab helpers
 //! (CSV / markdown / raster labels, [`ensure_viewer_text_cache`], line counts, wrap).
 
-use ratatui::text::Text;
+use ratatui::style::Modifier;
+use ratatui::text::{Line, Span, Text};
 
 use crate::engine::cache::{self, ViewerTextCacheEntry};
 use crate::engine::db_ops::UblxDbCategory;
 use crate::integrations::{ZahirFT, delimiter_from_path_for_viewer};
-use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState};
+use crate::layout::{
+    setup::{RightPaneContent, RightPaneMode, UblxState},
+    style,
+};
 use crate::render::{kv_tables, viewers};
 use crate::themes;
 use crate::ui::UI_STRINGS;
@@ -75,6 +79,7 @@ fn viewer_uses_syntect_highlight(rc: &RightPaneContent) -> bool {
 
 fn reset_viewer_cache_and_async(state: &mut UblxState) {
     state.viewer_text_cache = None;
+    state.viewer_preview_source = None;
     viewers::async_tools::reset_viewer_async(state);
 }
 
@@ -99,6 +104,19 @@ pub fn ensure_viewer_text_cache(
         return;
     };
     let raw = raw_arc.as_ref();
+    let content_id = cache::viewer_content_identity(raw, right_content.snap_meta.mtime_ns);
+    let source_matches = state
+        .viewer_preview_source
+        .as_ref()
+        .is_some_and(|(p, id)| p.as_str() == path && *id == content_id);
+    if !source_matches {
+        state.viewer_text_cache = None;
+        viewers::async_tools::reset_viewer_async(state);
+        state
+            .csv_table_text_lru
+            .retain_keys(|k| k.path == path && k.identity == content_id);
+        state.viewer_preview_source = Some((path.to_string(), content_id));
+    }
     let palette = themes::current();
     let theme_key = palette.name.to_string();
     let theme = palette.name;
@@ -336,10 +354,15 @@ pub fn viewer_total_lines(
                     }
                 });
             }
-            right_content
+            let tree_lines = right_content
                 .viewer
                 .as_deref()
-                .map_or(0, |t| wrapped_line_count(t, content_width) as usize)
+                .map_or(0, |t| wrapped_line_count(t, content_width) as usize);
+            if let Some(ref pl) = right_content.viewer_directory_policy_line {
+                let policy_lines = wrapped_line_count(pl, content_width) as usize;
+                return policy_lines.saturating_add(1).saturating_add(tree_lines);
+            }
+            tree_lines
         }
         (RightPaneMode::Templates, _) => right_content.templates.lines().count(),
         (RightPaneMode::Writing | RightPaneMode::Metadata, _) => 0,
@@ -405,6 +428,17 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
 #[inline]
 fn text_from_viewer_raw(raw: &str) -> Text<'static> {
     Text::from(raw.to_string())
+}
+
+/// Bold + italic policy line, blank line, then tree body (plain lines).
+fn text_directory_policy_and_tree(policy_line: &str, tree_body: &str) -> Text<'static> {
+    let line_style = style::text_style().add_modifier(Modifier::BOLD | Modifier::ITALIC);
+    let mut lines = vec![
+        Line::from(vec![Span::styled(policy_line.to_string(), line_style)]),
+        Line::default(),
+    ];
+    lines.extend(text_from_viewer_raw(tree_body).lines.into_iter());
+    Text::from(lines)
 }
 
 #[inline]
@@ -501,6 +535,9 @@ fn viewer_display_text(
                 msg,
             ));
         }
+    }
+    if let Some(ref policy_line) = right_content.viewer_directory_policy_line {
+        return text_directory_policy_and_tree(policy_line, raw);
     }
     text_from_viewer_raw(raw)
 }

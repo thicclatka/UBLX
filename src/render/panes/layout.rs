@@ -1,12 +1,37 @@
 //! Layout splits for panel areas.
 
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, HighlightSpacing, List, ListItem};
+use unicode_width::UnicodeWidthStr;
 
+use crate::config::LayoutOverlay;
 use crate::layout::style;
 use crate::ui::{UI_CONSTANTS, UI_STRINGS};
+
+/// Horizontal widths of the three main panes (same split as [`crate::render::core::compute_body_areas`]).
+#[must_use]
+pub fn three_pane_chunk_widths(term_width: u16, layout: &LayoutOverlay) -> [u16; 3] {
+    let main = Rect::new(0, 0, term_width, 1);
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(layout.left_pct),
+            Constraint::Percentage(layout.middle_pct),
+            Constraint::Percentage(layout.right_pct),
+        ])
+        .split(main);
+    [chunks[0].width, chunks[1].width, chunks[2].width]
+}
+
+/// Max display width for text in a bordered list using [`styled_list`] (inner width minus List highlight column).
+#[must_use]
+pub fn list_row_text_max_cols(outer_panel_width: u16) -> usize {
+    let block_inner = outer_panel_width.saturating_sub(2);
+    let sym = UnicodeWidthStr::width(UI_STRINGS.list.list_symbol);
+    block_inner.saturating_sub(sym as u16) as usize
+}
 
 /// Split content area into main area and one status line (Last Snapshot + Search:).
 #[must_use]

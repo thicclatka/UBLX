@@ -30,7 +30,7 @@ fn draw_user_selected_mode_panes(
         chord_chrome_active(&state.chrome),
     );
     let left_block = super::panel_block(left_title, focused);
-    let max_cols = left.width.saturating_sub(2) as usize;
+    let max_cols = super::list_row_text_max_cols(left.width);
     let cat_sel = state.panels.category_state.selected().unwrap_or(0);
     let left_items: Vec<ListItem> = view
         .filtered_categories

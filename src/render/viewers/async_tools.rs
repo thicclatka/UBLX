@@ -142,6 +142,7 @@ fn begin_viewer_async_job(
     if state.viewer_async.pending_key.as_ref() == Some(&key) && state.viewer_async.rx.is_some() {
         return None;
     }
+    state.viewer_text_cache = None;
     state.viewer_async.clear();
     let (tx, rx) = mpsc::channel();
     state.viewer_async.rx = Some(rx);

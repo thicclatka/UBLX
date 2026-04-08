@@ -708,7 +708,7 @@ impl UblxPaths {
             UBLX_NAMES.local_config_visible_toml.to_string(),
             UBLX_NAMES.local_config_hidden_toml.to_string(),
             UBLX_NAMES.zahir_export_dir_name.to_string(),
-            UBLX_NAMES.lens_export_dir_name.to_string(),
+            // UBLX_NAMES.lens_export_dir_name.to_string(),
         ]
     }
 
