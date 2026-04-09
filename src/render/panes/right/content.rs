@@ -83,6 +83,74 @@ fn reset_viewer_cache_and_async(state: &mut UblxState) {
     viewers::async_tools::reset_viewer_async(state);
 }
 
+fn sync_viewer_cache_for_content_identity(
+    state: &mut UblxState,
+    path: &str,
+    content_id: cache::ViewerContentIdentity,
+) {
+    let source_matches = state
+        .viewer_preview_source
+        .as_ref()
+        .is_some_and(|(p, id)| p.as_str() == path && *id == content_id);
+    if !source_matches {
+        state.viewer_text_cache = None;
+        viewers::async_tools::reset_viewer_async(state);
+        state
+            .csv_table_text_lru
+            .retain_keys(|k| k.path == path && k.identity == content_id);
+        state.viewer_preview_source = Some((path.to_string(), content_id));
+    }
+}
+
+/// Delimited (CSV / TSV) path: update cache or schedule work. Returns `true` if [`ensure_viewer_text_cache`] should return.
+fn delimited_table_viewer_cache_or_return(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+    path: &str,
+    raw: &str,
+    raw_arc: &std::sync::Arc<str>,
+    theme_name: &str,
+) -> bool {
+    if !viewer_show_delimited_table(right_content) {
+        return false;
+    }
+    state.viewer_text_cache = None;
+    let key = cache::viewer_table_cache_key(
+        path,
+        content_width,
+        theme_name,
+        raw,
+        right_content.snap_meta.mtime_ns,
+    );
+    if state.csv_table_text_lru.get(&key).is_some() {
+        return true;
+    }
+    if raw.len() >= cache::VIEWER_TEXT_CACHE.min_csv_bytes {
+        viewers::async_tools::schedule_csv(
+            state,
+            right_content,
+            content_width,
+            path,
+            raw_arc.clone(),
+            theme_name.to_string(),
+            key,
+        );
+        return true;
+    }
+    let Some(entry) = viewers::async_tools::build_csv_cache_entry(
+        path,
+        raw,
+        content_width,
+        theme_name.to_string(),
+        key.identity.clone(),
+    ) else {
+        return true;
+    };
+    state.csv_table_text_lru.insert(key, entry);
+    true
+}
+
 /// Run once after width convergence to poll + schedule async viewer work (CSV / markdown / syntect).
 pub fn ensure_viewer_text_cache(
     state: &mut UblxState,
@@ -105,56 +173,20 @@ pub fn ensure_viewer_text_cache(
     };
     let raw = raw_arc.as_ref();
     let content_id = cache::viewer_content_identity(raw, right_content.snap_meta.mtime_ns);
-    let source_matches = state
-        .viewer_preview_source
-        .as_ref()
-        .is_some_and(|(p, id)| p.as_str() == path && *id == content_id);
-    if !source_matches {
-        state.viewer_text_cache = None;
-        viewers::async_tools::reset_viewer_async(state);
-        state
-            .csv_table_text_lru
-            .retain_keys(|k| k.path == path && k.identity == content_id);
-        state.viewer_preview_source = Some((path.to_string(), content_id));
-    }
+    sync_viewer_cache_for_content_identity(state, path, content_id);
     let palette = themes::current();
     let theme_key = palette.name.to_string();
     let theme = palette.name;
 
-    if viewer_show_delimited_table(right_content) {
-        state.viewer_text_cache = None;
-        let key = cache::viewer_table_cache_key(
-            path,
-            content_width,
-            theme,
-            raw,
-            right_content.snap_meta.mtime_ns,
-        );
-        if state.csv_table_text_lru.get(&key).is_some() {
-            return;
-        }
-        if raw.len() >= cache::VIEWER_TEXT_CACHE.min_csv_bytes {
-            viewers::async_tools::schedule_csv(
-                state,
-                right_content,
-                content_width,
-                path,
-                raw_arc.clone(),
-                theme_key,
-                key,
-            );
-            return;
-        }
-        let Some(entry) = viewers::async_tools::build_csv_cache_entry(
-            path,
-            raw,
-            content_width,
-            theme_key,
-            key.identity.clone(),
-        ) else {
-            return;
-        };
-        state.csv_table_text_lru.insert(key, entry);
+    if delimited_table_viewer_cache_or_return(
+        state,
+        right_content,
+        content_width,
+        path,
+        raw,
+        &raw_arc,
+        theme,
+    ) {
         return;
     }
 
@@ -437,7 +469,7 @@ fn text_directory_policy_and_tree(policy_line: &str, tree_body: &str) -> Text<'s
         Line::from(vec![Span::styled(policy_line.to_string(), line_style)]),
         Line::default(),
     ];
-    lines.extend(text_from_viewer_raw(tree_body).lines.into_iter());
+    lines.extend(text_from_viewer_raw(tree_body).lines);
     Text::from(lines)
 }
 

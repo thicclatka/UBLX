@@ -26,7 +26,10 @@ fn basename_for_duplicate_group(g: &DuplicateGroup) -> String {
 
 /// Unique left-pane labels when several groups share the same basename (`name`, `name (2)`, …).
 fn disambiguated_duplicate_labels(groups: &[&DuplicateGroup]) -> Vec<String> {
-    let basenames: Vec<String> = groups.iter().map(|g| basename_for_duplicate_group(g)).collect();
+    let basenames: Vec<String> = groups
+        .iter()
+        .map(|g| basename_for_duplicate_group(g))
+        .collect();
     let mut count_per: HashMap<String, usize> = HashMap::new();
     for b in &basenames {
         *count_per.entry(b.clone()).or_insert(0) += 1;
@@ -41,11 +44,7 @@ fn disambiguated_duplicate_labels(groups: &[&DuplicateGroup]) -> Vec<String> {
             }
             let n = seen.entry(b.clone()).or_insert(0);
             *n += 1;
-            if *n == 1 {
-                b
-            } else {
-                format!("{b} ({n})")
-            }
+            if *n == 1 { b } else { format!("{b} ({n})") }
         })
         .collect()
 }

@@ -6,14 +6,15 @@ use crate::config::UblxOverlay;
 use crate::layout::setup::SettingsConfigScope;
 use crate::ui::UI_STRINGS;
 
-/// Maps Settings left-pane row index → [`crate::config::UblxOverlay`] bool field. Local scope uses rows 0–2; Global adds
-/// row 3 (`ask_enhance_on_new_root`).
+/// Maps Settings left-pane row index → [`crate::config::UblxOverlay`] bool field. Global row 4 is
+/// `run_snapshot_on_startup` (after `ask_enhance_on_new_root`); local row 3 is `run_snapshot_on_startup` (no `ask_enhance` row).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingsBoolKey {
     ShowHiddenFiles,
     Hash,
     EnableEnhanceAll,
     AskEnhanceOnNewRoot,
+    RunSnapshotOnStartup,
 }
 
 #[must_use]
@@ -24,12 +25,14 @@ pub fn bool_key(scope: SettingsConfigScope, idx: usize) -> Option<SettingsBoolKe
             1 => Some(SettingsBoolKey::Hash),
             2 => Some(SettingsBoolKey::EnableEnhanceAll),
             3 => Some(SettingsBoolKey::AskEnhanceOnNewRoot),
+            4 => Some(SettingsBoolKey::RunSnapshotOnStartup),
             _ => None,
         },
         SettingsConfigScope::Local => match idx {
             0 => Some(SettingsBoolKey::ShowHiddenFiles),
             1 => Some(SettingsBoolKey::Hash),
             2 => Some(SettingsBoolKey::EnableEnhanceAll),
+            3 => Some(SettingsBoolKey::RunSnapshotOnStartup),
             _ => None,
         },
     }
@@ -49,15 +52,16 @@ pub fn local_bool_is_explicit(local: Option<&UblxOverlay>, idx: usize) -> bool {
         SettingsBoolKey::Hash => l.hash.is_some(),
         SettingsBoolKey::EnableEnhanceAll => l.enable_enhance_all.is_some(),
         SettingsBoolKey::AskEnhanceOnNewRoot => false,
+        SettingsBoolKey::RunSnapshotOnStartup => l.run_snapshot_on_startup.is_some(),
     }
 }
 
-/// Number of bool rows for the active scope (global includes `ask_enhance_on_new_root`).
+/// Number of bool rows for the active scope (global: `ask_enhance_on_new_root` then `run_snapshot_on_startup`).
 #[must_use]
 pub fn bool_row_count(scope: SettingsConfigScope) -> usize {
     match scope {
-        SettingsConfigScope::Global => 4,
-        SettingsConfigScope::Local => 3,
+        SettingsConfigScope::Global => 5,
+        SettingsConfigScope::Local => 4,
     }
 }
 
@@ -75,6 +79,7 @@ pub fn bool_row_label(
             SettingsBoolKey::Hash => l.hash,
             SettingsBoolKey::EnableEnhanceAll => l.enable_enhance_all,
             SettingsBoolKey::AskEnhanceOnNewRoot => l.ask_enhance_on_new_root,
+            SettingsBoolKey::RunSnapshotOnStartup => l.run_snapshot_on_startup,
         };
         Cow::Borrowed(base)
     })
@@ -90,6 +95,7 @@ pub fn overlay_bool(overlay: &UblxOverlay, scope: SettingsConfigScope, idx: usiz
         SettingsBoolKey::Hash => overlay.hash.unwrap_or(false),
         SettingsBoolKey::EnableEnhanceAll => overlay.enable_enhance_all.unwrap_or(false),
         SettingsBoolKey::AskEnhanceOnNewRoot => overlay.ask_enhance_on_new_root.unwrap_or(true),
+        SettingsBoolKey::RunSnapshotOnStartup => overlay.run_snapshot_on_startup.unwrap_or(true),
     }
 }
 
@@ -102,5 +108,6 @@ pub fn write_bool(overlay: &mut UblxOverlay, scope: SettingsConfigScope, idx: us
         SettingsBoolKey::Hash => overlay.hash = Some(v),
         SettingsBoolKey::EnableEnhanceAll => overlay.enable_enhance_all = Some(v),
         SettingsBoolKey::AskEnhanceOnNewRoot => overlay.ask_enhance_on_new_root = Some(v),
+        SettingsBoolKey::RunSnapshotOnStartup => overlay.run_snapshot_on_startup = Some(v),
     }
 }

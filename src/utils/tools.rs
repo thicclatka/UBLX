@@ -120,7 +120,7 @@ pub fn file_content_for_viewer(path: &Path, zahir_type: Option<ZahirFT>) -> Opti
     let out = if n_u64 >= len {
         s
     } else {
-        format!("{}\n\n… (truncated, {} bytes total)", s, len)
+        format!("{s}\n\n… (truncated, {len} bytes total)")
     };
     Some(out)
 }

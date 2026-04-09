@@ -126,15 +126,18 @@ pub fn perform_session_switch<'a>(
     let opts_clone = ublx_opts.clone();
     let prior_for_thread = prior_opt.clone();
     let bumper_for_thread = bumper.cloned();
-    std::thread::spawn(move || {
-        handlers::run_snapshot_pipeline(
-            &dir_clone,
-            &opts_clone,
-            prior_for_thread.as_ref(),
-            Some(tx),
-            bumper_for_thread.as_ref(),
-        );
-    });
+    let run_snapshot_on_startup = opts_clone.run_snapshot_on_startup;
+    if run_snapshot_on_startup {
+        std::thread::spawn(move || {
+            handlers::run_snapshot_pipeline(
+                &dir_clone,
+                &opts_clone,
+                prior_for_thread.as_ref(),
+                Some(tx),
+                bumper_for_thread.as_ref(),
+            );
+        });
+    }
 
     let config_reload_rx = Some(handlers::spawn_config_watcher(&dir));
     let pending_force_full_enhance_toast = orchestrator::should_force_full_zahir(ublx_opts);
@@ -162,6 +165,7 @@ pub fn perform_session_switch<'a>(
     params.startup = RunUblxStartupFlow {
         defer_first_snapshot: false,
         pending_force_full_enhance_toast,
+        skip_startup_snapshot_spawn: !ublx_opts.run_snapshot_on_startup,
     };
     params.right_pane_async_tx = Some(right_pane_tx);
 
@@ -179,7 +183,8 @@ pub fn perform_session_switch<'a>(
             );
         }
     }
-    state.snapshot_bg.done_received = !categories.is_empty() || !all_rows.is_empty();
+    state.snapshot_bg.done_received =
+        !categories.is_empty() || !all_rows.is_empty() || !ublx_opts.run_snapshot_on_startup;
 
     Ok(())
 }

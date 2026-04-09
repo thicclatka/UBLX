@@ -57,11 +57,7 @@ macro_rules! build_view_and_right_user_selected_mode {
     ($state:expr, $params:expr, $db_path:expr, $view:expr, $ublx_opts:expr) => {{
         let view = $view;
         let (view, right_content) = build_view_and_right_for_user_selected_mode(
-            $state,
-            $params,
-            $db_path,
-            view,
-            $ublx_opts,
+            $state, $params, $db_path, view, $ublx_opts,
         );
         (view, right_content, None)
     }};

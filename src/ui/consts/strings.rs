@@ -186,6 +186,8 @@ pub struct UiStringsSettingsBool {
     pub hash: &'static str,
     pub enable_enhance_all: &'static str,
     pub ask_enhance_on_new_root: &'static str,
+    /// Global / local: spawn background index when opening the TUI (next session if changed here).
+    pub run_snapshot_on_startup: &'static str,
     pub unknown_row: &'static str,
 }
 
@@ -503,6 +505,7 @@ impl UiStrings {
             hash: "hash",
             enable_enhance_all: "enable_enhance_all",
             ask_enhance_on_new_root: "ask_enhance_on_new_root",
+            run_snapshot_on_startup: "run_snapshot_on_startup",
             unknown_row: "?",
         }
     }

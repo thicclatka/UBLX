@@ -32,6 +32,7 @@ pub fn default_overlay_for_new_file(default_theme_display_name: &str) -> UblxOve
         layout: Some(LayoutOverlay::default()),
         enable_enhance_all: Some(false),
         ask_enhance_on_new_root: Some(true),
+        run_snapshot_on_startup: Some(true),
         ..Default::default()
     }
 }
