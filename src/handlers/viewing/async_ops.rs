@@ -5,6 +5,7 @@ use std::path::Path;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::app::tokio_rt;
+use crate::config::UblxOpts;
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneAsyncReady, RightPaneContent, TuiRow, UblxState, ViewData,
 };
@@ -98,7 +99,7 @@ pub fn drive_right_pane_async(
     db_path: &Path,
     view: &ViewData,
     all_rows: Option<&[TuiRow]>,
-    enable_enhance_all: bool,
+    ublx_opts: &UblxOpts,
 ) -> RightPaneContent {
     let Some(tx) = tx else {
         return core::resolve_right_pane_content(
@@ -107,7 +108,7 @@ pub fn drive_right_pane_async(
             db_path,
             view,
             all_rows,
-            enable_enhance_all,
+            ublx_opts,
         );
     };
 
@@ -142,7 +143,7 @@ pub fn drive_right_pane_async(
             db_path,
             view,
             all_rows,
-            enable_enhance_all,
+            ublx_opts,
         );
         state.right_pane_async.displayed = content.clone();
         return content;
@@ -163,7 +164,7 @@ pub fn drive_right_pane_async(
             category: category.to_string(),
             size,
             full_path,
-            enable_enhance_all,
+            enable_enhance_all: ublx_opts.enable_enhance_all,
             db_path: db_path.to_path_buf(),
             tx: tx.clone(),
         });

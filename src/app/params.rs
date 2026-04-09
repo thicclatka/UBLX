@@ -23,6 +23,8 @@ pub struct RunUblxStartupFlow {
     pub defer_first_snapshot: bool,
     /// When set, next tick shows a toast that index-time Zahir is running in the background ([`crate::engine::orchestrator::should_force_full_zahir`]).
     pub pending_force_full_enhance_toast: bool,
+    /// When true, startup did not spawn a background snapshot ([`crate::config::UblxOpts::run_snapshot_on_startup`] false); treat snapshot as idle so the status line does not wait on a completion channel.
+    pub skip_startup_snapshot_spawn: bool,
 }
 
 /// Parameters for the TUI event loop. Passed from [`crate::handlers::core::run_tui_session`] into [`super::main_loop`].

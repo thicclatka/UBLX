@@ -1,7 +1,7 @@
 use colored::Colorize;
 use log::{Level, debug, error};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -20,6 +20,9 @@ pub const HALF_MIB_BYTES: u64 = MIB / 2;
 
 /// [`HALF_MIB_BYTES`] as [`usize`] for allocation caps (`HALF_MIB_BYTES` always fits in `usize`).
 pub const HALF_MIB_BYTES_USIZE: usize = HALF_MIB_BYTES as usize;
+
+/// Per-chunk size for log preview head + tail ([`file_content_for_viewer`]): two chunks sum to [`HALF_MIB_BYTES`].
+const LOG_HEAD_TAIL_CHUNK_BYTES: u64 = HALF_MIB_BYTES / 2;
 
 /// [`std::fs::Metadata::len`] is `u64`; saturates at `usize::MAX` on 32-bit. Safe for `.min(small_cap)`:
 /// the cap (e.g. [`HALF_MIB_BYTES_USIZE`]) still bounds allocation.
@@ -53,9 +56,39 @@ pub fn binary_file_label(path: &Path) -> String {
     )
 }
 
+/// Read first + last chunks for large log files; same total byte budget as [`HALF_MIB_BYTES`].
+fn read_log_head_tail(path: &Path, total: u64) -> Option<String> {
+    let mut f = fs::File::open(path).ok()?;
+    let chunk = LOG_HEAD_TAIL_CHUNK_BYTES;
+    let mut head = Vec::new();
+    let n_head = Read::by_ref(&mut f)
+        .take(chunk)
+        .read_to_end(&mut head)
+        .ok()?;
+
+    let tail_len = chunk.min(total);
+    let start = total.saturating_sub(tail_len);
+    f.seek(std::io::SeekFrom::Start(start)).ok()?;
+    let mut tail = Vec::new();
+    let n_tail = Read::by_ref(&mut f)
+        .take(chunk)
+        .read_to_end(&mut tail)
+        .ok()?;
+
+    let head_s = String::from_utf8_lossy(&head[..n_head]);
+    let tail_s = String::from_utf8_lossy(&tail[..n_tail]);
+    let n_head_u = n_head as u64;
+    let n_tail_u = n_tail as u64;
+    let omitted = total.saturating_sub(n_head_u.saturating_add(n_tail_u));
+
+    Some(format!(
+        "{head_s}\n\n… ─── {omitted} bytes omitted (middle of {total} byte file) ─── …\n\n{tail_s}"
+    ))
+}
+
 /// Read text for a viewer pane: not found, empty for image/PDF (raster preview elsewhere), binary short label, or capped UTF-8 with truncation notice.
 ///
-/// Cap is [`HALF_MIB_BYTES_USIZE`]. When `zahir_type` is [`FileType::Image`], [`FileType::Pdf`], or [`FileType::Video`], returns empty string for a normal file so the render layer loads the preview.
+/// Cap is [`HALF_MIB_BYTES_USIZE`]. For [`ZahirFT::Log`] files larger than that, reads **head + tail** (half cap each) instead of head only. When `zahir_type` is [`FileType::Image`], [`FileType::Pdf`], or [`FileType::Video`], returns empty string for a normal file so the render layer loads the preview.
 #[must_use]
 pub fn file_content_for_viewer(path: &Path, zahir_type: Option<ZahirFT>) -> Option<String> {
     let Ok(meta) = fs::metadata(path) else {
@@ -72,17 +105,22 @@ pub fn file_content_for_viewer(path: &Path, zahir_type: Option<ZahirFT>) -> Opti
     if meta.is_file() && is_likely_binary(path) {
         return Some(binary_file_label(path));
     }
+    let len = meta.len();
+    if len > HALF_MIB_BYTES && zahir_type == Some(ZahirFT::Log) {
+        return read_log_head_tail(path, len);
+    }
+
     let f = fs::File::open(path).ok()?;
-    let cap = HALF_MIB_BYTES_USIZE.min(u64_to_usize_saturating(meta.len()));
+    let cap = HALF_MIB_BYTES_USIZE.min(u64_to_usize_saturating(len));
     let mut buf = Vec::with_capacity(cap);
     let n = f.take(HALF_MIB_BYTES).read_to_end(&mut buf).ok()?;
     let s = String::from_utf8_lossy(&buf[..n]).into_owned();
     // `take(HALF_MIB_BYTES)` bounds `n` to at most [`HALF_MIB_BYTES`], which fits in `u64`.
     let n_u64 = n as u64;
-    let out = if n_u64 >= meta.len() {
+    let out = if n_u64 >= len {
         s
     } else {
-        format!("{}\n\n… (truncated, {} bytes total)", s, meta.len())
+        format!("{s}\n\n… (truncated, {len} bytes total)")
     };
     Some(out)
 }

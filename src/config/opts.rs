@@ -106,6 +106,8 @@ pub struct UblxOpts {
     pub with_hash_cache_before_apply: Option<bool>,
     /// Effective `[[enhance_policy]]` entries (merged global + local). Used only for index-time batch Zahir.
     pub enhance_policy: Vec<profile::EnhancePolicyEntry>,
+    /// When true (default), TUI startup spawns a background snapshot unless first-run defers it. Merged from global + local overlay ([`profile::UblxOverlay::merge`]).
+    pub run_snapshot_on_startup: bool,
 }
 
 impl UblxOpts {
@@ -183,6 +185,7 @@ impl UblxOpts {
             self.ask_enhance_on_new_root = v;
         }
         self.enhance_policy = overlay.enhance_policy.clone().unwrap_or_default();
+        self.run_snapshot_on_startup = overlay.run_snapshot_on_startup.unwrap_or(true);
     }
 
     /// Reload hot-reloadable config from disk (global + local merge). When disk yields no config, falls back to cached overlay from last successful load.
@@ -273,6 +276,7 @@ impl UblxOpts {
             enable_enhance_all_cache_before_apply,
             with_hash_cache_before_apply,
             enhance_policy: Vec::new(),
+            run_snapshot_on_startup: true,
         };
         let global =
             profile::load_ublx_toml(ublx_paths.global_config(), Some(config.valid_theme_names));
@@ -338,6 +342,7 @@ impl UblxOpts {
             enable_enhance_all_cache_before_apply: None,
             with_hash_cache_before_apply: None,
             enhance_policy: Vec::new(),
+            run_snapshot_on_startup: true,
         }
     }
 
@@ -427,9 +432,9 @@ impl UblxOpts {
         config
     }
 
-    /// Whether index-time batch `ZahirScan` should run for this relative path (longest `[[enhance_policy]]` prefix wins; else [`Self::enable_enhance_all`]).
+    /// Longest matching `[[enhance_policy]]` row for `rel_path`, if any; `None` means inherit [`Self::enable_enhance_all`].
     #[must_use]
-    pub fn batch_zahir_for_path(&self, rel_path: &str) -> bool {
+    pub fn matching_enhance_policy(&self, rel_path: &str) -> Option<profile::EnhancePolicy> {
         let rel = normalize_rel_path_for_policy(rel_path);
         let mut best: Option<(usize, profile::EnhancePolicy)> = None;
         for e in &self.enhance_policy {
@@ -444,7 +449,13 @@ impl UblxOpts {
                 }
             }
         }
-        match best.map(|(_, pol)| pol) {
+        best.map(|(_, pol)| pol)
+    }
+
+    /// Whether index-time batch `ZahirScan` should run for this relative path (longest `[[enhance_policy]]` prefix wins; else [`Self::enable_enhance_all`]).
+    #[must_use]
+    pub fn batch_zahir_for_path(&self, rel_path: &str) -> bool {
+        match self.matching_enhance_policy(rel_path) {
             Some(profile::EnhancePolicy::Auto) => true,
             Some(profile::EnhancePolicy::Manual) => false,
             None => self.enable_enhance_all,

@@ -1,7 +1,7 @@
 //! User-selected list modes: Duplicates and Lenses. Same two-pane structure (categories + contents);
 //! only the source of category names and content rows differs.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use rayon::prelude::*;
@@ -13,6 +13,67 @@ use crate::modules::catalog_filter::fuzzy_matches_field;
 use crate::utils::clamp_selection;
 
 use super::view_data;
+
+/// Basename of the duplicate group's representative path (shortest member path).
+fn basename_for_duplicate_group(g: &DuplicateGroup) -> String {
+    let rep = g.representative_name();
+    Path::new(rep)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(rep)
+        .to_string()
+}
+
+/// Unique left-pane labels when several groups share the same basename (`name`, `name (2)`, …).
+fn disambiguated_duplicate_labels(groups: &[&DuplicateGroup]) -> Vec<String> {
+    let basenames: Vec<String> = groups
+        .iter()
+        .map(|g| basename_for_duplicate_group(g))
+        .collect();
+    let mut count_per: HashMap<String, usize> = HashMap::new();
+    for b in &basenames {
+        *count_per.entry(b.clone()).or_insert(0) += 1;
+    }
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    basenames
+        .into_iter()
+        .map(|b| {
+            let total = *count_per.get(&b).unwrap_or(&1);
+            if total <= 1 {
+                return b;
+            }
+            let n = seen.entry(b.clone()).or_insert(0);
+            *n += 1;
+            if *n == 1 { b } else { format!("{b} ({n})") }
+        })
+        .collect()
+}
+
+/// Groups that pass search, in list order (left pane labels align with middle pane rows).
+fn duplicate_groups_matching_search<'a>(
+    groups: &'a [DuplicateGroup],
+    search_query: &str,
+) -> Vec<&'a DuplicateGroup> {
+    if search_query.is_empty() {
+        groups.iter().collect()
+    } else if groups.len() >= PARALLEL.user_selected_filter {
+        groups
+            .par_iter()
+            .filter(|g| {
+                fuzzy_matches_field(g.representative_name(), search_query)
+                    || g.paths.iter().any(|p| fuzzy_matches_field(p, search_query))
+            })
+            .collect()
+    } else {
+        groups
+            .iter()
+            .filter(|g| {
+                fuzzy_matches_field(g.representative_name(), search_query)
+                    || g.paths.iter().any(|p| fuzzy_matches_field(p, search_query))
+            })
+            .collect()
+    }
+}
 
 /// Drop ignored paths; remove groups with fewer than two paths left.
 #[must_use]
@@ -53,51 +114,32 @@ pub fn view_data_for_user_selected_mode(
 ) -> setup::ViewData {
     let search_query = state.search.query.trim();
 
-    let filtered_names: Vec<String> = match source {
-        UserSelectedSource::Duplicates { groups } => {
-            if search_query.is_empty() {
-                groups
-                    .iter()
-                    .map(|g| g.representative_name().to_string())
-                    .collect()
-            } else if groups.len() >= PARALLEL.user_selected_filter {
-                groups
-                    .par_iter()
-                    .filter(|g| {
-                        fuzzy_matches_field(g.representative_name(), search_query)
-                            || g.paths.iter().any(|p| fuzzy_matches_field(p, search_query))
-                    })
-                    .map(|g| g.representative_name().to_string())
-                    .collect()
-            } else {
-                groups
-                    .iter()
-                    .filter(|g| {
-                        fuzzy_matches_field(g.representative_name(), search_query)
-                            || g.paths.iter().any(|p| fuzzy_matches_field(p, search_query))
-                    })
-                    .map(|g| g.representative_name().to_string())
-                    .collect()
+    let (filtered_names, dup_groups_in_order): (Vec<String>, Option<Vec<&DuplicateGroup>>) =
+        match source {
+            UserSelectedSource::Duplicates { groups } => {
+                let matching = duplicate_groups_matching_search(groups, search_query);
+                let labels = disambiguated_duplicate_labels(&matching);
+                (labels, Some(matching))
             }
-        }
-        UserSelectedSource::Lenses { lens_names, .. } => {
-            if search_query.is_empty() {
-                lens_names.to_vec()
-            } else if lens_names.len() >= PARALLEL.user_selected_filter {
-                lens_names
-                    .par_iter()
-                    .filter(|n| fuzzy_matches_field(n, search_query))
-                    .cloned()
-                    .collect()
-            } else {
-                lens_names
-                    .iter()
-                    .filter(|n| fuzzy_matches_field(n, search_query))
-                    .cloned()
-                    .collect()
+            UserSelectedSource::Lenses { lens_names, .. } => {
+                let names = if search_query.is_empty() {
+                    lens_names.to_vec()
+                } else if lens_names.len() >= PARALLEL.user_selected_filter {
+                    lens_names
+                        .par_iter()
+                        .filter(|n| fuzzy_matches_field(n, search_query))
+                        .cloned()
+                        .collect()
+                } else {
+                    lens_names
+                        .iter()
+                        .filter(|n| fuzzy_matches_field(n, search_query))
+                        .cloned()
+                        .collect()
+                };
+                (names, None)
             }
-        }
-    };
+        };
 
     let category_list_len = filtered_names.len().max(1);
     let cat_idx = clamp_selection(
@@ -105,10 +147,9 @@ pub fn view_data_for_user_selected_mode(
         category_list_len,
     );
 
-    let path_rows: Vec<setup::TuiRow> = match &source {
-        UserSelectedSource::Duplicates { groups } => filtered_names
+    let path_rows: Vec<setup::TuiRow> = match (&source, dup_groups_in_order.as_ref()) {
+        (UserSelectedSource::Duplicates { .. }, Some(matching)) => matching
             .get(cat_idx)
-            .and_then(|name| groups.iter().find(|g| g.representative_name() == name))
             .map(|g| {
                 g.paths
                     .iter()
@@ -116,11 +157,12 @@ pub fn view_data_for_user_selected_mode(
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default(),
-        UserSelectedSource::Lenses { db_path, .. } => filtered_names
+        (UserSelectedSource::Lenses { db_path, .. }, _) => filtered_names
             .get(cat_idx)
             .map(String::as_str)
             .and_then(|name| db_ops::load_lens_paths(db_path, name).ok())
             .unwrap_or_default(),
+        _ => Vec::new(),
     };
 
     let contents = view_data::filter_contents_by_search(path_rows, search_query);

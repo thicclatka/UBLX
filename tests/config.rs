@@ -29,6 +29,30 @@ right_pct = 40
 }
 
 #[test]
+fn ublx_overlay_merge_local_overrides_global_run_snapshot_on_startup() {
+    let global = UblxOverlay {
+        run_snapshot_on_startup: Some(false),
+        ..Default::default()
+    };
+    let local = UblxOverlay {
+        run_snapshot_on_startup: Some(true),
+        ..Default::default()
+    };
+    let m = UblxOverlay::merge(Some(global), Some(local));
+    assert_eq!(m.run_snapshot_on_startup, Some(true));
+}
+
+#[test]
+fn ublx_overlay_merge_global_run_snapshot_when_no_local() {
+    let global = UblxOverlay {
+        run_snapshot_on_startup: Some(false),
+        ..Default::default()
+    };
+    let m = UblxOverlay::merge(Some(global), None);
+    assert_eq!(m.run_snapshot_on_startup, Some(false));
+}
+
+#[test]
 fn ublx_overlay_merge_local_does_not_override_global_only_keys() {
     let global = UblxOverlay {
         opacity_format: Some(Osc11BackgroundFormat::Rgba),
@@ -84,6 +108,7 @@ fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> Ublx
         enable_enhance_all_cache_before_apply: None,
         with_hash_cache_before_apply: None,
         enhance_policy: entries,
+        run_snapshot_on_startup: true,
     }
 }
 

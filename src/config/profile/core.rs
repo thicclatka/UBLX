@@ -60,7 +60,7 @@ pub struct EnhancePolicyEntry {
 /// **Global-only keys** (see [`strip_global_only_keys_from_local_overlay`]): [`Self::opacity_format`],
 /// [`Self::ask_enhance_on_new_root`]. Project-local files must not override these; they are stripped before merge and when saving local TOML.
 ///
-/// [theme], [layout], [hash], [`show_hidden_files`], and [`UblxOverlay::bg_opacity`] are hot-reloadable; [exclude] is applied only at startup.
+/// [theme], [layout], [hash], [`show_hidden_files`], [`Self::run_snapshot_on_startup`], and [`UblxOverlay::bg_opacity`] are hot-reloadable; [exclude] is applied only at startup.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UblxOverlay {
@@ -98,11 +98,14 @@ pub struct UblxOverlay {
     /// **Global config only** (see struct-level “global-only keys” note).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opacity_format: Option<Osc11BackgroundFormat>,
+    /// When `true` (default), spawn a background index/snapshot when the TUI starts (if not first-run deferred). Set in global and/or local overlay; local wins on merge when both set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_snapshot_on_startup: Option<bool>,
 }
 
 /// Remove keys that apply only from global `ublx.toml`, so project-local merge and local file writes cannot set them.
 #[inline]
-pub(crate) fn strip_global_only_keys_from_local_overlay(overlay: &mut UblxOverlay) {
+pub fn strip_global_only_keys_from_local_overlay(overlay: &mut UblxOverlay) {
     overlay.opacity_format = None;
     overlay.ask_enhance_on_new_root = None;
 }
@@ -142,6 +145,9 @@ impl UblxOverlay {
         }
         if other.opacity_format.is_some() {
             self.opacity_format = other.opacity_format;
+        }
+        if other.run_snapshot_on_startup.is_some() {
+            self.run_snapshot_on_startup = other.run_snapshot_on_startup;
         }
     }
 

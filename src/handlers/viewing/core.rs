@@ -6,12 +6,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
+use crate::config::{EnhancePolicy, UblxOpts};
 use crate::engine::db_ops;
 use crate::integrations::{ZahirFT, file_type_from_metadata_name};
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, RightPaneContentDerived, SectionedPreview,
     SnapshotEntryMeta, TuiRow, UblxState, ViewData, ViewerDiskContentCache,
 };
+use crate::ui::UI_STRINGS;
 use crate::utils;
 
 /// Minified JSON is often one physical line, so `lines().count()` stays 1 while the pane wraps to
@@ -57,6 +59,22 @@ fn tree_for_path(state_mut: &mut UblxState, path_ref: &str, full_path_ref: &Path
     }
 }
 
+fn directory_tree_policy_line(ublx_opts: &UblxOpts, rel_path: &str) -> String {
+    let label = UI_STRINGS.pane.current_enhance_policy_label;
+    let value = match ublx_opts.matching_enhance_policy(rel_path) {
+        Some(EnhancePolicy::Auto) => UI_STRINGS.pane.directory_policy_auto,
+        Some(EnhancePolicy::Manual) => UI_STRINGS.pane.directory_policy_manual,
+        None => {
+            if ublx_opts.enable_enhance_all {
+                UI_STRINGS.pane.directory_policy_inherit_auto
+            } else {
+                UI_STRINGS.pane.directory_policy_inherit_manual
+            }
+        }
+    };
+    format!("{label}: {value}")
+}
+
 fn tree_viewer(
     tree_str: String,
     rel_path: &str,
@@ -64,12 +82,14 @@ fn tree_viewer(
     offer_directory_policy: bool,
     mtime_ns: Option<i64>,
     viewer_has_zahir_json: bool,
+    policy_line: Option<String>,
 ) -> RightPaneContent {
     RightPaneContent {
         templates: String::new(),
         metadata: None,
         writing: None,
         viewer: Some(Arc::from(tree_str)),
+        viewer_directory_policy_line: policy_line,
         snap_meta: SnapshotEntryMeta {
             path: Some(rel_path.to_string()),
             category: Some(CATEGORY_DIRECTORY.to_string()),
@@ -233,6 +253,7 @@ pub fn build_non_directory_right_pane_inner(
         metadata,
         writing,
         viewer: viewer_str.map(Arc::from),
+        viewer_directory_policy_line: None,
         snap_meta: SnapshotEntryMeta {
             path: Some(path.to_string()),
             category: Some(category.to_string()),
@@ -256,6 +277,7 @@ fn resolve_non_directory_right_pane(
     state_mut: &mut UblxState,
     db_path_ref: &Path,
     inputs: NonDirectoryPaneInputs<'_>,
+    ublx_opts: &UblxOpts,
 ) -> RightPaneContent {
     let NonDirectoryPaneInputs {
         path,
@@ -271,7 +293,16 @@ fn resolve_non_directory_right_pane(
             .ok()
             .flatten()
             .is_some_and(|s| !s.is_empty());
-        return tree_viewer(tree_str, path, full_path, false, viewer_mtime_ns, has_zahir);
+        let policy_line = Some(directory_tree_policy_line(ublx_opts, path));
+        return tree_viewer(
+            tree_str,
+            path,
+            full_path,
+            false,
+            viewer_mtime_ns,
+            has_zahir,
+            policy_line,
+        );
     }
     state_mut.cached_tree = None;
     let hint = state_mut.viewer_disk_cache.as_ref();
@@ -302,7 +333,7 @@ pub fn resolve_right_pane_content(
     db_path_ref: &Path,
     view_ref: &ViewData,
     all_rows_ref: Option<&[TuiRow]>,
-    enable_enhance_all: bool,
+    ublx_opts: &UblxOpts,
 ) -> RightPaneContent {
     let selected: Option<&TuiRow> = state_mut
         .panels
@@ -321,7 +352,16 @@ pub fn resolve_right_pane_content(
                 .ok()
                 .flatten()
                 .is_some_and(|s| !s.is_empty());
-            tree_viewer(tree_str, path, full_path, true, viewer_mtime_ns, has_zahir)
+            let policy_line = Some(directory_tree_policy_line(ublx_opts, path));
+            tree_viewer(
+                tree_str,
+                path,
+                full_path,
+                true,
+                viewer_mtime_ns,
+                has_zahir,
+                policy_line,
+            )
         } else {
             resolve_non_directory_right_pane(
                 state_mut,
@@ -332,8 +372,9 @@ pub fn resolve_right_pane_content(
                     size: *size,
                     full_path,
                     viewer_mtime_ns,
-                    enable_enhance_all,
+                    enable_enhance_all: ublx_opts.enable_enhance_all,
                 },
+                ublx_opts,
             )
         }
     } else {

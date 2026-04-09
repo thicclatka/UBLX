@@ -87,6 +87,11 @@ impl<K: PartialEq, V> LruCache<K, V> {
             self.entries.pop();
         }
     }
+
+    /// Drop entries whose keys do not satisfy `pred`.
+    pub fn retain_keys(&mut self, mut pred: impl FnMut(&K) -> bool) {
+        self.entries.retain(|(k, _)| pred(k));
+    }
 }
 
 impl<K: PartialEq, V> Default for LruCache<K, V> {

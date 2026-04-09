@@ -144,7 +144,7 @@ fn run_tui_mode(
     } = launch;
     let (tx, rx) = mpsc::channel::<(usize, usize, usize)>();
     let tx_for_tui = tx.clone();
-    if !initial_prompt {
+    if !initial_prompt && ublx_opts.run_snapshot_on_startup {
         let dir_clone = dir_to_ublx.to_path_buf();
         let opts_clone = ublx_opts.clone();
         let prior_clone = prior_nefax.cloned();
@@ -193,6 +193,7 @@ fn run_tui_mode(
         startup: app::RunUblxStartupFlow {
             defer_first_snapshot: initial_prompt,
             pending_force_full_enhance_toast,
+            skip_startup_snapshot_spawn: !initial_prompt && !ublx_opts.run_snapshot_on_startup,
         },
         right_pane_async_tx: Some(right_pane_tx),
     };
@@ -322,6 +323,9 @@ pub fn run_tui_session(
     }
     // First-run prompt defers the background snapshot; treat as idle for scheduling (not "snapshot in flight").
     if params.startup.defer_first_snapshot {
+        state.snapshot_bg.done_received = true;
+    }
+    if params.startup.skip_startup_snapshot_spawn {
         state.snapshot_bg.done_received = true;
     }
 

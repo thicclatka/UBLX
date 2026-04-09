@@ -37,6 +37,12 @@ pub struct UiStringsPane {
     pub tab_writing: &'static str,
     pub not_available: &'static str,
     pub viewer_placeholder: &'static str,
+    /// Line above `tree` output for directory rows: label in `"{label}: {value}"`.
+    pub current_enhance_policy_label: &'static str,
+    pub directory_policy_auto: &'static str,
+    pub directory_policy_manual: &'static str,
+    pub directory_policy_inherit_auto: &'static str,
+    pub directory_policy_inherit_manual: &'static str,
 }
 
 /// Middle / list column (All, empty states, row prefix).
@@ -180,6 +186,8 @@ pub struct UiStringsSettingsBool {
     pub hash: &'static str,
     pub enable_enhance_all: &'static str,
     pub ask_enhance_on_new_root: &'static str,
+    /// Global / local: spawn background index when opening the TUI (next session if changed here).
+    pub run_snapshot_on_startup: &'static str,
     pub unknown_row: &'static str,
 }
 
@@ -326,6 +334,11 @@ impl UiStrings {
             tab_writing: "Writing (w)",
             not_available: "(not available for this item)",
             viewer_placeholder: "(viewer — file content will load here)",
+            current_enhance_policy_label: "Current enhance policy",
+            directory_policy_auto: "Auto",
+            directory_policy_manual: "Manual",
+            directory_policy_inherit_auto: "Inherit (global auto)",
+            directory_policy_inherit_manual: "Inherit (global manual)",
         }
     }
 
@@ -492,6 +505,7 @@ impl UiStrings {
             hash: "hash",
             enable_enhance_all: "enable_enhance_all",
             ask_enhance_on_new_root: "ask_enhance_on_new_root",
+            run_snapshot_on_startup: "run_snapshot_on_startup",
             unknown_row: "?",
         }
     }

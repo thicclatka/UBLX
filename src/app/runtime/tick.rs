@@ -103,7 +103,7 @@ pub fn run_tick(
         categories.as_slice(),
         all_rows.as_slice(),
         params,
-        ublx_opts.enable_enhance_all,
+        ublx_opts,
     );
 
     let term_size = terminal.size()?;

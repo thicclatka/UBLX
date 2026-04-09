@@ -8,6 +8,7 @@ use crate::app::{
     },
     view_data::{build_view_data, clamp_two_pane_selection},
 };
+use crate::config::UblxOpts;
 use crate::engine::db_ops;
 use crate::handlers::viewing::async_ops;
 use crate::layout::setup;
@@ -35,7 +36,7 @@ fn build_view_and_right_for_user_selected_mode(
     params: &RunUblxParams<'_>,
     db_path_for_read: &std::path::Path,
     view: setup::ViewData,
-    enable_enhance_all: bool,
+    ublx_opts: &UblxOpts,
 ) -> (setup::ViewData, setup::RightPaneContent) {
     clamp_two_pane_selection(state, &view);
     apply_sort_anchor_selection(state, &view, None);
@@ -46,21 +47,17 @@ fn build_view_and_right_for_user_selected_mode(
         db_path_for_read,
         &view,
         None,
-        enable_enhance_all,
+        ublx_opts,
     );
     (view, right_content)
 }
 
 /// Expands to: build view from `$view`, then [`build_view_and_right_for_user_selected_mode`]; returns `(view, right_content, None)`.
 macro_rules! build_view_and_right_user_selected_mode {
-    ($state:expr, $params:expr, $db_path:expr, $view:expr, $enable_enhance:expr) => {{
+    ($state:expr, $params:expr, $db_path:expr, $view:expr, $ublx_opts:expr) => {{
         let view = $view;
         let (view, right_content) = build_view_and_right_for_user_selected_mode(
-            $state,
-            $params,
-            $db_path,
-            view,
-            $enable_enhance,
+            $state, $params, $db_path, view, $ublx_opts,
         );
         (view, right_content, None)
     }};
@@ -72,7 +69,7 @@ pub fn build_view_and_right_content<'a>(
     categories: &[String],
     all_rows: &'a [setup::TuiRow],
     params: &RunUblxParams<'_>,
-    enable_enhance_all: bool,
+    ublx_opts: &UblxOpts,
 ) -> (
     setup::ViewData,
     setup::RightPaneContent,
@@ -134,7 +131,7 @@ pub fn build_view_and_right_content<'a>(
                     &db_path_for_read,
                     &view,
                     Some(all_rows),
-                    enable_enhance_all,
+                    ublx_opts,
                 );
                 (view, right_content, Some(all_rows))
             } else {
@@ -143,7 +140,7 @@ pub fn build_view_and_right_content<'a>(
                     params,
                     &db_path_for_read,
                     view_data_for_duplicates_mode(state, &params.duplicate_groups),
-                    enable_enhance_all
+                    ublx_opts
                 )
             }
         } else if state.main_mode == setup::MainMode::Lenses {
@@ -152,7 +149,7 @@ pub fn build_view_and_right_content<'a>(
                 params,
                 &db_path_for_read,
                 view_data_for_lenses_mode(state, &params.lens_names, &db_path_for_read),
-                enable_enhance_all
+                ublx_opts
             )
         } else {
             let view = build_view_data(state, categories, all_rows, snapshot_mtimes.as_ref());
@@ -164,7 +161,7 @@ pub fn build_view_and_right_content<'a>(
                 &db_path_for_read,
                 &view,
                 Some(all_rows),
-                enable_enhance_all,
+                ublx_opts,
             );
             (view, right_content, Some(all_rows))
         };
