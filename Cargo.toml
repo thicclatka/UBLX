@@ -23,7 +23,7 @@ categories = [
 anyhow = "1.0.102"
 blake3 = "1.8.4"
 chrono = "0.4"
-clap = { version = "4.6.0", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive"] }
 colored = "3.1.1"
 comfy-table = "7.2.2"
 crossterm = "0.29"
@@ -56,7 +56,7 @@ zahirscan = "0.2.18"
 zip = { version = "8.5.1", default-features = false, features = ["deflate"] }
 
 [patch.crates-io]
-# zahirscan = { path = "../zahirscan" }
+zahirscan = { path = "../zahirscan" }
 # nefaxer = { path = "../nefaxer" }
 
 [dev-dependencies]

@@ -38,3 +38,4 @@ pub mod xlsx;
 
 pub use draw::*;
 pub use sections::*;
+pub use walk::WalkKeyVars;

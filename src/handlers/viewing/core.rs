@@ -13,6 +13,7 @@ use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, RightPaneContentDerived, SectionedPreview,
     SnapshotEntryMeta, TuiRow, UblxState, ViewData, ViewerDiskContentCache,
 };
+use crate::render::kv_tables::WalkKeyVars;
 use crate::ui::UI_STRINGS;
 use crate::utils;
 
@@ -394,10 +395,22 @@ pub fn sectioned_preview_from_zahir(value_ref: &serde_json::Value) -> SectionedP
         .unwrap_or_default();
 
     let metadata = value_ref.as_object().and_then(|obj| {
+        let root_file_type = obj.get(WalkKeyVars::FILE_TYPE);
         let parts: Vec<String> = obj
             .iter()
             .filter(|(k, _)| k.ends_with("_metadata"))
-            .filter_map(|(_, v)| serde_json::to_string_pretty(v).ok())
+            .filter_map(|(_, v)| {
+                let merged = match (root_file_type, v.as_object()) {
+                    (Some(ft), Some(meta)) => {
+                        let mut m = meta.clone();
+                        m.entry(WalkKeyVars::FILE_TYPE.to_string())
+                            .or_insert_with(|| ft.clone());
+                        Value::Object(m)
+                    }
+                    _ => v.clone(),
+                };
+                serde_json::to_string_pretty(&merged).ok()
+            })
             .collect();
         if parts.is_empty() {
             None

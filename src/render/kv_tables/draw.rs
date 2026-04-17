@@ -12,19 +12,25 @@ use super::sections;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
 
 /// Visible line range for a section: (`skip_lines`, `take_lines`) or None if section is off-screen.
+/// Uses `usize` so cumulative metadata line counts past 65535 do not wrap (which broke large tables).
 #[must_use]
 pub fn visible_section_window(
-    section_start: u16,
-    section_height: u16,
-    visible_start: u16,
-    visible_end: u16,
-) -> Option<(u16, u16)> {
-    if section_start + section_height <= visible_start || section_start >= visible_end {
+    section_start: usize,
+    section_height: usize,
+    visible_start: usize,
+    visible_end: usize,
+) -> Option<(usize, usize)> {
+    let section_end = section_start.saturating_add(section_height);
+    if section_end <= visible_start || section_start >= visible_end {
         return None;
     }
-    let skip_lines = visible_start.saturating_sub(section_start);
-    let take_lines =
-        (section_height - skip_lines).min(visible_end.saturating_sub(section_start) - skip_lines);
+    let seg_lo = section_start.max(visible_start);
+    let seg_hi = section_end.min(visible_end);
+    let take_lines = seg_hi.saturating_sub(seg_lo);
+    if take_lines == 0 {
+        return None;
+    }
+    let skip_lines = seg_lo.saturating_sub(section_start);
     Some((skip_lines, take_lines))
 }
 
@@ -33,42 +39,44 @@ fn draw_section_title(
     f: &mut ratatui::Frame,
     title: &str,
     table_area: Rect,
-    visible_start: u16,
-    visible_end: u16,
-    section_start: u16,
+    visible_start: usize,
+    visible_end: usize,
+    section_start: usize,
     sub_title: bool,
 ) {
-    if section_start >= visible_start
-        && section_start < visible_end
-        && table_area.y + section_start.saturating_sub(visible_start)
-            < table_area.y + table_area.height
-    {
-        let title_style = if sub_title {
-            style::table_section_subtitle_style()
-        } else {
-            style::table_section_title_style()
-        };
-        let line = ratatui::text::Line::from(title.to_uppercase()).style(title_style);
-        let ry = table_area.y + section_start.saturating_sub(visible_start);
-        f.render_widget(
-            ratatui::widgets::Paragraph::new(line),
-            Rect {
-                x: table_area.x,
-                y: ry,
-                width: table_area.width,
-                height: 1,
-            },
-        );
+    if section_start >= visible_start && section_start < visible_end {
+        let dy = section_start.saturating_sub(visible_start);
+        let ry = table_area
+            .y
+            .saturating_add(dy.min(u16::MAX as usize) as u16);
+        if ry < table_area.y.saturating_add(table_area.height) {
+            let title_style = if sub_title {
+                style::table_section_subtitle_style()
+            } else {
+                style::table_section_title_style()
+            };
+            let line = ratatui::text::Line::from(title.to_uppercase()).style(title_style);
+            f.render_widget(
+                ratatui::widgets::Paragraph::new(line),
+                Rect {
+                    x: table_area.x,
+                    y: ry,
+                    width: table_area.width,
+                    height: 1,
+                },
+            );
+        }
     }
 }
 
 /// Rect for content at `y_offset` (from `table_area.y`) with height clamped so it doesn't exceed the viewport.
 #[must_use]
-pub fn rect_in_viewport(table_area: Rect, y_offset: u16, height: u16, viewport: u16) -> Rect {
-    let max_h = viewport.saturating_sub(y_offset);
+pub fn rect_in_viewport(table_area: Rect, y_offset: usize, height: u16, viewport: u16) -> Rect {
+    let y_off = y_offset.min(u16::MAX as usize) as u16;
+    let max_h = viewport.saturating_sub(y_off);
     Rect {
         x: table_area.x,
-        y: table_area.y + y_offset,
+        y: table_area.y.saturating_add(y_off),
         width: table_area.width,
         height: height.min(max_h),
     }
@@ -82,18 +90,19 @@ pub fn rect_in_viewport(table_area: Rect, y_offset: u16, height: u16, viewport: 
 struct TableRowWindow {
     skip: usize,
     take: usize,
-    y_offset: u16,
+    y_offset: usize,
 }
 
 impl TableRowWindow {
     /// Height in terminal rows: either data rows only, or one header row plus data rows (KV / Contents).
     #[must_use]
     fn rect_height(self, include_header_row: bool) -> u16 {
-        if include_header_row {
-            (1 + self.take) as u16
+        let n = if include_header_row {
+            1usize.saturating_add(self.take)
         } else {
-            self.take as u16
-        }
+            self.take
+        };
+        n.min(u16::MAX as usize) as u16
     }
 }
 
@@ -102,7 +111,8 @@ struct TableDrawCtx<'a, 'f> {
     f: &'a mut ratatui::Frame<'f>,
     table_area: Rect,
     viewport: u16,
-    visible_start: u16,
+    visible_start: usize,
+    visible_end: usize,
     find_needle: Option<&'a str>,
     /// Haystack line starts when find has synced ranges (for `n`/`N` cell highlight alignment).
     line_starts: Option<&'a [usize]>,
@@ -114,14 +124,16 @@ impl TableDrawCtx<'_, '_> {
     /// Map scroll window to visible data rows. Returns `None` when nothing to draw.
     fn window_table_rows(
         &self,
-        table_start_line: u16,
-        take_lines: u16,
+        table_start_line: usize,
+        take_lines: usize,
         num_rows: usize,
         take_extra_cap: Option<usize>,
     ) -> Option<TableRowWindow> {
-        let skip =
-            (self.visible_start.saturating_sub(table_start_line)).min(num_rows as u16) as usize;
-        let mut take = (take_lines as usize).min(num_rows.saturating_sub(skip));
+        let skip = self
+            .visible_start
+            .saturating_sub(table_start_line)
+            .min(num_rows);
+        let mut take = take_lines.min(num_rows.saturating_sub(skip));
         if let Some(cap) = take_extra_cap {
             take = take.min(cap);
         }
@@ -137,14 +149,14 @@ impl TableDrawCtx<'_, '_> {
 
     fn draw_kv_visible(
         &mut self,
-        section_start: u16,
-        take_lines: u16,
+        section_start: usize,
+        take_lines: usize,
         has_title: bool,
         num_rows: usize,
         row_offset: usize,
         kv: &KvSection,
     ) {
-        let table_start_line = section_start + u16::from(has_title);
+        let table_start_line = section_start + usize::from(has_title);
         let Some(w) = self.window_table_rows(table_start_line, take_lines, num_rows, None) else {
             return;
         };
@@ -161,7 +173,9 @@ impl TableDrawCtx<'_, '_> {
             w.rect_height(true),
             self.viewport,
         );
-        let first_data_line_idx = (section_start as usize) + usize::from(has_title) + 1;
+        let first_data_line_idx = section_start
+            .saturating_add(usize::from(has_title))
+            .saturating_add(1);
         let find_kv_data = self.line_starts.and_then(|ls| {
             if self.find_ranges.is_empty() {
                 return None;
@@ -187,8 +201,8 @@ impl TableDrawCtx<'_, '_> {
 
     fn draw_contents_visible(
         &mut self,
-        section_start: u16,
-        take_lines: u16,
+        section_start: usize,
+        take_lines: usize,
         num_rows: usize,
         row_offset: usize,
         c: &ContentsSection,
@@ -223,8 +237,8 @@ impl TableDrawCtx<'_, '_> {
 
     fn draw_single_column_list_visible(
         &mut self,
-        section_start: u16,
-        take_lines: u16,
+        section_start: usize,
+        take_lines: usize,
         num_rows: usize,
         row_offset: usize,
         list: &SingleColumnListSection,
@@ -275,8 +289,8 @@ pub fn draw_tables(
     }
     let table_area = style::rect_with_h_pad(area);
     let viewport = table_area.height;
-    let visible_start = scroll_y;
-    let visible_end = scroll_y + viewport;
+    let visible_start = scroll_y as usize;
+    let visible_end = visible_start.saturating_add(viewport as usize);
     let line_starts_vec = if viewer_search::option_needle_nonempty(find_needle)
         && !state.viewer_find.ranges.is_empty()
     {
@@ -291,16 +305,17 @@ pub fn draw_tables(
         table_area,
         viewport,
         visible_start,
+        visible_end,
         find_needle,
         line_starts,
         find_ranges: &state.viewer_find.ranges,
         find_current: state.viewer_find.current,
     };
-    let mut line_index: u16 = 0;
+    let mut line_index: usize = 0;
     let mut row_offset = 0;
     for (i, section) in sections.iter().enumerate() {
         if i > 0 {
-            line_index += TABLE_GAP;
+            line_index += TABLE_GAP as usize;
         }
         let title_opt = section.title_str();
         let (_has_title, header_lines, num_rows) = section.line_metrics();
@@ -308,8 +323,8 @@ pub fn draw_tables(
         if title_opt.is_some() {
             line_index += 1;
         }
-        line_index += header_lines;
-        line_index += num_rows as u16;
+        line_index += header_lines as usize;
+        line_index += num_rows;
         let section_height = line_index - section_start;
 
         let Some((_skip_lines, take_lines)) =
@@ -325,7 +340,7 @@ pub fn draw_tables(
                 title,
                 ctx.table_area,
                 ctx.visible_start,
-                visible_end,
+                ctx.visible_end,
                 section_start,
                 section.sub_title_style(),
             );
