@@ -27,6 +27,7 @@ pub struct Args {
 
 /// Headless indexing flag
 #[derive(Parser)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct HeadlessCli {
     /// Headless snapshot. Writes a local config file when this dir has none.
     #[arg(long = "snapshot-only", short = 's')]

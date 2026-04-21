@@ -6,8 +6,8 @@ use serde_json::Value;
 use crate::config::PARALLEL;
 use crate::ui::UI_STRINGS;
 
+use super::column_metadata;
 use super::consts::TABLE_GAP;
-use super::csv;
 use super::walk;
 
 /// One key/value section: optional title and rows (key, value).
@@ -83,8 +83,10 @@ fn parse_one_blob(blob: &str) -> Vec<Section> {
     let Some(map) = value.as_object() else {
         return vec![];
     };
-    if csv::is_csv_metadata(map) {
-        csv::sections_from_csv_root(map)
+    if column_metadata::is_compact_column_metadata(map) {
+        column_metadata::sections_from_column_metadata_root(map)
+    } else if column_metadata::is_legacy_parallel_column_metadata(map) {
+        column_metadata::sections_from_legacy_column_metadata_root()
     } else {
         walk::root_parts_sections(map)
     }

@@ -13,7 +13,7 @@ impl SectionKeys {
     pub const SHEET_STATS: &'static str = "sheet_stats";
     pub const COMMON_PIVOTS: &'static str = "common_pivots";
     pub const CSV_METADATA: &'static str = "csv_metadata";
-    /// Conventional key for SQLite table lists (`sqlite_metadata.tables`). Any **non-empty array whose elements are all objects** is rendered the same way (per-object KV tables); see [`crate::render::kv_tables::walk`].
+    /// Conventional key for `SQLite` table lists (`sqlite_metadata.tables`). Any **non-empty array whose elements are all objects** is rendered the same way (per-object KV tables); see [`crate::render::kv_tables::walk`].
     pub const TABLES: &'static str = "tables";
     /// Conventional key for NPZ NPY entry lists (`npz_metadata.npy_entries`); same generic array-of-objects handling as [`Self::TABLES`].
     pub const NPY_ENTRIES: &'static str = "npy_entries";

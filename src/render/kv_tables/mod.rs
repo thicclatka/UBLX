@@ -10,7 +10,7 @@
 //! - [`content_height`] — total line count for scrollbar math (must match draw).
 //! - [`parse_json_sections`] — only if you need `Section` values outside draw (tests, tooling).
 //!
-//! Submodules (`walk`, `csv`, `schema`, …) stay `pub` for a shallow module tree and tests; treat
+//! Submodules (`walk`, `column_metadata`, `schema`, …) stay `pub` for a shallow module tree and tests; treat
 //! them as implementation details unless you are extending parsing.
 //!
 //! ## Hot path vs cache
@@ -26,8 +26,8 @@
 //!
 //! Longer module map: see `README.md` in this directory.
 
+pub mod column_metadata;
 pub mod consts;
-pub mod csv;
 pub mod draw;
 pub mod format;
 pub mod ratatui_table;
