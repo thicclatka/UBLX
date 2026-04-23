@@ -95,9 +95,15 @@ pub fn balanced_column_widths(
 }
 
 #[must_use]
-pub fn entry_cell(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> String {
-    obj.get(key)
-        .map_or_else(|| "—".to_string(), |v| format::format_value(v, key))
+pub fn entry_cell(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    max_array_inline: usize,
+) -> String {
+    obj.get(key).map_or_else(
+        || "—".to_string(),
+        |v| format::format_value(v, key, max_array_inline),
+    )
 }
 
 /// Build key/value table for one section.
@@ -175,12 +181,13 @@ fn contents_row(
     obj: &serde_json::Map<String, serde_json::Value>,
     column_keys: &[String],
     column_widths: &[u16],
+    max_array_inline: usize,
 ) -> Vec<String> {
     column_keys
         .iter()
         .enumerate()
         .map(|(j, k)| {
-            let cell = entry_cell(obj, k);
+            let cell = entry_cell(obj, k, max_array_inline);
             let max_chars = column_widths.get(j).copied().unwrap_or(0) as usize;
             let len = cell.chars().count();
             if max_chars > 0 && len > max_chars {
@@ -197,13 +204,14 @@ fn accumulate_natural_widths_from_entries<'a>(
     natural: &mut [usize],
     entries: impl Iterator<Item = &'a serde_json::Value>,
     keys: &[String],
+    max_array_inline: usize,
 ) {
     for v in entries {
         let Some(obj) = v.as_object() else {
             continue;
         };
         for (j, k) in keys.iter().enumerate() {
-            let len = entry_cell(obj, k).chars().count();
+            let len = entry_cell(obj, k, max_array_inline).chars().count();
             if let Some(nat) = natural.get_mut(j) {
                 *nat = (*nat).max(len);
             }
@@ -224,7 +232,12 @@ fn merge_max_natural_widths(acc: &mut [usize], chunk: &[usize]) {
 /// Column names (headers) are always included so they are never squeezed.
 /// Uses parallel iteration when visible row count exceeds [`PARALLEL.contents_natural_widths`].
 #[must_use]
-pub fn contents_natural_widths(section: &ContentsSection, start: usize, end: usize) -> Vec<usize> {
+pub fn contents_natural_widths(
+    section: &ContentsSection,
+    start: usize,
+    end: usize,
+    max_array_inline: usize,
+) -> Vec<usize> {
     let keys = &section.column_keys;
     let cols = &section.columns;
     if keys.is_empty() {
@@ -238,6 +251,7 @@ pub fn contents_natural_widths(section: &ContentsSection, start: usize, end: usi
             &mut natural,
             section.entries.iter().skip(start).take(entries_window),
             keys,
+            max_array_inline,
         );
         natural
     } else {
@@ -247,7 +261,12 @@ pub fn contents_natural_widths(section: &ContentsSection, start: usize, end: usi
             .par_chunks(chunk_size)
             .map(|chunk| {
                 let mut nat = header_natural.clone();
-                accumulate_natural_widths_from_entries(&mut nat, chunk.iter(), keys);
+                accumulate_natural_widths_from_entries(
+                    &mut nat,
+                    chunk.iter(),
+                    keys,
+                    max_array_inline,
+                );
                 nat
             })
             .collect();
@@ -278,8 +297,9 @@ pub fn contents_to_table_window(
     end: usize,
     table_width: u16,
     find_needle: Option<&str>,
+    max_array_inline: usize,
 ) -> Table<'static> {
-    let natural = contents_natural_widths(section, start, end);
+    let natural = contents_natural_widths(section, start, end, max_array_inline);
     let header_widths = contents_header_widths(section);
     let ncols = section.column_keys.len();
     let use_size_optimization = ncols > SIZE_OPTIMIZATION_COLUMN_THRESHOLD;
@@ -336,7 +356,8 @@ pub fn contents_to_table_window(
         .filter_map(|(_i, v)| v.as_object())
         .enumerate()
         .map(|(idx, obj)| {
-            let row_strs = contents_row(obj, &section.column_keys, &column_widths);
+            let row_strs =
+                contents_row(obj, &section.column_keys, &column_widths, max_array_inline);
             Row::new(
                 row_strs
                     .into_iter()

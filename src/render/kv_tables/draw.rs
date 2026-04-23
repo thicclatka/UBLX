@@ -7,6 +7,7 @@ use crate::modules::viewer_search;
 use crate::ui::UI_STRINGS;
 
 use super::consts::TABLE_GAP;
+use super::format;
 use super::ratatui_table;
 use super::sections;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
@@ -118,6 +119,8 @@ struct TableDrawCtx<'a, 'f> {
     line_starts: Option<&'a [usize]>,
     find_ranges: &'a [(usize, usize)],
     find_current: usize,
+    /// Must match [`sections::parse_json_sections_with`] for Contents cell text.
+    max_array_inline: usize,
 }
 
 impl TableDrawCtx<'_, '_> {
@@ -230,6 +233,7 @@ impl TableDrawCtx<'_, '_> {
                 skip + take,
                 rect.width,
                 self.find_needle,
+                self.max_array_inline,
             ),
             rect,
         );
@@ -279,7 +283,10 @@ pub fn draw_tables(
 ) {
     use ratatui::widgets::Paragraph;
 
-    let sections = sections::parse_json_sections(json);
+    let table_area = style::rect_with_h_pad(area);
+    let value_w = format::value_width_from_table_width(table_area.width);
+    let max_array_inline = format::max_array_inline_for_value_width(value_w);
+    let sections = sections::parse_json_sections_with(json, max_array_inline);
     if sections.is_empty() {
         f.render_widget(
             Paragraph::new(UI_STRINGS.pane.not_available).style(style::text_style()),
@@ -287,14 +294,13 @@ pub fn draw_tables(
         );
         return;
     }
-    let table_area = style::rect_with_h_pad(area);
     let viewport = table_area.height;
     let visible_start = scroll_y as usize;
     let visible_end = visible_start.saturating_add(viewport as usize);
     let line_starts_vec = if viewer_search::option_needle_nonempty(find_needle)
         && !state.viewer_find.ranges.is_empty()
     {
-        let hay = sections::searchable_text_from_json(json);
+        let hay = sections::searchable_text_from_json_with(json, max_array_inline);
         Some(sections::line_byte_starts(&hay))
     } else {
         None
@@ -310,6 +316,7 @@ pub fn draw_tables(
         line_starts,
         find_ranges: &state.viewer_find.ranges,
         find_current: state.viewer_find.current,
+        max_array_inline,
     };
     let mut line_index: usize = 0;
     let mut row_offset = 0;

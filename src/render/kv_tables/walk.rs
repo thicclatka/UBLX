@@ -1,7 +1,8 @@
 //! JSON map walk: root and nested object → sections (flat KV, schema, `sheet_stats`, `common_pivots`, `csv_metadata`, arrays of objects, `entries`).
 //!
 //! **Arrays of objects** (non-empty, every element is a JSON object), except [`SectionKeys::ENTRIES`],
-//! are split into one KV table per element via [`push_tables_sections`] (title from `name`, else `path`, else `Table`).
+//! are split into one KV table per element via [`push_tables_sections`] (title from `name`, else `path`,
+//! else the array’s JSON key formatted plus `·` and the 0-based index, else `Table`).
 //! Examples: `tables`, `npy_entries`, `datasets`, `variables`, `global_attributes` — no per-key wiring required.
 //! This is driven by **JSON shape** in the stored `*_metadata` blob for any file type Zahir enriched, not by a fixed list of extensions.
 //!
@@ -47,30 +48,51 @@ impl WalkKeyVars {
 fn map_to_kv_rows(
     map_ref: &Map<String, Value>,
     exclude_key: Option<&str>,
+    max_array_inline: usize,
 ) -> Vec<(String, String)> {
     map_ref
         .iter()
         .filter(|(k, _)| exclude_key != Some(k.as_str()))
-        .map(|(k, val)| (format::format_key(k), format::format_value(val, k)))
+        .map(|(k, val)| {
+            (
+                format::format_key(k),
+                format::format_value(val, k, max_array_inline),
+            )
+        })
         .collect()
 }
 
 /// Carries root Zahir `file_type` (merged into metadata JSON) for NetCDF-only attribute flattening.
-#[derive(Clone, Copy, Default)]
+/// Carries root Zahir `file_type` and how many array primitives to show inline in key/value values.
+#[derive(Clone, Copy)]
 pub struct WalkCtx {
     /// True when `file_type` is present and parses to [`ZahirFT::NetCdf`] via [`file_type_from_metadata_name`].
     is_netcdf: bool,
+    /// Passed to [`crate::render::kv_tables::format::format_value`] for `shape`-style arrays.
+    pub max_array_inline: usize,
+}
+
+impl Default for WalkCtx {
+    fn default() -> Self {
+        Self {
+            is_netcdf: false,
+            max_array_inline: format::DEFAULT_MAX_ARRAY_INLINE,
+        }
+    }
 }
 
 impl WalkCtx {
     #[must_use]
-    pub fn from_root_map(map_ref: &Map<String, Value>) -> Self {
+    pub fn from_root_map(map_ref: &Map<String, Value>, max_array_inline: usize) -> Self {
         let is_netcdf = map_ref
             .get(WalkKeyVars::FILE_TYPE)
             .and_then(|v| v.as_str())
             .and_then(file_type_from_metadata_name)
             .is_some_and(|ft| ft == ZahirFT::NetCdf);
-        Self { is_netcdf }
+        Self {
+            is_netcdf,
+            max_array_inline: max_array_inline.max(1),
+        }
     }
 }
 
@@ -81,14 +103,20 @@ fn map_without_display_file_type(map_ref: &Map<String, Value>) -> Map<String, Va
     m
 }
 
-fn flatten_name_value_attribute_rows(arr_ref: &[Value]) -> Option<Vec<(String, String)>> {
+fn flatten_name_value_attribute_rows(
+    arr_ref: &[Value],
+    max_array_inline: usize,
+) -> Option<Vec<(String, String)>> {
     let mut out = Vec::with_capacity(arr_ref.len());
     for v in arr_ref {
         let obj = v.as_object()?;
         let name = obj.get(WalkKeyVars::NAME)?.as_str()?;
         let value = obj.get(WalkKeyVars::VALUE)?;
         // Keep identifier as-is (e.g. `_FillValue`); do not title-case via [`format::format_key`].
-        out.push((name.to_string(), format::format_value(value, name)));
+        out.push((
+            name.to_string(),
+            format::format_value(value, name, max_array_inline),
+        ));
     }
     Some(out)
 }
@@ -97,6 +125,7 @@ fn flatten_name_value_attribute_rows(arr_ref: &[Value]) -> Option<Vec<(String, S
 fn map_to_kv_rows_flat_name_value_attributes(
     map_ref: &Map<String, Value>,
     exclude_key: Option<&str>,
+    max_array_inline: usize,
 ) -> Vec<(String, String)> {
     let mut rows = Vec::new();
     for (k, val) in map_ref {
@@ -105,12 +134,15 @@ fn map_to_kv_rows_flat_name_value_attributes(
         }
         if k == WalkKeyVars::ATTRIBUTES
             && let Some(arr) = val.as_array()
-            && let Some(flat) = flatten_name_value_attribute_rows(arr)
+            && let Some(flat) = flatten_name_value_attribute_rows(arr, max_array_inline)
         {
             rows.extend(flat);
             continue;
         }
-        rows.push((format::format_key(k), format::format_value(val, k)));
+        rows.push((
+            format::format_key(k),
+            format::format_value(val, k, max_array_inline),
+        ));
     }
     rows
 }
@@ -163,15 +195,19 @@ fn push_contents_from_entries(sections_mut_ref: &mut Vec<Section>, arr_ref: &[Va
 
 /// Same as [`push_root_parts`] but returns a new vec. Used when parsing blobs in parallel.
 #[must_use]
-pub fn root_parts_sections(map_ref: &Map<String, Value>) -> Vec<Section> {
+pub fn root_parts_sections(map_ref: &Map<String, Value>, max_array_inline: usize) -> Vec<Section> {
     let mut sections = Vec::new();
-    push_root_parts(&mut sections, map_ref);
+    push_root_parts(&mut sections, map_ref, max_array_inline);
     sections
 }
 
 /// Walk root map once; push sections in order (flat KV, schema, `sheet_stats`, `common_pivots`, `csv_metadata`, uniform object arrays, then each nested, then entries). Uses JSON key names (`SectionKeys`) in the match.
-pub fn push_root_parts(sections_mut_ref: &mut Vec<Section>, map_ref: &Map<String, Value>) {
-    let ctx = WalkCtx::from_root_map(map_ref);
+pub fn push_root_parts(
+    sections_mut_ref: &mut Vec<Section>,
+    map_ref: &Map<String, Value>,
+    max_array_inline: usize,
+) {
+    let ctx = WalkCtx::from_root_map(map_ref, max_array_inline);
     let map_owned = map_without_display_file_type(map_ref);
     push_root_parts_inner(sections_mut_ref, &map_owned, ctx);
 }
@@ -189,7 +225,7 @@ fn push_root_parts_inner(
     let mut common_pivots: Option<Vec<String>> = None;
     let mut column_metadata_compact: Option<(String, Map<String, Value>)> = None;
     let mut column_metadata_legacy_title: Option<String> = None;
-    let mut record_object_arrays: Vec<&Vec<Value>> = Vec::new();
+    let mut record_object_arrays: Vec<(&str, &Vec<Value>)> = Vec::new();
 
     for (k, v) in map_ref {
         match k.as_str() {
@@ -203,15 +239,25 @@ fn push_root_parts_inner(
                         nested.push((k.clone(), obj.clone()));
                     }
                 } else {
-                    flat.push((format::format_key(k), format::format_value(v, k)));
+                    flat.push((
+                        format::format_key(k),
+                        format::format_value(v, k, ctx.max_array_inline),
+                    ));
                 }
             }
             SectionKeys::COMMON_PIVOTS => {
                 if let Some(arr) = v.as_array() {
-                    common_pivots =
-                        Some(arr.iter().map(|val| format::format_value(val, k)).collect());
+                    let mi = ctx.max_array_inline;
+                    common_pivots = Some(
+                        arr.iter()
+                            .map(|val| format::format_value(val, k, mi))
+                            .collect(),
+                    );
                 } else {
-                    flat.push((format::format_key(k), format::format_value(v, k)));
+                    flat.push((
+                        format::format_key(k),
+                        format::format_value(v, k, ctx.max_array_inline),
+                    ));
                 }
             }
             SectionKeys::CSV_METADATA => {
@@ -224,15 +270,21 @@ fn push_root_parts_inner(
                         nested.push((k.clone(), obj.clone()));
                     }
                 } else {
-                    flat.push((format::format_key(k), format::format_value(v, k)));
+                    flat.push((
+                        format::format_key(k),
+                        format::format_value(v, k, ctx.max_array_inline),
+                    ));
                 }
             }
             _ => match v {
                 Value::Array(arr) if array_is_record_table_list(k.as_str(), arr) => {
-                    record_object_arrays.push(arr);
+                    record_object_arrays.push((k.as_str(), arr));
                 }
                 Value::Object(m) if !m.is_empty() => nested.push((k.clone(), m.clone())),
-                _ => flat.push((format::format_key(k), format::format_value(v, k))),
+                _ => flat.push((
+                    format::format_key(k),
+                    format::format_value(v, k, ctx.max_array_inline),
+                )),
             },
         }
     }
@@ -257,13 +309,18 @@ fn push_root_parts_inner(
         }));
     }
     if let Some((key, meta)) = column_metadata_compact {
-        column_metadata::push_column_metadata_sections(sections_mut_ref, &key, &meta);
+        column_metadata::push_column_metadata_sections(
+            sections_mut_ref,
+            &key,
+            &meta,
+            ctx.max_array_inline,
+        );
     }
     if let Some(title) = column_metadata_legacy_title {
         column_metadata::push_legacy_column_metadata_notice(sections_mut_ref, Some(title), false);
     }
-    for arr in record_object_arrays {
-        push_tables_sections(sections_mut_ref, arr, ctx);
+    for (array_key, arr) in record_object_arrays {
+        push_tables_sections(sections_mut_ref, arr, ctx, array_key);
     }
     for (key, m) in nested {
         process_nested_map(sections_mut_ref, &key, &m, &ctx);
@@ -288,14 +345,41 @@ fn object_name_or(obj_ref: &Map<String, Value>, default_ref: &str) -> String {
         .unwrap_or_else(|| default_ref.to_string())
 }
 
-fn push_tables_sections(sections_mut_ref: &mut Vec<Section>, arr_ref: &[Value], walk_ctx: WalkCtx) {
-    for v in arr_ref.iter().filter_map(Value::as_object) {
-        let table_name = object_name_or(v, WalkKeyVars::DEFAULT_TABLE_TITLE);
+/// Key/paths first; otherwise a title from the JSON array key and row index; otherwise `Table` (no key).
+fn table_title_for_record(
+    obj_ref: &Map<String, Value>,
+    array_key: Option<&str>,
+    index: usize,
+) -> String {
+    if let Some(n) = obj_ref.get(WalkKeyVars::NAME).and_then(Value::as_str) {
+        return n.to_string();
+    }
+    if let Some(p) = obj_ref.get(WalkKeyVars::PATH).and_then(Value::as_str) {
+        return p.to_string();
+    }
+    if let Some(k) = array_key {
+        return format::join_dot([format::format_key(k), index.to_string()]);
+    }
+    WalkKeyVars::DEFAULT_TABLE_TITLE.to_string()
+}
+
+fn push_tables_sections(
+    sections_mut_ref: &mut Vec<Section>,
+    arr_ref: &[Value],
+    walk_ctx: WalkCtx,
+    array_key: &str,
+) {
+    for (i, v) in arr_ref.iter().enumerate() {
+        let Some(v) = v.as_object() else {
+            continue;
+        };
+        let table_name = table_title_for_record(v, Some(array_key), i);
         if column_metadata::is_compact_column_metadata(v) {
             column_metadata::push_column_metadata_sections(
                 sections_mut_ref,
                 table_name.as_str(),
                 v,
+                walk_ctx.max_array_inline,
             );
             continue;
         }
@@ -308,9 +392,13 @@ fn push_tables_sections(sections_mut_ref: &mut Vec<Section>, arr_ref: &[Value], 
             continue;
         }
         let rows = if walk_ctx.is_netcdf {
-            map_to_kv_rows_flat_name_value_attributes(v, Some(WalkKeyVars::COLUMNS))
+            map_to_kv_rows_flat_name_value_attributes(
+                v,
+                Some(WalkKeyVars::COLUMNS),
+                walk_ctx.max_array_inline,
+            )
         } else {
-            map_to_kv_rows(v, Some(WalkKeyVars::COLUMNS))
+            map_to_kv_rows(v, Some(WalkKeyVars::COLUMNS), walk_ctx.max_array_inline)
         };
         if !rows.is_empty() {
             sections_mut_ref.push(Section::KeyValue(KvSection {
@@ -335,7 +423,12 @@ fn push_tables_sections(sections_mut_ref: &mut Vec<Section>, arr_ref: &[Value], 
                     entries: entries.clone(),
                     sub_title: true,
                 }));
-                push_column_stats_sections(sections_mut_ref, &table_name, &entries);
+                push_column_stats_sections(
+                    sections_mut_ref,
+                    &table_name,
+                    &entries,
+                    walk_ctx.max_array_inline,
+                );
             }
         }
     }
@@ -345,6 +438,7 @@ fn push_column_stats_sections(
     sections_mut_ref: &mut Vec<Section>,
     table_name_ref: &str,
     column_objs_ref: &[Value],
+    max_array_inline: usize,
 ) {
     for col in column_objs_ref.iter().filter_map(Value::as_object) {
         let col_name = object_name_or(col, WalkKeyVars::DEFAULT_COLUMN_LABEL);
@@ -353,7 +447,7 @@ fn push_column_stats_sections(
                 continue;
             }
             if let Some(stats_obj) = stats_val.as_object() {
-                let rows = map_to_kv_rows(stats_obj, None);
+                let rows = map_to_kv_rows(stats_obj, None, max_array_inline);
                 if !rows.is_empty() {
                     let stats_label = format::format_key(stats_key);
                     sections_mut_ref.push(Section::KeyValue(KvSection {
@@ -371,7 +465,8 @@ fn push_column_stats_sections(
     }
 }
 
-/// Walk nested map once (entries, schema, `common_pivots`, uniform object arrays; rest flat KV). Push sections in order.
+/// Walk nested map once (entries, schema, `common_pivots`, nested child objects, uniform object arrays, rest flat KV). Push sections in order.
+/// Child objects (e.g. a stats object under `tensor3d`) become their own key/value section instead of a single cell of stringified JSON.
 pub fn process_nested_map(
     sections_mut_ref: &mut Vec<Section>,
     section_key_ref: &str,
@@ -379,7 +474,12 @@ pub fn process_nested_map(
     ctx_ref: &WalkCtx,
 ) {
     if column_metadata::is_compact_column_metadata(map_ref) {
-        column_metadata::push_column_metadata_sections(sections_mut_ref, section_key_ref, map_ref);
+        column_metadata::push_column_metadata_sections(
+            sections_mut_ref,
+            section_key_ref,
+            map_ref,
+            ctx_ref.max_array_inline,
+        );
         return;
     }
     if column_metadata::is_legacy_parallel_column_metadata(map_ref) {
@@ -395,7 +495,8 @@ pub fn process_nested_map(
     let mut entries = None;
     let mut schema_val = None;
     let mut common_pivots: Option<Vec<String>> = None;
-    let mut record_object_arrays: Vec<&Vec<Value>> = Vec::new();
+    let mut record_object_arrays: Vec<(&str, &Vec<Value>)> = Vec::new();
+    let mut child_objects: Vec<(String, Map<String, Value>)> = Vec::new();
 
     for (k, v) in map_ref {
         match k.as_str() {
@@ -403,17 +504,30 @@ pub fn process_nested_map(
             SectionKeys::SCHEMA => schema_val = Some(v.clone()),
             SectionKeys::COMMON_PIVOTS => {
                 if let Some(arr) = v.as_array() {
-                    common_pivots =
-                        Some(arr.iter().map(|val| format::format_value(val, k)).collect());
+                    let mi = ctx_ref.max_array_inline;
+                    common_pivots = Some(
+                        arr.iter()
+                            .map(|val| format::format_value(val, k, mi))
+                            .collect(),
+                    );
                 } else {
-                    flat.push((format::format_key(k), format::format_value(v, k)));
+                    flat.push((
+                        format::format_key(k),
+                        format::format_value(v, k, ctx_ref.max_array_inline),
+                    ));
                 }
             }
             _ => match v {
-                Value::Array(arr) if array_is_record_table_list(k.as_str(), arr) => {
-                    record_object_arrays.push(arr);
+                Value::Object(m) if !m.is_empty() => {
+                    child_objects.push((k.clone(), m.clone()));
                 }
-                _ => flat.push((format::format_key(k), format::format_value(v, k))),
+                Value::Array(arr) if array_is_record_table_list(k.as_str(), arr) => {
+                    record_object_arrays.push((k.as_str(), arr));
+                }
+                _ => flat.push((
+                    format::format_key(k),
+                    format::format_value(v, k, ctx_ref.max_array_inline),
+                )),
             },
         }
     }
@@ -425,6 +539,9 @@ pub fn process_nested_map(
             rows: flat,
             sub_title: false,
         }));
+    }
+    for (child_key, child_map) in child_objects {
+        process_nested_map(sections_mut_ref, &child_key, &child_map, ctx_ref);
     }
     if let Some(v) = schema_val {
         schema::push_schema_section(sections_mut_ref, &v);
@@ -438,7 +555,7 @@ pub fn process_nested_map(
     if let Some(arr) = entries {
         push_contents_from_entries(sections_mut_ref, &arr);
     }
-    for arr in record_object_arrays {
-        push_tables_sections(sections_mut_ref, arr, *ctx_ref);
+    for (ak, arr) in record_object_arrays {
+        push_tables_sections(sections_mut_ref, arr, *ctx_ref, ak);
     }
 }

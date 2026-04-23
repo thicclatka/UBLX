@@ -18,7 +18,7 @@ fn schema_node_lines(
         out.push(format::prefixed_label_with_value(
             line_prefix,
             label,
-            &format::value_to_string(value),
+            &format::value_to_string(value, format::DEFAULT_MAX_ARRAY_INLINE),
         ));
         return out;
     };
@@ -44,7 +44,7 @@ fn schema_node_lines(
                     "{} {}: {}",
                     branch_prefix,
                     format::format_key(k),
-                    format::value_to_string(v)
+                    format::value_to_string(v, format::DEFAULT_MAX_ARRAY_INLINE)
                 ));
             }
         }

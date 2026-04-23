@@ -615,10 +615,12 @@ pub fn text_to_plain_string(text: &Text<'_>) -> String {
 }
 
 /// Haystack for Metadata / Writing tabs: formatted table text (same as on-screen cells), not raw JSON.
+/// `content_width` should match the tab’s text width so array formatting matches [`kv_tables::draw::draw_tables`].
 #[must_use]
 pub fn json_tab_find_haystack(
     right_content: &RightPaneContent,
     mode: RightPaneMode,
+    content_width: u16,
 ) -> Option<String> {
     let json = match mode {
         RightPaneMode::Metadata => right_content.metadata.as_deref(),
@@ -628,7 +630,9 @@ pub fn json_tab_find_haystack(
     if json.trim().is_empty() {
         return None;
     }
-    Some(kv_tables::searchable_text_from_json(json))
+    let value_w = kv_tables::format::value_width_from_table_width(content_width);
+    let max_inline = kv_tables::format::max_array_inline_for_value_width(value_w);
+    Some(kv_tables::searchable_text_from_json_with(json, max_inline))
 }
 
 #[must_use]
@@ -638,7 +642,7 @@ pub fn viewer_find_haystack_text(
     content_width: u16,
 ) -> String {
     ensure_viewer_text_cache(state, right_content, content_width);
-    if let Some(h) = json_tab_find_haystack(right_content, state.right_pane_mode) {
+    if let Some(h) = json_tab_find_haystack(right_content, state.right_pane_mode, content_width) {
         return h;
     }
     text_to_plain_string(&content_display_text(
@@ -670,7 +674,7 @@ pub fn haystack_for_right_pane_mode(
     let saved = state.right_pane_mode;
     state.right_pane_mode = mode;
     ensure_viewer_text_cache(state, right_content, content_width);
-    let out = if let Some(h) = json_tab_find_haystack(right_content, mode) {
+    let out = if let Some(h) = json_tab_find_haystack(right_content, mode, content_width) {
         h
     } else {
         text_to_plain_string(&content_display_text(

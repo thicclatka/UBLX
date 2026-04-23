@@ -14,6 +14,12 @@ const ALL_CAPS: &[&str] = &[
 
 const FLOAT_PRECISION: usize = 4;
 
+/// When the UI width is unknown (e.g. tests), use the historical cap of 3 short primitives inline.
+pub const DEFAULT_MAX_ARRAY_INLINE: usize = 3;
+
+/// Max characters of **value** column to assume when approximating `max_array_inline` from the full table width (key col + padding).
+const VALUE_COL_ASSUMED_OVERHEAD: u16 = 38;
+
 #[inline]
 #[must_use]
 pub fn is_byte_key(key: &str) -> bool {
@@ -79,7 +85,27 @@ pub fn format_key(key: &str) -> String {
     words.join(" ")
 }
 
-pub fn value_to_string(v: &serde_json::Value) -> String {
+/// Heuristic: how many primitive array items to show comma-separated before `"[n items]"`.
+/// Wider value columns allow more; narrow panes stay near [`DEFAULT_MAX_ARRAY_INLINE`].
+#[must_use]
+pub fn max_array_inline_for_value_width(value_width: u16) -> usize {
+    let w = (value_width.max(1) as usize).saturating_sub(2);
+    // ~5 chars per small int plus ", " between elements.
+    let n = w / 5;
+    n.clamp(DEFAULT_MAX_ARRAY_INLINE, 128)
+}
+
+/// Approximate value-column width in characters from a rendered table’s inner width.
+#[inline]
+#[must_use]
+pub fn value_width_from_table_width(table_inner_width: u16) -> u16 {
+    table_inner_width
+        .saturating_sub(VALUE_COL_ASSUMED_OVERHEAD)
+        .max(6)
+}
+
+pub fn value_to_string(v: &serde_json::Value, max_array_inline: usize) -> String {
+    let max_inline = max_array_inline.max(1);
     match v {
         serde_json::Value::Null => "—".to_string(),
         serde_json::Value::Bool(b) => b.to_string().to_uppercase(),
@@ -91,9 +117,10 @@ pub fn value_to_string(v: &serde_json::Value) -> String {
         serde_json::Value::Array(arr) => {
             if arr.is_empty() {
                 "[]".to_string()
-            } else if arr.len() <= 3 && arr.iter().all(|x| x.is_string() || x.is_number()) {
+            } else if arr.len() <= max_inline && arr.iter().all(|x| x.is_string() || x.is_number())
+            {
                 arr.iter()
-                    .map(value_to_string)
+                    .map(|e| value_to_string(e, max_inline))
                     .collect::<Vec<_>>()
                     .join(", ")
             } else {
@@ -115,9 +142,9 @@ fn json_f64_to_u64_for_bytes(f: f64) -> u64 {
     f as u64
 }
 
-/// Format value for display: byte format when key contains "size", "compressed", or "uncompressed" (and value is numeric); "%" when key contains "percent" (case-insensitive).
+/// Format value for display: byte format when key contains "size", "compressed", or "uncompressed" (and value is numeric); "%" when key contains "percent" (case-insensitive). `max_array_inline` controls array joining vs `[n items]`.
 #[must_use]
-pub fn format_value(v: &serde_json::Value, key: &str) -> String {
+pub fn format_value(v: &serde_json::Value, key: &str, max_array_inline: usize) -> String {
     let key_lower = key.to_lowercase();
     if is_byte_key(&key_lower) {
         if let Some(n) = v.as_u64() {
@@ -131,7 +158,7 @@ pub fn format_value(v: &serde_json::Value, key: &str) -> String {
             return format_bytes(json_f64_to_u64_for_bytes(f));
         }
     }
-    let s = value_to_string(v);
+    let s = value_to_string(v, max_array_inline);
     if key_lower.contains("percent") {
         format!("{s}%")
     } else {

@@ -559,11 +559,19 @@ fn table_numeric_or_other(
     )
 }
 
-fn flat_kv_rows_for_column_metadata(metadata: &Map<String, Value>) -> Vec<(String, String)> {
+fn flat_kv_rows_for_column_metadata(
+    metadata: &Map<String, Value>,
+    max_array_inline: usize,
+) -> Vec<(String, String)> {
     metadata
         .iter()
         .filter(|(key, _)| key.as_str() != COMPACT_COLUMNS_KEY)
-        .map(|(key, val)| (format::format_key(key), format::format_value(val, key)))
+        .map(|(key, val)| {
+            (
+                format::format_key(key),
+                format::format_value(val, key, max_array_inline),
+            )
+        })
         .collect()
 }
 
@@ -572,8 +580,9 @@ fn push_column_metadata_flat_kv_and_tables(
     sections: &mut Vec<Section>,
     title: Option<String>,
     metadata: &Map<String, Value>,
+    max_array_inline: usize,
 ) {
-    let flat_kv = flat_kv_rows_for_column_metadata(metadata);
+    let flat_kv = flat_kv_rows_for_column_metadata(metadata, max_array_inline);
     if !flat_kv.is_empty() {
         sections.push(Section::KeyValue(KvSection {
             title,
@@ -589,22 +598,28 @@ pub fn push_column_metadata_sections(
     sections: &mut Vec<Section>,
     section_key: &str,
     metadata: &Map<String, Value>,
+    max_array_inline: usize,
 ) {
     push_column_metadata_flat_kv_and_tables(
         sections,
         Some(format::format_key(section_key)),
         metadata,
+        max_array_inline,
     );
 }
 
 /// Root blob is entirely compact column metadata (flat KV for scalars + typed tables). Title uses the `csv_metadata` JSON key label.
 #[must_use]
-pub fn sections_from_column_metadata_root(metadata: &Map<String, Value>) -> Vec<Section> {
+pub fn sections_from_column_metadata_root(
+    metadata: &Map<String, Value>,
+    max_array_inline: usize,
+) -> Vec<Section> {
     let mut out = Vec::new();
     push_column_metadata_flat_kv_and_tables(
         &mut out,
         Some(format::format_key(SectionKeys::CSV_METADATA)),
         metadata,
+        max_array_inline,
     );
     out
 }

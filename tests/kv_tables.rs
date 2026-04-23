@@ -4,10 +4,12 @@ use ratatui::layout::Rect;
 
 use serde_json::{Value, json};
 use ublx::config::PARALLEL;
-use ublx::render::kv_tables::ratatui_table::{balanced_column_widths, contents_natural_widths};
 use ublx::render::kv_tables::{
-    content_height, line_byte_starts, parse_json_sections, rect_in_viewport,
-    searchable_text_from_json, visible_section_window,
+    content_height,
+    format::DEFAULT_MAX_ARRAY_INLINE,
+    line_byte_starts, parse_json_sections,
+    ratatui_table::{balanced_column_widths, contents_natural_widths},
+    rect_in_viewport, searchable_text_from_json, visible_section_window,
 };
 
 #[test]
@@ -130,7 +132,7 @@ fn contents_natural_widths_serial_small_window() {
         ],
         sub_title: false,
     };
-    let n = contents_natural_widths(&section, 0, 2);
+    let n = contents_natural_widths(&section, 0, 2, DEFAULT_MAX_ARRAY_INLINE);
     assert_eq!(n.len(), 2);
     assert!(n[0] >= "wide_header".chars().count());
     assert!(n[1] >= "loooooong".chars().count());
@@ -151,8 +153,8 @@ fn contents_natural_widths_parallel_path_deterministic() {
     };
     let start = 0;
     let end = PARALLEL.contents_natural_widths + 20;
-    let a = contents_natural_widths(&section, start, end);
-    let b = contents_natural_widths(&section, start, end);
+    let a = contents_natural_widths(&section, start, end, DEFAULT_MAX_ARRAY_INLINE);
+    let b = contents_natural_widths(&section, start, end, DEFAULT_MAX_ARRAY_INLINE);
     assert_eq!(a, b);
     assert_eq!(a.len(), 1);
 }

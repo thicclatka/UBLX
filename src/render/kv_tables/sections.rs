@@ -8,6 +8,7 @@ use crate::ui::UI_STRINGS;
 
 use super::column_metadata;
 use super::consts::TABLE_GAP;
+use super::format;
 use super::walk;
 
 /// One key/value section: optional title and rows (key, value).
@@ -75,7 +76,7 @@ impl Section {
 }
 
 /// Parse one blob into sections (either `csv_metadata` or walk). Returns empty vec on parse failure.
-fn parse_one_blob(blob: &str) -> Vec<Section> {
+fn parse_one_blob(blob: &str, max_array_inline: usize) -> Vec<Section> {
     let value: Value = match serde_json::from_str(blob.trim()) {
         Ok(v) => v,
         Err(_) => return vec![],
@@ -84,18 +85,25 @@ fn parse_one_blob(blob: &str) -> Vec<Section> {
         return vec![];
     };
     if column_metadata::is_compact_column_metadata(map) {
-        column_metadata::sections_from_column_metadata_root(map)
+        column_metadata::sections_from_column_metadata_root(map, max_array_inline)
     } else if column_metadata::is_legacy_parallel_column_metadata(map) {
         column_metadata::sections_from_legacy_column_metadata_root()
     } else {
-        walk::root_parts_sections(map)
+        walk::root_parts_sections(map, max_array_inline)
     }
 }
 
 /// Parse JSON string (one or more objects joined by "\n\n") into sections. First section is titled "General"; nested objects become separate sections; objects with "entries" get an extra "Contents" table. Special keys: schema (tree), `sheet_stats`, `common_pivots`, `csv_metadata`.
 /// Uses parallel iteration when blob count exceeds [`PARALLEL.json_sections_blobs`].
+/// For width-aware array display, use [`parse_json_sections_with`].
 #[must_use]
 pub fn parse_json_sections(json: &str) -> Vec<Section> {
+    parse_json_sections_with(json, format::DEFAULT_MAX_ARRAY_INLINE)
+}
+
+/// Like [`parse_json_sections`], with `max_array_inline` passed through to value formatting (e.g. `shape` arrays).
+#[must_use]
+pub fn parse_json_sections_with(json: &str, max_array_inline: usize) -> Vec<Section> {
     let blobs: Vec<&str> = json
         .split("\n\n")
         .filter(|s| !s.trim().is_empty())
@@ -104,10 +112,13 @@ pub fn parse_json_sections(json: &str) -> Vec<Section> {
     let mut sections: Vec<Section> = if blobs.len() >= PARALLEL.json_sections_blobs {
         blobs
             .par_iter()
-            .flat_map(|blob| parse_one_blob(blob))
+            .flat_map(|blob| parse_one_blob(blob, max_array_inline))
             .collect()
     } else {
-        blobs.iter().flat_map(|blob| parse_one_blob(blob)).collect()
+        blobs
+            .iter()
+            .flat_map(|blob| parse_one_blob(blob, max_array_inline))
+            .collect()
     };
 
     if let Some(Section::KeyValue(kv)) = sections.first_mut() {
@@ -119,8 +130,7 @@ pub fn parse_json_sections(json: &str) -> Vec<Section> {
 /// One logical line per rendered row (same order and count as [`content_height`]). Find `n`/`N`
 /// scroll uses newline indices in the joined string as `preview_scroll` coordinates.
 #[must_use]
-pub fn visual_lines_from_sections(sections: &[Section]) -> Vec<String> {
-    use super::format;
+pub fn visual_lines_from_sections(sections: &[Section], max_array_inline: usize) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     for (i, section) in sections.iter().enumerate() {
         if i > 0 {
@@ -150,8 +160,10 @@ pub fn visual_lines_from_sections(sections: &[Section]) -> Vec<String> {
                             .column_keys
                             .iter()
                             .map(|k| {
-                                obj.get(k)
-                                    .map_or_else(|| "—".to_string(), |v| format::format_value(v, k))
+                                obj.get(k).map_or_else(
+                                    || "—".to_string(),
+                                    |v| format::format_value(v, k, max_array_inline),
+                                )
                             })
                             .collect();
                         lines.push(row.join(" "));
@@ -183,14 +195,20 @@ pub fn line_byte_starts(s: &str) -> Vec<usize> {
 }
 
 /// Haystack for in-pane find: tab `·n`, `cur/total`, `sync` ranges, and `n`/`N` scroll (must match
-/// [`content_height`] line layout).
+/// [`content_height`] line layout). Uses a fixed array inline cap; for draw alignment use [`searchable_text_from_json_with`].
 #[must_use]
 pub fn searchable_text_from_json(json: &str) -> String {
-    let sections = parse_json_sections(json);
+    searchable_text_from_json_with(json, format::DEFAULT_MAX_ARRAY_INLINE)
+}
+
+/// Same as [`searchable_text_from_json`], with `max_array_inline` matching [`parse_json_sections_with`].
+#[must_use]
+pub fn searchable_text_from_json_with(json: &str, max_array_inline: usize) -> String {
+    let sections = parse_json_sections_with(json, max_array_inline);
     if sections.is_empty() {
         return json.to_string();
     }
-    let lines = visual_lines_from_sections(&sections);
+    let lines = visual_lines_from_sections(&sections, max_array_inline);
     lines.join("\n")
 }
 
