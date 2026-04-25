@@ -81,7 +81,7 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 ### Viewer
 
 - **Markdown** — formatted preview (headings, lists, code blocks, tables inside the doc).
-- **CSV-style files** — pretty table layout for `.csv`, `.tsv`, `.tab`, `.psv` when the index says so or the path matches (so previews still work if a row’s category label is off).
+- **CSV-style files** — for `.csv`, `.tsv`, `.tab`, `.psv`, render a pretty table when parsed width is 30 columns or fewer; for wider files, render a structured delimited fallback that shows only viewport-fitting leading columns with row/column truncation counts (still keyed off index type or path match when category labels are off).
 - **Images** — terminal preview via [ratatui-image](https://github.com/ratatui-org/ratatui-image) (downscaled for the pane; larger files may decode off the UI thread; recent previews cached for quick navigation).
 - **Code and structured text** — [syntect](https://github.com/trishume/syntect) highlighting via [`sublime_syntaxes`](https://crates.io/crates/sublime_syntaxes); grammar from path/extension; colors match theme light/dark. Large buffers are cached for smooth scrolling.
 - **Other text** — raw text (length-capped).
