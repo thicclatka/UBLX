@@ -217,98 +217,31 @@ fn push_root_parts_inner(
     map_ref: &Map<String, Value>,
     ctx: WalkCtx,
 ) {
-    let mut flat = Vec::new();
-    let mut nested = Vec::new();
-    let mut entries = None;
-    let mut schema_val = None;
-    let mut sheet_stats = None;
-    let mut common_pivots: Option<Vec<String>> = None;
-    let mut column_metadata_compact: Option<(String, Map<String, Value>)> = None;
-    let mut column_metadata_legacy_title: Option<String> = None;
-    let mut record_object_arrays: Vec<(&str, &Vec<Value>)> = Vec::new();
-
+    let mut buckets = RootBuckets::default();
     for (k, v) in map_ref {
-        match k.as_str() {
-            SectionKeys::ENTRIES => entries = v.as_array().cloned(),
-            SectionKeys::SCHEMA => schema_val = Some(v.clone()),
-            SectionKeys::SHEET_STATS => {
-                if let Some(obj) = v.as_object() {
-                    if xlsx::is_sheet_stats(obj) {
-                        sheet_stats = Some((k.clone(), obj.clone()));
-                    } else {
-                        nested.push((k.clone(), obj.clone()));
-                    }
-                } else {
-                    flat.push((
-                        format::format_key(k),
-                        format::format_value(v, k, ctx.max_array_inline),
-                    ));
-                }
-            }
-            SectionKeys::COMMON_PIVOTS => {
-                if let Some(arr) = v.as_array() {
-                    let mi = ctx.max_array_inline;
-                    common_pivots = Some(
-                        arr.iter()
-                            .map(|val| format::format_value(val, k, mi))
-                            .collect(),
-                    );
-                } else {
-                    flat.push((
-                        format::format_key(k),
-                        format::format_value(v, k, ctx.max_array_inline),
-                    ));
-                }
-            }
-            SectionKeys::CSV_METADATA => {
-                if let Some(obj) = v.as_object() {
-                    if column_metadata::is_compact_column_metadata(obj) {
-                        column_metadata_compact = Some((k.clone(), obj.clone()));
-                    } else if column_metadata::is_legacy_parallel_column_metadata(obj) {
-                        column_metadata_legacy_title = Some(format::format_key(k));
-                    } else {
-                        nested.push((k.clone(), obj.clone()));
-                    }
-                } else {
-                    flat.push((
-                        format::format_key(k),
-                        format::format_value(v, k, ctx.max_array_inline),
-                    ));
-                }
-            }
-            _ => match v {
-                Value::Array(arr) if array_is_record_table_list(k.as_str(), arr) => {
-                    record_object_arrays.push((k.as_str(), arr));
-                }
-                Value::Object(m) if !m.is_empty() => nested.push((k.clone(), m.clone())),
-                _ => flat.push((
-                    format::format_key(k),
-                    format::format_value(v, k, ctx.max_array_inline),
-                )),
-            },
-        }
+        buckets.classify(k, v, ctx.max_array_inline);
     }
 
-    if !flat.is_empty() {
+    if !buckets.flat.is_empty() {
         sections_mut_ref.push(Section::KeyValue(KvSection {
             title: None,
-            rows: flat,
+            rows: buckets.flat,
             sub_title: false,
         }));
     }
-    if let Some(v) = schema_val {
+    if let Some(v) = buckets.schema_val {
         schema::push_schema_section(sections_mut_ref, &v);
     }
-    if let Some((key, obj)) = sheet_stats {
+    if let Some((key, obj)) = buckets.sheet_stats {
         sections_mut_ref.push(xlsx::sheet_stats_to_section(&key, &obj));
     }
-    if let Some(values) = common_pivots.filter(|pivots| !pivots.is_empty()) {
+    if let Some(values) = buckets.common_pivots.filter(|pivots| !pivots.is_empty()) {
         sections_mut_ref.push(Section::SingleColumnList(SingleColumnListSection {
             title: format::format_key(SectionKeys::COMMON_PIVOTS),
             values,
         }));
     }
-    if let Some((key, meta)) = column_metadata_compact {
+    if let Some((key, meta)) = buckets.column_metadata_compact {
         column_metadata::push_column_metadata_sections(
             sections_mut_ref,
             &key,
@@ -316,17 +249,98 @@ fn push_root_parts_inner(
             ctx.max_array_inline,
         );
     }
-    if let Some(title) = column_metadata_legacy_title {
+    if let Some(title) = buckets.column_metadata_legacy_title {
         column_metadata::push_legacy_column_metadata_notice(sections_mut_ref, Some(title), false);
     }
-    for (array_key, arr) in record_object_arrays {
+    for (array_key, arr) in buckets.record_object_arrays {
         push_tables_sections(sections_mut_ref, arr, ctx, array_key);
     }
-    for (key, m) in nested {
+    for (key, m) in buckets.nested {
         process_nested_map(sections_mut_ref, &key, &m, &ctx);
     }
-    if let Some(arr) = entries {
+    if let Some(arr) = buckets.entries {
         push_contents_from_entries(sections_mut_ref, &arr);
+    }
+}
+
+#[derive(Default)]
+struct RootBuckets<'a> {
+    flat: Vec<(String, String)>,
+    nested: Vec<(String, Map<String, Value>)>,
+    entries: Option<Vec<Value>>,
+    schema_val: Option<Value>,
+    sheet_stats: Option<(String, Map<String, Value>)>,
+    common_pivots: Option<Vec<String>>,
+    column_metadata_compact: Option<(String, Map<String, Value>)>,
+    column_metadata_legacy_title: Option<String>,
+    record_object_arrays: Vec<(&'a str, &'a Vec<Value>)>,
+}
+
+impl<'a> RootBuckets<'a> {
+    fn push_flat(&mut self, key: &str, val: &Value, max_array_inline: usize) {
+        self.flat.push((
+            format::format_key(key),
+            format::format_value(val, key, max_array_inline),
+        ));
+    }
+
+    fn classify(&mut self, k: &'a str, v: &'a Value, max_array_inline: usize) {
+        match k {
+            SectionKeys::ENTRIES => self.entries = v.as_array().cloned(),
+            SectionKeys::SCHEMA => self.schema_val = Some(v.clone()),
+            SectionKeys::SHEET_STATS => self.classify_sheet_stats(k, v, max_array_inline),
+            SectionKeys::COMMON_PIVOTS => self.classify_common_pivots(k, v, max_array_inline),
+            SectionKeys::CSV_METADATA => self.classify_csv_metadata(k, v, max_array_inline),
+            _ => self.classify_default(k, v, max_array_inline),
+        }
+    }
+
+    fn classify_sheet_stats(&mut self, k: &str, v: &Value, max_array_inline: usize) {
+        if let Some(obj) = v.as_object() {
+            if xlsx::is_sheet_stats(obj) {
+                self.sheet_stats = Some((k.to_string(), obj.clone()));
+            } else {
+                self.nested.push((k.to_string(), obj.clone()));
+            }
+            return;
+        }
+        self.push_flat(k, v, max_array_inline);
+    }
+
+    fn classify_common_pivots(&mut self, k: &str, v: &Value, max_array_inline: usize) {
+        if let Some(arr) = v.as_array() {
+            self.common_pivots = Some(
+                arr.iter()
+                    .map(|val| format::format_value(val, k, max_array_inline))
+                    .collect(),
+            );
+            return;
+        }
+        self.push_flat(k, v, max_array_inline);
+    }
+
+    fn classify_csv_metadata(&mut self, k: &str, v: &Value, max_array_inline: usize) {
+        if let Some(obj) = v.as_object() {
+            if column_metadata::is_compact_column_metadata(obj) {
+                self.column_metadata_compact = Some((k.to_string(), obj.clone()));
+            } else if column_metadata::is_legacy_parallel_column_metadata(obj) {
+                self.column_metadata_legacy_title = Some(format::format_key(k));
+            } else {
+                self.nested.push((k.to_string(), obj.clone()));
+            }
+            return;
+        }
+        self.push_flat(k, v, max_array_inline);
+    }
+
+    fn classify_default(&mut self, k: &'a str, v: &'a Value, max_array_inline: usize) {
+        match v {
+            Value::Array(arr) if array_is_record_table_list(k, arr) => {
+                self.record_object_arrays.push((k, arr));
+            }
+            Value::Object(m) if !m.is_empty() => self.nested.push((k.to_string(), m.clone())),
+            _ => self.push_flat(k, v, max_array_inline),
+        }
     }
 }
 

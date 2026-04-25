@@ -12,13 +12,13 @@ use crate::integrations::ZahirFT;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
 use crate::render::viewers::{pdf_preview, video_preview};
 use crate::ui::{UI_GLYPHS, UI_STRINGS};
-use crate::utils::HALF_MIB_BYTES;
+use crate::utils::ViewerReadPolicy;
 
 use super::raster_policy;
 
 /// Decode + downscale off the UI thread when the file is at least this large (keeps dev/`opt-level=1` snappy too).
 /// Same value as [`crate::utils::HALF_MIB_BYTES`] (viewer read cap).
-pub const ASYNC_DECODE_MIN_BYTES: u64 = HALF_MIB_BYTES;
+pub const ASYNC_DECODE_MIN_BYTES: u64 = ViewerReadPolicy::HALF_MIB_BYTES;
 
 #[inline]
 #[must_use]

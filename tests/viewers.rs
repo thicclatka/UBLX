@@ -33,6 +33,65 @@ fn comma_without_hint_still_parses() {
     assert_eq!(rows, vec![vec!["a", "b"], vec!["1", "2"]]);
 }
 
+#[test]
+fn csv_ragged_rows_still_parse_for_viewer_table() {
+    let raw = "\"a\",\"b\"\n1,2\n3,4,5\n";
+    let rows = viewers::csv_handler::parse_csv(raw, Some("data.csv")).unwrap();
+    assert_eq!(
+        rows,
+        vec![vec!["a", "b"], vec!["1", "2"], vec!["3", "4", "5"],]
+    );
+}
+
+#[test]
+fn csv_wider_than_30_columns_falls_back_from_pretty_table() {
+    let header = (0..31)
+        .map(|i| format!("h{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let row = (0..31).map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    let raw = format!("{header}\n{row}\n");
+    let rows = viewers::csv_handler::parse_csv(&raw, Some("wide.csv")).unwrap();
+    assert!(!viewers::csv_handler::should_render_as_table(&rows));
+}
+
+#[test]
+fn wide_csv_structured_view_shows_first_visible_columns() {
+    let header = (0..40)
+        .map(|i| format!("h{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let row = (0..40)
+        .map(|i| format!("v{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let raw = format!("{header}\n{row}\n");
+    let rows = viewers::csv_handler::parse_csv(&raw, Some("wide.csv")).unwrap();
+    let s = viewers::csv_handler::wide_structured_string(&rows, 80, None);
+    assert!(s.contains("[wide delimited view: truncated from 2 rows and 40 columns;"));
+    assert!(s.contains("h0"));
+    assert!(s.contains("v0"));
+    assert!(
+        !s.contains("h39"),
+        "should not show far-right columns at width 80"
+    );
+}
+
+#[test]
+fn wide_csv_structured_view_uses_total_rows_hint_for_hidden_count() {
+    let raw = "h0,h1\nv0,v1\n__UBLX_CSV_TOTAL_ROWS__=4096\n";
+    let rows = viewers::csv_handler::parse_csv(raw, Some("wide.csv")).unwrap();
+    assert_eq!(
+        rows.len(),
+        2,
+        "meta trailer should be stripped from parsed rows"
+    );
+    let total = viewers::csv_handler::total_rows_hint_from_raw(raw);
+    assert_eq!(total, Some(4096));
+    let s = viewers::csv_handler::wide_structured_string(&rows, 80, total);
+    assert!(s.contains("rows 2 shown, 4094 hidden"));
+}
+
 // --- Markdown ---------------------------------------------------------------
 
 #[test]

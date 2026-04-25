@@ -7,11 +7,255 @@
 //! Layout matches markdown tables: word wrap, short columns without wrap (still row-padded), and
 //! [`crate::render::viewers::pretty_tables::VIEWER_TABLE_ELLIPSIS_CELL_CHARS`] truncation with `"..."`.
 
-use ratatui::text::Text;
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span, Text};
+use std::fmt::Write as _;
 use std::io::Cursor;
 
 use crate::integrations::{delimiter_from_path_for_viewer, detect_delimiter_byte};
 use crate::render::viewers::pretty_tables;
+use crate::themes;
+
+/// Parsed delimited files wider than this render as raw text in the viewer.
+pub const VIEWER_TABLE_MAX_COLUMNS: usize = 30;
+const CSV_TOTAL_ROWS_META_PREFIX: &str = "__UBLX_CSV_TOTAL_ROWS__=";
+
+/// True when parsed rows should render as a pretty table.
+#[must_use]
+pub fn should_render_as_table(rows: &[Vec<String>]) -> bool {
+    !rows.is_empty() && rows.iter().map(Vec::len).max().unwrap_or(0) <= VIEWER_TABLE_MAX_COLUMNS
+}
+
+fn strip_total_rows_meta_row(rows: &mut Vec<Vec<String>>) {
+    if rows
+        .last()
+        .is_some_and(|r| r.len() == 1 && r[0].trim().starts_with(CSV_TOTAL_ROWS_META_PREFIX))
+    {
+        rows.pop();
+    }
+}
+
+/// Extract total-row hint from a synthetic trailer line emitted by viewer preview loading.
+#[must_use]
+pub fn total_rows_hint_from_raw(raw: &str) -> Option<usize> {
+    let last = raw.lines().last()?.trim();
+    let n = last.strip_prefix(CSV_TOTAL_ROWS_META_PREFIX)?;
+    n.parse::<usize>().ok()
+}
+
+fn truncate_for_width(s: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let char_count = s.chars().count();
+    if char_count <= width {
+        return s.to_string();
+    }
+    if width <= 3 {
+        return s.chars().take(width).collect();
+    }
+    let keep = width - 3;
+    format!("{}...", s.chars().take(keep).collect::<String>())
+}
+
+fn visible_cols_and_widths(rows: &[Vec<String>], content_width: u16) -> (usize, Vec<usize>, usize) {
+    let total_cols = rows.iter().map(Vec::len).max().unwrap_or(0);
+    if total_cols == 0 {
+        return (0, Vec::new(), 0);
+    }
+
+    let viewport = (content_width as usize).max(1);
+    let sample_rows = rows.iter().take(256);
+    let mut max_lens = vec![1usize; total_cols];
+    for row in sample_rows {
+        for (j, cell) in row.iter().enumerate() {
+            let c = pretty_tables::collapse_viewer_cell_whitespace(cell);
+            max_lens[j] = max_lens[j].max(c.chars().count());
+        }
+    }
+
+    let mut widths = Vec::new();
+    let mut used = 0usize;
+    for max_len in max_lens {
+        let w = max_len.clamp(3, 24);
+        let sep = usize::from(!widths.is_empty()) * 3;
+        if !widths.is_empty() && used + sep + w > viewport {
+            break;
+        }
+        used += sep + w;
+        widths.push(w);
+    }
+    if widths.is_empty() {
+        widths.push(viewport.clamp(1, 24));
+    }
+    let visible = widths.len().min(total_cols);
+    (visible, widths, total_cols)
+}
+
+fn row_to_structured_line(row: &[String], widths: &[usize]) -> String {
+    widths
+        .iter()
+        .enumerate()
+        .map(|(j, width)| {
+            let raw = row.get(j).map_or("", String::as_str);
+            let collapsed = pretty_tables::collapse_viewer_cell_whitespace(raw);
+            let clipped = truncate_for_width(&collapsed, *width);
+            format!("{clipped:<width$}")
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+fn structured_cell_text(row: &[String], col_idx: usize, width: usize) -> String {
+    let raw = row.get(col_idx).map_or("", String::as_str);
+    let collapsed = pretty_tables::collapse_viewer_cell_whitespace(raw);
+    let clipped = truncate_for_width(&collapsed, width);
+    format!("{clipped:<width$}")
+}
+
+fn row_to_structured_spans(row: &[String], widths: &[usize]) -> Vec<Span<'static>> {
+    let palette = themes::current();
+    let base = Style::default().fg(palette.text);
+    let alt = Style::default().fg(palette.hint);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for (j, width) in widths.iter().enumerate() {
+        let padded = structured_cell_text(row, j, *width);
+        let style = if j % 2 == 0 { base } else { alt };
+        spans.push(Span::styled(padded, style));
+        if j + 1 < widths.len() {
+            spans.push(Span::styled(" | ".to_string(), base));
+        }
+    }
+    spans
+}
+
+fn wide_structured_banner(
+    shown_rows: usize,
+    total_rows: usize,
+    total_cols: usize,
+    visible_cols: usize,
+    hidden_rows: usize,
+    hidden_cols: usize,
+) -> String {
+    format!(
+        "[wide delimited view: truncated from {total_rows} rows and {total_cols} columns; rows {shown_rows} shown, {hidden_rows} hidden; columns {visible_cols} shown, {hidden_cols} hidden]"
+    )
+}
+
+struct WideViewMetrics {
+    visible_cols: usize,
+    widths: Vec<usize>,
+    total_cols: usize,
+    shown_rows: usize,
+    total_rows: usize,
+    hidden_rows: usize,
+    hidden_cols: usize,
+}
+
+fn wide_view_metrics(
+    rows: &[Vec<String>],
+    content_width: u16,
+    total_rows_hint: Option<usize>,
+) -> Option<WideViewMetrics> {
+    if rows.is_empty() {
+        return None;
+    }
+    let (visible_cols, widths, total_cols) = visible_cols_and_widths(rows, content_width);
+    if visible_cols == 0 {
+        return None;
+    }
+    let shown_rows = rows.len();
+    let total_rows = total_rows_hint.unwrap_or(shown_rows).max(shown_rows);
+    Some(WideViewMetrics {
+        visible_cols,
+        hidden_cols: total_cols.saturating_sub(visible_cols),
+        widths,
+        total_cols,
+        shown_rows,
+        total_rows,
+        hidden_rows: total_rows.saturating_sub(shown_rows),
+    })
+}
+
+/// For wide delimited files (more than [`VIEWER_TABLE_MAX_COLUMNS`] columns), render a structured
+/// plain-text viewport: first visible columns only, aligned by column width, no horizontal paging.
+#[must_use]
+pub fn wide_structured_string(
+    rows: &[Vec<String>],
+    content_width: u16,
+    total_rows_hint: Option<usize>,
+) -> String {
+    let Some(m) = wide_view_metrics(rows, content_width, total_rows_hint) else {
+        return String::new();
+    };
+
+    let mut out = String::new();
+    let _ = write!(
+        out,
+        "{}",
+        wide_structured_banner(
+            m.shown_rows,
+            m.total_rows,
+            m.total_cols,
+            m.visible_cols,
+            m.hidden_rows,
+            m.hidden_cols
+        )
+    );
+    out.push('\n');
+
+    for row in rows {
+        out.push_str(&row_to_structured_line(row, &m.widths));
+        out.push('\n');
+    }
+
+    if out.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
+/// Styled text variant of [`wide_structured_string`].
+#[must_use]
+pub fn wide_structured_text(
+    rows: &[Vec<String>],
+    content_width: u16,
+    total_rows_hint: Option<usize>,
+) -> Text<'static> {
+    let Some(m) = wide_view_metrics(rows, content_width, total_rows_hint) else {
+        return Text::default();
+    };
+    let palette = themes::current();
+    let banner = wide_structured_banner(
+        m.shown_rows,
+        m.total_rows,
+        m.total_cols,
+        m.visible_cols,
+        m.hidden_rows,
+        m.hidden_cols,
+    );
+
+    let mut lines: Vec<Line<'static>> = Vec::with_capacity(rows.len().saturating_add(1));
+    lines.push(Line::from(vec![Span::styled(
+        banner,
+        Style::default()
+            .fg(palette.text)
+            .add_modifier(Modifier::ITALIC),
+    )]));
+    lines.extend(
+        rows.iter()
+            .map(|row| Line::from(row_to_structured_spans(row, &m.widths))),
+    );
+    Text::from(lines)
+}
+
+/// Line count for [`wide_structured_string`].
+#[must_use]
+pub fn wide_structured_line_count(rows: &[Vec<String>], content_width: u16) -> usize {
+    wide_structured_string(rows, content_width, None)
+        .lines()
+        .count()
+}
 
 /// Parse with a single-byte delimiter. Uses the **`csv`** crate via `::csv::` (avoids confusion with
 /// this module’s name, `csv_handler`).
@@ -20,6 +264,7 @@ fn parse_with_delimiter(raw: &str, delim: u8) -> Result<Vec<Vec<String>>, ::csv:
     let mut rdr = ::csv::ReaderBuilder::new()
         .has_headers(false)
         .delimiter(delim)
+        .flexible(true)
         .from_reader(Cursor::new(raw));
     for result in rdr.records() {
         let record = result?;
@@ -39,7 +284,9 @@ fn parse_with_delimiter(raw: &str, delim: u8) -> Result<Vec<Vec<String>>, ::csv:
 pub fn parse_csv(raw: &str, path_hint: Option<&str>) -> Result<Vec<Vec<String>>, ::csv::Error> {
     let hint = path_hint.unwrap_or("");
     let delim = delimiter_from_path_for_viewer(hint).unwrap_or_else(|| detect_delimiter_byte(raw));
-    parse_with_delimiter(raw, delim)
+    let mut rows = parse_with_delimiter(raw, delim)?;
+    strip_total_rows_meta_row(&mut rows);
+    Ok(rows)
 }
 
 /// Build a comfy-table string from parsed rows: UTF8 box-drawing style, cells truncated.

@@ -305,100 +305,143 @@ pub fn viewer_total_lines(
     match (state.right_pane_mode, use_kv_tables) {
         (_, Some(json)) => kv_tables::content_height(json) as usize,
         (RightPaneMode::Viewer, _) => {
-            if viewers::async_tools::viewer_async_placeholder_active(state, right_content) {
-                if let Some(h) = scroll_viewport_h {
-                    return (h as usize).saturating_add(1);
-                }
-                return 1;
-            }
-            let theme = themes::current().name;
-            if viewer_show_delimited_table(right_content) {
-                if let Some(e) = csv_cached_entry(state, right_content, content_width, theme) {
-                    return e.line_count;
-                }
-            } else if let (Some(vp), Some(raw)) = (
-                right_content.snap_meta.path.as_deref(),
-                right_content.viewer.as_deref(),
-            ) && let Some(ref e) = state.viewer_text_cache
-            {
-                let syntect_args =
-                    syntect_viewer_cache_params(vp, raw, content_width, theme, right_content);
-                let cached = if viewer_is_markdown(right_content)
-                    && raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
-                {
-                    e.matches_markdown_viewer(vp, content_width, theme, raw)
-                } else if viewer_uses_syntect_highlight(right_content)
-                    && raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
-                {
-                    e.matches_syntect_viewer(&syntect_args)
-                } else {
-                    false
-                };
-                if cached {
-                    return e.line_count;
-                }
-            }
-            if viewer_show_delimited_table(right_content)
-                && let Some(raw) = right_content.viewer.as_deref()
-                && let Some(vp) = right_content.snap_meta.path.as_deref()
-                && let Ok(rows) = viewers::csv_handler::parse_csv(raw, Some(vp))
-                && !rows.is_empty()
-            {
-                return viewers::csv_handler::table_line_count(&rows, content_width);
-            }
-            if viewers::images::is_raster_preview_category(right_content) {
-                if state.viewer_image.protocol.is_some() {
-                    return 1;
-                }
-                if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
-                    return wrapped_line_count(
-                        &viewers::images::raster_preview_label_body(
-                            right_content,
-                            UI_STRINGS.loading.general,
-                        ),
-                        content_width,
-                    ) as usize;
-                }
-                if let Some(e) = state.viewer_image.err.as_deref() {
-                    return wrapped_line_count(
-                        &viewers::images::raster_preview_label_body(right_content, e),
-                        content_width,
-                    ) as usize;
-                }
-                let msg = right_content.viewer.as_deref().unwrap_or("");
-                return wrapped_line_count(
-                    &viewers::images::raster_preview_label_body(right_content, msg),
-                    content_width,
-                ) as usize;
-            }
-            if viewer_is_markdown(right_content) {
-                let raw = right_content.viewer.as_deref().unwrap_or("");
-                let doc = viewers::markdown::parse_markdown(raw);
-                return doc.to_text(content_width).lines.len();
-            }
-            if viewer_uses_syntect_highlight(right_content) {
-                return right_content.viewer.as_deref().map_or(0, |t| {
-                    let n = t.lines().count();
-                    if n > 1 {
-                        n
-                    } else {
-                        wrapped_line_count(t, content_width) as usize
-                    }
-                });
-            }
-            let tree_lines = right_content
-                .viewer
-                .as_deref()
-                .map_or(0, |t| wrapped_line_count(t, content_width) as usize);
-            if let Some(ref pl) = right_content.viewer_directory_policy_line {
-                let policy_lines = wrapped_line_count(pl, content_width) as usize;
-                return policy_lines.saturating_add(1).saturating_add(tree_lines);
-            }
-            tree_lines
+            viewer_total_lines_for_viewer(right_content, content_width, state, scroll_viewport_h)
         }
         (RightPaneMode::Templates, _) => right_content.templates.lines().count(),
         (RightPaneMode::Writing | RightPaneMode::Metadata, _) => 0,
     }
+}
+
+fn viewer_total_lines_for_viewer(
+    right_content: &RightPaneContent,
+    content_width: u16,
+    state: &mut UblxState,
+    scroll_viewport_h: Option<u16>,
+) -> usize {
+    if viewers::async_tools::viewer_async_placeholder_active(state, right_content) {
+        return scroll_viewport_h.map_or(1, |h| (h as usize).saturating_add(1));
+    }
+    if let Some(lines) = cached_viewer_line_count(state, right_content, content_width) {
+        return lines;
+    }
+    if let Some(lines) = delimited_line_count_uncached(right_content, content_width) {
+        return lines;
+    }
+    if viewers::images::is_raster_preview_category(right_content) {
+        return raster_viewer_line_count(state, right_content, content_width);
+    }
+    if viewer_is_markdown(right_content) {
+        let raw = right_content.viewer.as_deref().unwrap_or("");
+        return viewers::markdown::parse_markdown(raw)
+            .to_text(content_width)
+            .lines
+            .len();
+    }
+    if viewer_uses_syntect_highlight(right_content) {
+        return right_content.viewer.as_deref().map_or(0, |t| {
+            let n = t.lines().count();
+            if n > 1 {
+                n
+            } else {
+                wrapped_line_count(t, content_width) as usize
+            }
+        });
+    }
+    tree_with_policy_line_count(right_content, content_width)
+}
+
+fn cached_viewer_line_count(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+) -> Option<usize> {
+    let theme = themes::current().name;
+    if viewer_show_delimited_table(right_content) {
+        return csv_cached_entry(state, right_content, content_width, theme).map(|e| e.line_count);
+    }
+    let (Some(vp), Some(raw), Some(e)) = (
+        right_content.snap_meta.path.as_deref(),
+        right_content.viewer.as_deref(),
+        state.viewer_text_cache.as_ref(),
+    ) else {
+        return None;
+    };
+    let syntect_args = syntect_viewer_cache_params(vp, raw, content_width, theme, right_content);
+    let cached = if viewer_is_markdown(right_content)
+        && raw.len() >= cache::VIEWER_TEXT_CACHE.min_markdown_bytes
+    {
+        e.matches_markdown_viewer(vp, content_width, theme, raw)
+    } else if viewer_uses_syntect_highlight(right_content)
+        && raw.len() >= cache::VIEWER_TEXT_CACHE.min_syntect_bytes
+    {
+        e.matches_syntect_viewer(&syntect_args)
+    } else {
+        false
+    };
+    cached.then_some(e.line_count)
+}
+
+fn delimited_line_count_uncached(
+    right_content: &RightPaneContent,
+    content_width: u16,
+) -> Option<usize> {
+    if !viewer_show_delimited_table(right_content) {
+        return None;
+    }
+    let raw = right_content.viewer.as_deref()?;
+    let vp = right_content.snap_meta.path.as_deref()?;
+    let rows = viewers::csv_handler::parse_csv(raw, Some(vp)).ok()?;
+    if rows.is_empty() {
+        return None;
+    }
+    if viewers::csv_handler::should_render_as_table(&rows) {
+        return Some(viewers::csv_handler::table_line_count(&rows, content_width));
+    }
+    let total_rows_hint = viewers::csv_handler::total_rows_hint_from_raw(raw);
+    Some(
+        viewers::csv_handler::wide_structured_string(&rows, content_width, total_rows_hint)
+            .lines()
+            .count(),
+    )
+}
+
+fn raster_viewer_line_count(
+    state: &mut UblxState,
+    right_content: &RightPaneContent,
+    content_width: u16,
+) -> usize {
+    if state.viewer_image.protocol.is_some() {
+        return 1;
+    }
+    if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
+        return wrapped_line_count(
+            &viewers::images::raster_preview_label_body(right_content, UI_STRINGS.loading.general),
+            content_width,
+        ) as usize;
+    }
+    if let Some(e) = state.viewer_image.err.as_deref() {
+        return wrapped_line_count(
+            &viewers::images::raster_preview_label_body(right_content, e),
+            content_width,
+        ) as usize;
+    }
+    let msg = right_content.viewer.as_deref().unwrap_or("");
+    wrapped_line_count(
+        &viewers::images::raster_preview_label_body(right_content, msg),
+        content_width,
+    ) as usize
+}
+
+fn tree_with_policy_line_count(right_content: &RightPaneContent, content_width: u16) -> usize {
+    let tree_lines = right_content
+        .viewer
+        .as_deref()
+        .map_or(0, |t| wrapped_line_count(t, content_width) as usize);
+    if let Some(ref pl) = right_content.viewer_directory_policy_line {
+        let policy_lines = wrapped_line_count(pl, content_width) as usize;
+        return policy_lines.saturating_add(1).saturating_add(tree_lines);
+    }
+    tree_lines
 }
 
 fn viewer_uses_preformatted_layout(
@@ -510,7 +553,15 @@ fn viewer_display_text(
                 viewers::csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
                 && !rows.is_empty()
             {
-                return viewers::csv_handler::table_to_text(&rows, content_width);
+                if viewers::csv_handler::should_render_as_table(&rows) {
+                    return viewers::csv_handler::table_to_text(&rows, content_width);
+                }
+                let total_rows_hint = viewers::csv_handler::total_rows_hint_from_raw(raw);
+                return viewers::csv_handler::wide_structured_text(
+                    &rows,
+                    content_width,
+                    total_rows_hint,
+                );
             }
         } else if viewer_is_markdown(right_content) {
             let theme = themes::current().name;

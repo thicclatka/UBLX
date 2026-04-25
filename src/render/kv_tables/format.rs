@@ -104,6 +104,7 @@ pub fn value_width_from_table_width(table_inner_width: u16) -> u16 {
         .max(6)
 }
 
+#[must_use]
 pub fn value_to_string(v: &serde_json::Value, max_array_inline: usize) -> String {
     let max_inline = max_array_inline.max(1);
     match v {

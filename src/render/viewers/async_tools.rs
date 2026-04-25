@@ -77,9 +77,18 @@ pub fn build_csv_cache_entry(
     if rows.is_empty() {
         return None;
     }
-    let (table_string, line_count) = csv_handler::table_string_and_line_count(&rows, content_width);
-    let text = csv_handler::table_string_to_text(&table_string);
-    debug_assert_eq!(line_count, text.lines.len());
+    let (text, line_count) = if csv_handler::should_render_as_table(&rows) {
+        let (table_string, line_count) =
+            csv_handler::table_string_and_line_count(&rows, content_width);
+        let text = csv_handler::table_string_to_text(&table_string);
+        debug_assert_eq!(line_count, text.lines.len());
+        (text, line_count)
+    } else {
+        let total_rows_hint = csv_handler::total_rows_hint_from_raw(raw);
+        let text = csv_handler::wide_structured_text(&rows, content_width, total_rows_hint);
+        let line_count = text.lines.len();
+        (text, line_count)
+    };
     Some(cache::ViewerTextCacheEntry {
         path: path.to_string(),
         content_width,
