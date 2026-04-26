@@ -239,20 +239,14 @@ impl<'a> UblxActionContext<'a> {
             UblxAction::ViewerFullscreenToggle => {
                 state_mut.chrome.viewer_fullscreen = !state_mut.chrome.viewer_fullscreen;
             }
-            UblxAction::RightPaneTemplates => {
-                if !self.right_content_ref.templates.is_empty() {
-                    state_mut.right_pane_mode = RightPaneMode::Templates;
-                }
+            UblxAction::RightPaneTemplates if !self.right_content_ref.templates.is_empty() => {
+                state_mut.right_pane_mode = RightPaneMode::Templates;
             }
-            UblxAction::RightPaneMetadata => {
-                if self.right_content_ref.metadata.is_some() {
-                    state_mut.right_pane_mode = RightPaneMode::Metadata;
-                }
+            UblxAction::RightPaneMetadata if self.right_content_ref.metadata.is_some() => {
+                state_mut.right_pane_mode = RightPaneMode::Metadata;
             }
-            UblxAction::RightPaneWriting => {
-                if self.right_content_ref.writing.is_some() {
-                    state_mut.right_pane_mode = RightPaneMode::Writing;
-                }
+            UblxAction::RightPaneWriting if self.right_content_ref.writing.is_some() => {
+                state_mut.right_pane_mode = RightPaneMode::Writing;
             }
             _ => {}
         }

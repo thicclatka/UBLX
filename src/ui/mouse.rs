@@ -467,22 +467,26 @@ pub fn handle_mouse_event(
     let areas = compute_mouse_frame_areas(frame_area, layout);
 
     match event.kind {
-        MouseEventKind::Down(MouseButton::Left) => {
-            if handle_mouse_left_down(state_mut, view_ref, right_content_ref, &areas, x, y, tabs) {
-                return true;
-            }
+        MouseEventKind::Down(MouseButton::Left)
+            if handle_mouse_left_down(
+                state_mut,
+                view_ref,
+                right_content_ref,
+                &areas,
+                x,
+                y,
+                tabs,
+            ) =>
+        {
+            return true;
         }
-        MouseEventKind::ScrollUp => {
-            if contains(areas.right, x, y) {
-                state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_sub(3);
-                return true;
-            }
+        MouseEventKind::ScrollUp if contains(areas.right, x, y) => {
+            state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_sub(3);
+            return true;
         }
-        MouseEventKind::ScrollDown => {
-            if contains(areas.right, x, y) {
-                state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_add(3);
-                return true;
-            }
+        MouseEventKind::ScrollDown if contains(areas.right, x, y) => {
+            state_mut.panels.preview_scroll = state_mut.panels.preview_scroll.saturating_add(3);
+            return true;
         }
         _ => {}
     }
