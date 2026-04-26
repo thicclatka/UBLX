@@ -12,15 +12,15 @@ Layout and scrollbar are handled by `render::scrollable_content`; here we parse 
 
 ## Modules
 
-| Module              | Purpose                                                                                                                                                          |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **sections**        | Parse JSON blobs into `Section` (KeyValue, Contents, SingleColumnList). First section “General”; special keys: schema, sheet_stats, common_pivots, csv_metadata. |
-| **walk**            | Map walk: root and nested objects → sections (flat KV, schema, sheet_stats, common_pivots, csv_metadata, entries).                                               |
-| **column_metadata** | Compact `columns` stats → typed tables; stale parallel-array JSON → notice to clear `.ublx` / cache and re-scan.                                                 |
-| **xlsx**            | XLSX: sheet_stats (rows/columns per sheet) → table.                                                                                                              |
-| **schema**          | Schema tree section from JSON.                                                                                                                                   |
-| **format**          | Key/value and value display formatting.                                                                                                                          |
-| **draw**            | `draw_tables(area, json, scroll_y)`: layout sections, slice to viewport, render.                                                                                 |
-| **consts**          | Section key names, table gap.                                                                                                                                    |
+| Module              | Purpose                                                                                                                                                                                                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **sections**        | Parse JSON blobs into `Section` (KeyValue, Contents, SingleColumnList). First section “General”; special keys: schema, sheet_stats, common_pivots, csv_metadata.                                                                             |
+| **walk**            | Map walk: root and nested objects → sections (flat KV, schema, sheet_stats, common_pivots, csv_metadata, entries).                                                                                                                           |
+| **column_metadata** | Compact `columns` stats → typed tables (e.g. “Number columns”); section titles for nested compact metadata are prefixed with the parent table title (`parent · …`). Stale parallel-array JSON → notice to clear `.ublx` / cache and re-scan. |
+| **xlsx**            | XLSX: sheet_stats (rows/columns per sheet) → table.                                                                                                                                                                                          |
+| **schema**          | Schema tree section from JSON.                                                                                                                                                                                                               |
+| **format**          | Key/value and value display formatting.                                                                                                                                                                                                      |
+| **draw**            | `draw_tables(area, json, scroll_y)`: layout sections, slice to viewport, render.                                                                                                                                                             |
+| **consts**          | Section key names, table gap.                                                                                                                                                                                                                |
 
 Used from `render::panes::right::draw` (scrollable body) when `right_pane_mode` is Metadata or Writing.

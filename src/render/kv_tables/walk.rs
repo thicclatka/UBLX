@@ -1,5 +1,9 @@
 //! JSON map walk: root and nested object → sections (flat KV, schema, `sheet_stats`, `common_pivots`, `csv_metadata`, arrays of objects, `entries`).
 //!
+//! Nested object sections and values spilled from [`SectionKeys::ENTRIES`] rows use a compound display title: parent label `·` JSON key
+//! (e.g. a row `name` + `struct_subtree` → `BinnedLicks · Struct Subtree`). Empty `[]` in a row is not spilled; uniform object
+//! arrays in a row use the same per-record rules as top-level list arrays, with the row’s label as a title prefix.
+//!
 //! **Arrays of objects** (non-empty, every element is a JSON object), except [`SectionKeys::ENTRIES`],
 //! are split into one KV table per element via [`push_tables_sections`] (title from `name`, else `path`,
 //! else the array’s JSON key formatted plus `·` and the 0-based index, else `Table`).
@@ -62,7 +66,6 @@ fn map_to_kv_rows(
         .collect()
 }
 
-/// Carries root Zahir `file_type` (merged into metadata JSON) for NetCDF-only attribute flattening.
 /// Carries root Zahir `file_type` and how many array primitives to show inline in key/value values.
 #[derive(Clone, Copy)]
 pub struct WalkCtx {
@@ -147,6 +150,18 @@ fn map_to_kv_rows_flat_name_value_attributes(
     rows
 }
 
+fn rows_for_table_record_map(
+    map_ref: &Map<String, Value>,
+    ctx: WalkCtx,
+    exclude_key: Option<&str>,
+) -> Vec<(String, String)> {
+    if ctx.is_netcdf {
+        map_to_kv_rows_flat_name_value_attributes(map_ref, exclude_key, ctx.max_array_inline)
+    } else {
+        map_to_kv_rows(map_ref, exclude_key, ctx.max_array_inline)
+    }
+}
+
 /// From an array of JSON objects, get column keys (from all objects, first object's order then any extra keys), display column names, and entries. Returns None if empty or no objects.
 fn object_array_to_contents_data(
     arr_ref: &[Value],
@@ -181,7 +196,11 @@ fn array_is_record_table_list(key_ref: &str, arr_ref: &[Value]) -> bool {
     key_ref != SectionKeys::ENTRIES && is_uniform_object_array(arr_ref)
 }
 
-fn push_contents_from_entries(sections_mut_ref: &mut Vec<Section>, arr_ref: &[Value]) {
+fn push_contents_from_entries(
+    sections_mut_ref: &mut Vec<Section>,
+    arr_ref: &[Value],
+    ctx: &WalkCtx,
+) {
     if let Some((column_keys, columns, entries)) = object_array_to_contents_data(arr_ref) {
         sections_mut_ref.push(Section::Contents(ContentsSection {
             title: UI_STRINGS.tables.contents_title.to_string(),
@@ -191,6 +210,7 @@ fn push_contents_from_entries(sections_mut_ref: &mut Vec<Section>, arr_ref: &[Va
             sub_title: false,
         }));
     }
+    spill_entry_row_detail_sections(sections_mut_ref, arr_ref, ctx);
 }
 
 /// Same as [`push_root_parts`] but returns a new vec. Used when parsing blobs in parallel.
@@ -247,19 +267,20 @@ fn push_root_parts_inner(
             &key,
             &meta,
             ctx.max_array_inline,
+            None,
         );
     }
     if let Some(title) = buckets.column_metadata_legacy_title {
         column_metadata::push_legacy_column_metadata_notice(sections_mut_ref, Some(title), false);
     }
     for (array_key, arr) in buckets.record_object_arrays {
-        push_tables_sections(sections_mut_ref, arr, ctx, array_key);
+        push_tables_sections(sections_mut_ref, arr, ctx, array_key, None);
     }
     for (key, m) in buckets.nested {
-        process_nested_map(sections_mut_ref, &key, &m, &ctx);
+        process_nested_map(sections_mut_ref, &key, &m, &ctx, None);
     }
     if let Some(arr) = buckets.entries {
-        push_contents_from_entries(sections_mut_ref, &arr);
+        push_contents_from_entries(sections_mut_ref, &arr, &ctx);
     }
 }
 
@@ -359,6 +380,62 @@ fn object_name_or(obj_ref: &Map<String, Value>, default_ref: &str) -> String {
         .unwrap_or_else(|| default_ref.to_string())
 }
 
+/// Display title for a nested object: `parent · formatted key` when `parent` is set.
+fn nested_object_section_title(parent_title: Option<&str>, section_key: &str) -> String {
+    join_with_parent_prefix(parent_title, format::format_key(section_key))
+}
+
+fn join_with_parent_prefix(parent_title: Option<&str>, child_title: String) -> String {
+    match parent_title {
+        Some(p) if !p.is_empty() => format::join_dot([p, child_title.as_str()]),
+        _ => child_title,
+    }
+}
+
+fn expand_object_children_with_prefix(
+    sections_mut_ref: &mut Vec<Section>,
+    object_ref: &Map<String, Value>,
+    ctx: &WalkCtx,
+    parent_title: Option<&str>,
+    exclude_key: Option<&str>,
+) {
+    for (k, val) in object_ref {
+        if exclude_key == Some(k.as_str()) {
+            continue;
+        }
+        match val {
+            Value::Object(m) if !m.is_empty() => {
+                process_nested_map(sections_mut_ref, k, m, ctx, parent_title);
+            }
+            Value::Array(arr) if !arr.is_empty() && array_is_record_table_list(k.as_str(), arr) => {
+                push_tables_sections(sections_mut_ref, arr, *ctx, k.as_str(), parent_title);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// For each `entries` row, expand in-cell objects and uniform object arrays into sections with titles prefixed by the row label (`name` / `path` / `Entries · i`).
+fn spill_entry_row_detail_sections(
+    sections_mut_ref: &mut Vec<Section>,
+    arr_ref: &[Value],
+    ctx: &WalkCtx,
+) {
+    for (i, v) in arr_ref.iter().enumerate() {
+        let Some(obj) = v.as_object() else {
+            continue;
+        };
+        let row_label = table_title_for_record(obj, Some(SectionKeys::ENTRIES), i);
+        expand_object_children_with_prefix(
+            sections_mut_ref,
+            obj,
+            ctx,
+            Some(row_label.as_str()),
+            None,
+        );
+    }
+}
+
 /// Key/paths first; otherwise a title from the JSON array key and row index; otherwise `Table` (no key).
 fn table_title_for_record(
     obj_ref: &Map<String, Value>,
@@ -382,18 +459,26 @@ fn push_tables_sections(
     arr_ref: &[Value],
     walk_ctx: WalkCtx,
     array_key: &str,
+    title_row_prefix: Option<&str>,
 ) {
     for (i, v) in arr_ref.iter().enumerate() {
         let Some(v) = v.as_object() else {
             continue;
         };
-        let table_name = table_title_for_record(v, Some(array_key), i);
+        let table_name = join_with_parent_prefix(
+            title_row_prefix,
+            table_title_for_record(v, Some(array_key), i),
+        );
         if column_metadata::is_compact_column_metadata(v) {
+            let title_override = title_row_prefix
+                .is_some_and(|p| !p.is_empty())
+                .then_some(table_name.as_str());
             column_metadata::push_column_metadata_sections(
                 sections_mut_ref,
                 table_name.as_str(),
                 v,
                 walk_ctx.max_array_inline,
+                title_override,
             );
             continue;
         }
@@ -405,15 +490,7 @@ fn push_tables_sections(
             );
             continue;
         }
-        let rows = if walk_ctx.is_netcdf {
-            map_to_kv_rows_flat_name_value_attributes(
-                v,
-                Some(WalkKeyVars::COLUMNS),
-                walk_ctx.max_array_inline,
-            )
-        } else {
-            map_to_kv_rows(v, Some(WalkKeyVars::COLUMNS), walk_ctx.max_array_inline)
-        };
+        let rows = rows_for_table_record_map(v, walk_ctx, Some(WalkKeyVars::COLUMNS));
         if !rows.is_empty() {
             sections_mut_ref.push(Section::KeyValue(KvSection {
                 title: Some(table_name.clone()),
@@ -445,6 +522,15 @@ fn push_tables_sections(
                 );
             }
         }
+        // For table-record rows (datasets/variables/etc.), spill nested objects/record arrays
+        // by shape instead of key name. Keep `columns` in its existing dedicated branch above.
+        expand_object_children_with_prefix(
+            sections_mut_ref,
+            v,
+            &walk_ctx,
+            Some(table_name.as_str()),
+            Some(WalkKeyVars::COLUMNS),
+        );
     }
 }
 
@@ -481,25 +567,29 @@ fn push_column_stats_sections(
 
 /// Walk nested map once (entries, schema, `common_pivots`, nested child objects, uniform object arrays, rest flat KV). Push sections in order.
 /// Child objects (e.g. a stats object under `tensor3d`) become their own key/value section instead of a single cell of stringified JSON.
+/// `parent_title` is the formatted title of the containing map, used to build `parent · child` section titles.
 pub fn process_nested_map(
     sections_mut_ref: &mut Vec<Section>,
     section_key_ref: &str,
     map_ref: &Map<String, Value>,
     ctx_ref: &WalkCtx,
+    parent_title: Option<&str>,
 ) {
+    let own_title = nested_object_section_title(parent_title, section_key_ref);
     if column_metadata::is_compact_column_metadata(map_ref) {
         column_metadata::push_column_metadata_sections(
             sections_mut_ref,
             section_key_ref,
             map_ref,
             ctx_ref.max_array_inline,
+            Some(own_title.as_str()),
         );
         return;
     }
     if column_metadata::is_legacy_parallel_column_metadata(map_ref) {
         column_metadata::push_legacy_column_metadata_notice(
             sections_mut_ref,
-            Some(format::format_key(section_key_ref)),
+            Some(own_title),
             false,
         );
         return;
@@ -546,16 +636,21 @@ pub fn process_nested_map(
         }
     }
 
-    let title = format::format_key(section_key_ref);
     if !flat.is_empty() {
         sections_mut_ref.push(Section::KeyValue(KvSection {
-            title: Some(title),
+            title: Some(own_title.clone()),
             rows: flat,
             sub_title: false,
         }));
     }
     for (child_key, child_map) in child_objects {
-        process_nested_map(sections_mut_ref, &child_key, &child_map, ctx_ref);
+        process_nested_map(
+            sections_mut_ref,
+            &child_key,
+            &child_map,
+            ctx_ref,
+            Some(own_title.as_str()),
+        );
     }
     if let Some(v) = schema_val {
         schema::push_schema_section(sections_mut_ref, &v);
@@ -567,9 +662,9 @@ pub fn process_nested_map(
         }));
     }
     if let Some(arr) = entries {
-        push_contents_from_entries(sections_mut_ref, &arr);
+        push_contents_from_entries(sections_mut_ref, &arr, ctx_ref);
     }
     for (ak, arr) in record_object_arrays {
-        push_tables_sections(sections_mut_ref, arr, *ctx_ref, ak);
+        push_tables_sections(sections_mut_ref, arr, *ctx_ref, ak, None);
     }
 }

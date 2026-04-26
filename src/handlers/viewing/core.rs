@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::config::{EnhancePolicy, UblxOpts};
 use crate::engine::db_ops;
-use crate::integrations::{ZahirFT, file_type_from_metadata_name};
+use crate::integrations::{ZahirFT, file_type_from_metadata_name, is_zarr_category_str};
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneContent, RightPaneContentDerived, SectionedPreview,
     SnapshotEntryMeta, TuiRow, UblxState, ViewData, ViewerDiskContentCache,
@@ -16,6 +16,8 @@ use crate::layout::setup::{
 use crate::render::kv_tables::WalkKeyVars;
 use crate::ui::UI_STRINGS;
 use crate::utils;
+
+use super::zarrstore::{ZarrStoreRightPaneView, right_pane_from_zarr_tree_and_zahir};
 
 /// Minified JSON is often one physical line, so `lines().count()` stays 1 while the pane wraps to
 /// many rows → scrollbar / `content_width` thrash with async syntect. Valid JSON is replaced with
@@ -30,6 +32,28 @@ fn pretty_json_viewer_body(s: String) -> String {
     }
 }
 
+/// Run `tree` with no in-memory cache (shared with [`super::zarrstore`] for async Zarr stores).
+pub(crate) fn tree_subprocess_for_path(full_path_ref: &Path) -> Result<String, String> {
+    match Command::new("tree").arg(full_path_ref).output() {
+        Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            Err(format!(
+                "tree failed: {}",
+                stderr.trim().lines().next().unwrap_or("unknown")
+            ))
+        }
+        Err(e) => Err(format!("tree not available: {e}")),
+    }
+}
+
+pub(crate) fn zahir_json_string_for_path(db_path: &Path, rel_path: &str) -> String {
+    db_ops::load_zahir_json_for_path(db_path, rel_path)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
 /// Run `tree` on `full_path`; use cached result if keyed by `path`. Updates `state.cached_tree`.
 fn tree_for_path(state_mut: &mut UblxState, path_ref: &str, full_path_ref: &Path) -> String {
     if let Some((cached_path, text)) = state_mut.cached_tree.as_ref()
@@ -37,30 +61,19 @@ fn tree_for_path(state_mut: &mut UblxState, path_ref: &str, full_path_ref: &Path
     {
         return text.clone();
     }
-    {
-        match Command::new("tree").arg(full_path_ref).output() {
-            Ok(out) if out.status.success() => {
-                let text = String::from_utf8_lossy(&out.stdout).into_owned();
-                state_mut.cached_tree = Some((path_ref.to_string(), text.clone()));
-                text
-            }
-            Ok(out) => {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                state_mut.cached_tree = None;
-                format!(
-                    "tree failed: {}",
-                    stderr.trim().lines().next().unwrap_or("unknown")
-                )
-            }
-            Err(e) => {
-                state_mut.cached_tree = None;
-                format!("tree not available: {e}")
-            }
+    match tree_subprocess_for_path(full_path_ref) {
+        Ok(text) => {
+            state_mut.cached_tree = Some((path_ref.to_string(), text.clone()));
+            text
+        }
+        Err(e) => {
+            state_mut.cached_tree = None;
+            e
         }
     }
 }
 
-fn directory_tree_policy_line(ublx_opts: &UblxOpts, rel_path: &str) -> String {
+pub(crate) fn directory_tree_policy_line(ublx_opts: &UblxOpts, rel_path: &str) -> String {
     let label = UI_STRINGS.pane.current_enhance_policy_label;
     let value = match ublx_opts.matching_enhance_policy(rel_path) {
         Some(EnhancePolicy::Auto) => UI_STRINGS.pane.directory_policy_auto,
@@ -187,7 +200,7 @@ fn resolve_viewer_disk_payload(
     (viewer_str, embedded_cover, viewer_can_open, cache)
 }
 
-fn zahir_derived_pane_fields(
+pub(crate) fn zahir_derived_pane_fields(
     zahir_json: &str,
     enable_enhance_all: bool,
 ) -> (String, Option<String>, Option<String>, bool) {
@@ -241,10 +254,7 @@ pub fn build_non_directory_right_pane_inner(
     );
 
     let viewer_byte_size = viewer_str.as_ref().map(|_| size);
-    let zahir_json: String = db_ops::load_zahir_json_for_path(db_path_ref, path)
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let zahir_json = zahir_json_string_for_path(db_path_ref, path);
 
     let (templates, metadata, writing, viewer_offer_enhance_zahir) =
         zahir_derived_pane_fields(&zahir_json, enable_enhance_all);
@@ -290,10 +300,19 @@ fn resolve_non_directory_right_pane(
     } = inputs;
     if full_path.is_dir() {
         let tree_str = tree_for_path(state_mut, path, &full_path);
-        let has_zahir = db_ops::load_zahir_json_for_path(db_path_ref, path)
-            .ok()
-            .flatten()
-            .is_some_and(|s| !s.is_empty());
+        let zahir_json = zahir_json_string_for_path(db_path_ref, path);
+        if is_zarr_category_str(category) {
+            let view = ZarrStoreRightPaneView {
+                path,
+                category,
+                size,
+                full_path,
+                viewer_mtime_ns,
+                enable_enhance_all,
+                ublx_opts,
+            };
+            return right_pane_from_zarr_tree_and_zahir(tree_str, &zahir_json, &view);
+        }
         let policy_line = Some(directory_tree_policy_line(ublx_opts, path));
         return tree_viewer(
             tree_str,
@@ -301,7 +320,7 @@ fn resolve_non_directory_right_pane(
             full_path,
             false,
             viewer_mtime_ns,
-            has_zahir,
+            !zahir_json.is_empty(),
             policy_line,
         );
     }
@@ -398,7 +417,7 @@ pub fn sectioned_preview_from_zahir(value_ref: &serde_json::Value) -> SectionedP
         let root_file_type = obj.get(WalkKeyVars::FILE_TYPE);
         let parts: Vec<String> = obj
             .iter()
-            .filter(|(k, _)| k.ends_with("_metadata"))
+            .filter(|(k, _)| k.ends_with(WalkKeyVars::METADATA))
             .filter_map(|(_, v)| {
                 let merged = match (root_file_type, v.as_object()) {
                     (Some(ft), Some(meta)) => {

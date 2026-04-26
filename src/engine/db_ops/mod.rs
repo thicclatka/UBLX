@@ -1,3 +1,11 @@
+//! `SQLite` **`.ublx`** database (per ublx root / working tree): schema DDL and statement constants, open/create,
+//! and read/write of **snapshot** rows (paths, mtimes, hashes, `category`, `zahir_json`), **settings**,
+//! **`delta_log`** (per-index run: added / modified / removed), **lens** / **`lens_path`**, and related
+//! helpers (live snapshot wiring, path resolution, duplicate extraction, zahir export).
+//!
+//! The crate-facing API is the **re-exports** from this module (for example [`UblxDbCategory`],
+//! [`UblxDbSchema`], [`SnapshotTuiRow`], and zahir/snapshot load helpers).
+
 mod consts;
 mod core;
 mod delta_log;

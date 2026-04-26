@@ -16,6 +16,7 @@
     "hexdigit",
     "ilog",
     "imageops",
+    "libnetcdf",
     "loglevel",
     "maxlens",
     "mupdf",
@@ -40,7 +41,8 @@
     "vecs",
     "Verglas",
     "vframes",
-    "xsel"
+    "xsel",
+    "zarrstore"
   ],
   "ignoreWords": [],
   "import": []

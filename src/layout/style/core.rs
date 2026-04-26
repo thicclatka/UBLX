@@ -291,6 +291,20 @@ pub fn viewer_find_match_current_table_cell() -> Style {
         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
 }
 
+/// Metadata-tab active find match in tables/titles: force high-contrast fg by theme appearance.
+/// Dark themes use white; light themes use black.
+#[must_use]
+pub fn viewer_find_match_current_metadata_contrast() -> Style {
+    let t = CurrentTheme::palette();
+    let fg = match t.appearance {
+        crate::themes::Appearance::Dark => themes::DEFAULT_COLORS.white,
+        crate::themes::Appearance::Light => themes::DEFAULT_COLORS.black,
+    };
+    Style::default()
+        .fg(fg)
+        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+}
+
 /// Current in-pane find match.
 #[must_use]
 pub fn viewer_find_match_current() -> Style {

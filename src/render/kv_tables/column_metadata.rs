@@ -289,14 +289,18 @@ fn compact_columns_to_parallel_arrays(columns: &[Value]) -> Option<ParallelColum
 }
 
 /// Build one table per column type from compact `columns` only.
-pub fn column_metadata_to_sections(map: &Map<String, Value>) -> Vec<Section> {
+/// `table_title` is the parent section’s display title: typed tables get `table_title · String columns`, etc. ([`typed_sections_from_compact_columns`]).
+pub fn column_metadata_to_sections(
+    map: &Map<String, Value>,
+    table_title: Option<&str>,
+) -> Vec<Section> {
     let Some(cols) = map.get(COMPACT_COLUMNS_KEY).and_then(Value::as_array) else {
         return vec![];
     };
     if !is_compact_column_stats_array(cols) {
         return vec![];
     }
-    typed_sections_from_compact_columns(cols, None)
+    typed_sections_from_compact_columns(cols, table_title.filter(|s| !s.is_empty()))
 }
 
 fn parallel_arrays_to_sections(
@@ -582,6 +586,7 @@ fn push_column_metadata_flat_kv_and_tables(
     metadata: &Map<String, Value>,
     max_array_inline: usize,
 ) {
+    let table_title = title.clone();
     let flat_kv = flat_kv_rows_for_column_metadata(metadata, max_array_inline);
     if !flat_kv.is_empty() {
         sections.push(Section::KeyValue(KvSection {
@@ -590,22 +595,23 @@ fn push_column_metadata_flat_kv_and_tables(
             sub_title: false,
         }));
     }
-    sections.extend(column_metadata_to_sections(metadata));
+    sections.extend(column_metadata_to_sections(
+        metadata,
+        table_title.as_deref().filter(|s| !s.is_empty()),
+    ));
 }
 
 /// Push flat KV for scalar fields, then typed tables from [`column_metadata_to_sections`].
+/// When `display_title` is set, it is the section title; otherwise the title is [`format::format_key`]`(section_key)`.
 pub fn push_column_metadata_sections(
     sections: &mut Vec<Section>,
     section_key: &str,
     metadata: &Map<String, Value>,
     max_array_inline: usize,
+    display_title: Option<&str>,
 ) {
-    push_column_metadata_flat_kv_and_tables(
-        sections,
-        Some(format::format_key(section_key)),
-        metadata,
-        max_array_inline,
-    );
+    let title = display_title.map_or_else(|| format::format_key(section_key), str::to_string);
+    push_column_metadata_flat_kv_and_tables(sections, Some(title), metadata, max_array_inline);
 }
 
 /// Root blob is entirely compact column metadata (flat KV for scalars + typed tables). Title uses the `csv_metadata` JSON key label.

@@ -1,3 +1,5 @@
+//! **Settings** main-mode UI: bool rows, layout editor, TOML overlay sync, and tab entry.
+
 mod bool_rows;
 mod context;
 mod layout_edit;

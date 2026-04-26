@@ -10,6 +10,18 @@ use ratatui::style::Color;
 
 use super::{Appearance, Palette, SelectorEntry};
 
+/// Named channels for [`DEFAULT_COLORS`] (not every field is used by every style path).
+pub struct DefaultColors {
+    pub green: Color,
+    pub yellow: Color,
+    pub red: Color,
+    pub cyan: Color,
+    pub magenta: Color,
+    pub gray: Color,
+    pub black: Color,
+    pub white: Color,
+}
+
 /// Default delta row colors (added / modified / removed). Every built-in palette uses these for
 /// [`Palette::delta_added`], [`Palette::delta_mod`], [`Palette::delta_removed`].
 pub const DEFAULT_COLORS: DefaultColors = DefaultColors {
@@ -19,17 +31,9 @@ pub const DEFAULT_COLORS: DefaultColors = DefaultColors {
     cyan: Color::Rgb(42, 161, 152),
     magenta: Color::Rgb(164, 95, 250),
     gray: Color::Rgb(128, 128, 128),
+    black: Color::Rgb(0, 0, 0),
+    white: Color::Rgb(255, 255, 255),
 };
-
-/// Named channels for [`DEFAULT_COLORS`] (not every field is used by every style path).
-pub struct DefaultColors {
-    pub green: Color,
-    pub yellow: Color,
-    pub red: Color,
-    pub cyan: Color,
-    pub magenta: Color,
-    pub gray: Color,
-}
 
 // ---- Shadow Index ----
 // Dark: near-black page, cool off-white text, gray focus (not a light/white background).

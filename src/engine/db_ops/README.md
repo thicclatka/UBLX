@@ -2,6 +2,8 @@
 
 SQLite `.ublx` database: schema, read/write, and higher-level ops (snapshot, delta, lenses, duplicates).
 
+`category` includes zahir type strings (e.g. **Zarr** for a `.zarr` store root); see `UblxDbCategory` in **consts**.
+
 ## Tables
 
 | Table         | Purpose                                                                                                       |
@@ -16,11 +18,15 @@ Schema and DDL live in **consts** (`UblxDbSchema`, `create_ublx_db_sql()`).
 
 ## Modules
 
-| Module           | Purpose                                                                                                        |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- |
-| **consts**       | Schema, table/column names, SQL strings (create, insert, select). `DeltaType`, `UblxDbCategory`.               |
-| **core**         | Open/create DB, write snapshot/settings/delta_log, load snapshot rows. `ensure_ublx_and_db`, `SnapshotTuiRow`. |
-| **reader**       | Which DB to read from (`.ublx` vs `.ublx_tmp`) for live TUI during snapshot. `SnapshotReaderPreference`.       |
-| **utils**        | Delta diff (copy_previous_delta_log, write delta rows), category helpers, cleanup.                             |
-| **duplicates**   | Duplicate detection: group by hash or by size + blake3. `DuplicateGroup`, load for TUI.                        |
-| **lens_storage** | Load lens names, load paths for a lens, create/rename/delete lens, add/remove path.                            |
+| Module                 | Purpose                                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **consts**             | Schema, table/column names, SQL strings (create, insert, select). `DeltaType`, `UblxDbCategory`.               |
+| **core**               | Open/create DB, write snapshot/settings/delta_log, load snapshot rows. `ensure_ublx_and_db`, `SnapshotTuiRow`. |
+| **delta_log**          | Delta log I/O.                                                                                                 |
+| **live_snapshot**      | TUI “live” snapshot row reads while indexing.                                                                  |
+| **path_resolver**      | Which file to read (`.ublx` vs `.ublx_tmp` during snapshot). `SnapshotReaderPreference`.                       |
+| **utils**              | Delta diff (copy previous delta, write rows), `get_category_for_path`, cleanup.                                |
+| **extract_duplicates** | Duplicate groups for the TUI (hash / size+blake3).                                                             |
+| **lens_storage**       | Lens CRUD, paths in a lens, merge after snapshot.                                                              |
+| **lens_export**        | Lens → Markdown export.                                                                                        |
+| **zahir_export**       | Headless Zahir JSON export helpers.                                                                            |

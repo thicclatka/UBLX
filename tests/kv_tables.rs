@@ -5,7 +5,7 @@ use ratatui::layout::Rect;
 use serde_json::{Value, json};
 use ublx::config::PARALLEL;
 use ublx::render::kv_tables::{
-    content_height,
+    SectionRange, VisibleRange, content_height,
     format::DEFAULT_MAX_ARRAY_INLINE,
     line_byte_starts, parse_json_sections,
     ratatui_table::{balanced_column_widths, contents_natural_widths},
@@ -81,17 +81,44 @@ fn content_height_matches_kv_metrics() {
 
 #[test]
 fn visible_section_window_fully_above() {
-    assert!(visible_section_window(0, 5, 10, 20).is_none());
+    assert!(
+        visible_section_window(
+            SectionRange {
+                start: 0,
+                height: 5
+            },
+            VisibleRange { start: 10, end: 20 }
+        )
+        .is_none()
+    );
 }
 
 #[test]
 fn visible_section_window_fully_below() {
-    assert!(visible_section_window(30, 5, 0, 10).is_none());
+    assert!(
+        visible_section_window(
+            SectionRange {
+                start: 30,
+                height: 5
+            },
+            VisibleRange { start: 0, end: 10 }
+        )
+        .is_none()
+    );
 }
 
 #[test]
 fn visible_section_window_partial_overlap() {
-    assert_eq!(visible_section_window(0, 10, 0, 5), Some((0, 5)));
+    assert_eq!(
+        visible_section_window(
+            SectionRange {
+                start: 0,
+                height: 10
+            },
+            VisibleRange { start: 0, end: 5 }
+        ),
+        Some((0, 5))
+    );
 }
 
 #[test]

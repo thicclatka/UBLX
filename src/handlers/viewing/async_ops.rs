@@ -1,4 +1,6 @@
-//! Off-thread right-pane resolve for file rows: DB + disk read + zahir JSON, with generation IDs so stale results are dropped.
+//! Off-thread right-pane resolve: file rows and **Zarr store** directory rows (tree + zahir), with
+//! generation IDs so stale results are dropped. Generic `Directory` rows and other on-disk
+//! directories stay on the UI thread (tree only, same as before).
 
 use std::path::Path;
 
@@ -6,12 +8,14 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::app::tokio_rt;
 use crate::config::UblxOpts;
+use crate::integrations::is_zarr_category_str;
 use crate::layout::setup::{
     CATEGORY_DIRECTORY, RightPaneAsyncReady, RightPaneContent, TuiRow, UblxState, ViewData,
 };
 use crate::utils;
 
 use super::core::{self, NonDirectoryRightPaneBuild};
+use super::{ZarrStoreRightPaneBuild, build_zarr_store_right_pane};
 
 struct RightPaneAsyncSpawnJob {
     generation: u64,
@@ -19,20 +23,23 @@ struct RightPaneAsyncSpawnJob {
     category: String,
     size: u64,
     full_path: std::path::PathBuf,
-    enable_enhance_all: bool,
+    ublx_opts: UblxOpts,
     db_path: std::path::PathBuf,
+    /// [`ZahirFT::Zarr`]: run [`build_zarr_store_right_pane`] (tree + DB + zahir) instead of file viewer.
+    is_zarr_store_dir: bool,
     tx: UnboundedSender<RightPaneAsyncReady>,
 }
 
-fn spawn_file_resolve(job: RightPaneAsyncSpawnJob) {
+fn spawn_right_pane_resolve(job: RightPaneAsyncSpawnJob) {
     let RightPaneAsyncSpawnJob {
         generation,
         path,
         category,
         size,
         full_path,
-        enable_enhance_all,
+        ublx_opts,
         db_path,
+        is_zarr_store_dir,
         tx,
     } = job;
 
@@ -43,16 +50,30 @@ fn spawn_file_resolve(job: RightPaneAsyncSpawnJob) {
                 crate::engine::db_ops::load_mtime_for_path(&db_path, &path_for_job)
                     .ok()
                     .flatten();
-            core::build_non_directory_right_pane_inner(&NonDirectoryRightPaneBuild {
-                db_path: &db_path,
-                path: &path_for_job,
-                category: &category,
-                size,
-                full_path: &full_path,
-                viewer_mtime_ns,
-                enable_enhance_all,
-                disk_cache_hint: None,
-            })
+            if is_zarr_store_dir {
+                let content = build_zarr_store_right_pane(&ZarrStoreRightPaneBuild {
+                    db_path: &db_path,
+                    path: &path_for_job,
+                    category: &category,
+                    size,
+                    full_path: &full_path,
+                    viewer_mtime_ns,
+                    enable_enhance_all: ublx_opts.enable_enhance_all,
+                    ublx_opts: &ublx_opts,
+                });
+                (content, None)
+            } else {
+                core::build_non_directory_right_pane_inner(&NonDirectoryRightPaneBuild {
+                    db_path: &db_path,
+                    path: &path_for_job,
+                    category: &category,
+                    size,
+                    full_path: &full_path,
+                    viewer_mtime_ns,
+                    enable_enhance_all: ublx_opts.enable_enhance_all,
+                    disk_cache_hint: None,
+                })
+            }
         })
         .await;
 
@@ -78,6 +99,11 @@ fn poll_matching_completions(state: &mut UblxState, selected_path: &str) {
             continue;
         }
         state.viewer_disk_cache = msg.disk_cache;
+        if is_zarr_category_str(msg.content.snap_meta.category.as_deref().unwrap_or(""))
+            && let Some(s) = msg.content.viewer.as_deref()
+        {
+            state.cached_tree = Some((msg.path.clone(), s.to_string()));
+        }
         state.right_pane_async.displayed = msg.content;
     }
 }
@@ -89,7 +115,8 @@ fn drain_async_channel(state: &mut UblxState) {
     while rx.try_recv().is_ok() {}
 }
 
-/// Snapshot / Duplicates / Lenses: tree + zahir resolve. File rows load off-thread; directory rows stay sync.
+/// Snapshot / Duplicates / Lenses: file and Zarr store rows load off-thread; other directory rows
+/// (category `Directory` or non-Zarr on-disk directories) stay sync.
 ///
 /// While a new file row is loading, the last fully resolved [`RightPaneContent`] is shown (no empty flash).
 pub fn drive_right_pane_async(
@@ -134,8 +161,8 @@ pub fn drive_right_pane_async(
     poll_matching_completions(state, path_str);
 
     let full_path = utils::resolve_under_root(dir_to_ublx, path_str);
-
-    if category == CATEGORY_DIRECTORY || full_path.is_dir() {
+    let is_zarr_store_dir = is_zarr_category_str(category) && full_path.is_dir();
+    if category == CATEGORY_DIRECTORY || (full_path.is_dir() && !is_zarr_store_dir) {
         state.right_pane_async.last_spawn_path = String::new();
         let content = core::resolve_right_pane_content(
             state,
@@ -158,14 +185,15 @@ pub fn drive_right_pane_async(
         let generation = state.right_pane_async.generation;
         state.right_pane_async.last_spawn_path = path_str.to_string();
 
-        spawn_file_resolve(RightPaneAsyncSpawnJob {
+        spawn_right_pane_resolve(RightPaneAsyncSpawnJob {
             generation,
             path: path_str.to_string(),
             category: category.to_string(),
             size,
             full_path,
-            enable_enhance_all: ublx_opts.enable_enhance_all,
+            ublx_opts: ublx_opts.clone(),
             db_path: db_path.to_path_buf(),
+            is_zarr_store_dir,
             tx: tx.clone(),
         });
     }

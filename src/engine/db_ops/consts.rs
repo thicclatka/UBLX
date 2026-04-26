@@ -355,15 +355,25 @@ impl UblxDbCategory {
         // if Self::is_hidden_path(path_ref) {
         //     return UblxDbCategory::Hidden.as_str().to_string();
         // }
-        // Directories before path-hint (extension/linguist can misclassify e.g. `Vol.1`).
         if Self::is_directory_path(path_ref) {
+            if Self::is_zarr_store_directory(path_ref) {
+                return Self::get_zahir_file_type_or_fallback(
+                    zahir_file_type,
+                    UblxDbCategory::Zahir(ZahirFT::Zarr),
+                );
+            }
+            // Other directories before path-hint (extension/linguist can misclassify e.g. `Vol.1`).
             return UblxDbCategory::Directory.as_str().to_string();
         }
-        Self::get_zahir_file_type_or_fallback(zahir_file_type)
+        Self::get_zahir_file_type_or_fallback(zahir_file_type, UblxDbCategory::File)
     }
 
-    fn get_zahir_file_type_or_fallback(zahir_file_type: Option<&str>) -> String {
-        let fallback = UblxDbCategory::File.as_str().to_string();
+    /// Fallback when zahir gives nothing usable (`File` for files, `Zahir(Zarr)` for a `.zarr` folder).
+    fn get_zahir_file_type_or_fallback(
+        zahir_file_type: Option<&str>,
+        no_usable_hint: UblxDbCategory,
+    ) -> String {
+        let fallback = no_usable_hint.as_str().to_string();
         let s = match zahir_file_type {
             None => return fallback,
             Some(s) => s.trim(),
@@ -395,5 +405,14 @@ impl UblxDbCategory {
     #[inline]
     fn is_directory_path(path_ref: &Path) -> bool {
         fs::metadata(path_ref).map(|m| m.is_dir()).unwrap_or(false)
+    }
+
+    /// Last path segment is `*.zarr` (Zarr store folder on disk).
+    #[inline]
+    fn is_zarr_store_directory(path_ref: &Path) -> bool {
+        path_ref
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(".zarr"))
     }
 }

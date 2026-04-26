@@ -38,6 +38,23 @@ pub struct KvFindSync<'a> {
     pub row_skip: usize,
 }
 
+/// Shared find/highlight rendering settings for table builders.
+#[derive(Clone, Copy)]
+pub struct TableFindRenderCtx<'a> {
+    pub needle: Option<&'a str>,
+    pub current_line_idx: Option<usize>,
+    pub first_data_line_idx: usize,
+    pub metadata_mode: bool,
+}
+
+/// Visible row window and styling offset for virtualized table builders.
+#[derive(Clone, Copy)]
+pub struct TableWindow {
+    pub row_offset: usize,
+    pub start: usize,
+    pub end: usize,
+}
+
 /// Shared column spacing and base text style for KV / Contents / single-column tables.
 #[inline]
 fn table_with_chrome(t: Table<'static>) -> Table<'static> {
@@ -47,9 +64,28 @@ fn table_with_chrome(t: Table<'static>) -> Table<'static> {
 
 /// Owned cell text so [`Table`] rows are `'static` (find highlights are already owned [`Line`]s).
 #[inline]
-fn cell_for_str(s: &str, find_needle: Option<&str>) -> Cell<'static> {
+fn cell_for_str(
+    s: &str,
+    find_needle: Option<&str>,
+    current_match_row: bool,
+    metadata_mode: bool,
+) -> Cell<'static> {
     if viewer_search::option_needle_nonempty(find_needle) {
-        Cell::from(viewer_search::highlight_cell_line(s, find_needle.unwrap()))
+        if current_match_row && metadata_mode {
+            Cell::from(viewer_search::highlight_cell_line_with_style(
+                s,
+                find_needle.unwrap(),
+                style::viewer_find_match_current_metadata_contrast(),
+                true,
+            ))
+        } else if metadata_mode {
+            Cell::from(viewer_search::highlight_cell_line_ascii_insensitive(
+                s,
+                find_needle.unwrap(),
+            ))
+        } else {
+            Cell::from(viewer_search::highlight_cell_line(s, find_needle.unwrap()))
+        }
     } else {
         Cell::from(Line::from(s.to_string()))
     }
@@ -113,6 +149,7 @@ pub fn section_to_table(
     row_offset: usize,
     find_needle: Option<&str>,
     find_kv: Option<&KvFindSync<'_>>,
+    metadata_mode: bool,
 ) -> Table<'static> {
     let header = Row::new(vec![
         UI_STRINGS.tables.header_key,
@@ -129,23 +166,36 @@ pub fn section_to_table(
                 let li = f.first_data_line_idx + f.row_skip + i;
                 let key_off = f.line_starts.get(li).copied().unwrap_or(0);
                 let value_off = key_off.saturating_add(k.len()).saturating_add(1);
-                let key_cell = Cell::from(viewer_search::highlight_table_cell_line(
+                let base_style = style::text_style();
+                let match_style = style::viewer_find_match_table_cell();
+                let current_style = if metadata_mode {
+                    style::viewer_find_match_current_metadata_contrast()
+                } else {
+                    style::viewer_find_match_current_table_cell()
+                };
+                let key_cell = Cell::from(viewer_search::highlight_line_with_find_styles(
                     k.as_str(),
                     key_off,
                     f.ranges,
                     f.current,
+                    base_style,
+                    match_style,
+                    current_style,
                 ));
-                let value_cell = Cell::from(viewer_search::highlight_table_cell_line(
+                let value_cell = Cell::from(viewer_search::highlight_line_with_find_styles(
                     v.as_str(),
                     value_off,
                     f.ranges,
                     f.current,
+                    base_style,
+                    match_style,
+                    current_style,
                 ));
                 (key_cell, value_cell)
             } else {
-                let key_cell = cell_for_str(k.as_str(), find_needle);
+                let key_cell = cell_for_str(k.as_str(), find_needle, false, false);
                 let value_cell = if viewer_search::option_needle_nonempty(find_needle) {
-                    cell_for_str(v.as_str(), find_needle)
+                    cell_for_str(v.as_str(), find_needle, false, false)
                 } else {
                     match format::value_cell_style(v.as_str()) {
                         Some(st) => Cell::from(Line::from(v.clone()).style(st)),
@@ -292,14 +342,12 @@ fn contents_header_widths(section: &ContentsSection) -> Vec<u16> {
 #[must_use]
 pub fn contents_to_table_window(
     section: &ContentsSection,
-    row_offset: usize,
-    start: usize,
-    end: usize,
+    window: TableWindow,
     table_width: u16,
-    find_needle: Option<&str>,
     max_array_inline: usize,
+    find: TableFindRenderCtx<'_>,
 ) -> Table<'static> {
-    let natural = contents_natural_widths(section, start, end, max_array_inline);
+    let natural = contents_natural_widths(section, window.start, window.end, max_array_inline);
     let header_widths = contents_header_widths(section);
     let ncols = section.column_keys.len();
     let use_size_optimization = ncols > SIZE_OPTIMIZATION_COLUMN_THRESHOLD;
@@ -342,7 +390,7 @@ pub fn contents_to_table_window(
         section
             .columns
             .iter()
-            .map(|s| cell_for_str(s.as_str(), find_needle))
+            .map(|s| cell_for_str(s.as_str(), find.needle, false, false))
             .collect::<Vec<_>>(),
     )
     .style(style::table_header_style())
@@ -351,20 +399,26 @@ pub fn contents_to_table_window(
         .entries
         .iter()
         .enumerate()
-        .skip(start)
-        .take(end.saturating_sub(start))
+        .skip(window.start)
+        .take(window.end.saturating_sub(window.start))
         .filter_map(|(_i, v)| v.as_object())
         .enumerate()
         .map(|(idx, obj)| {
+            let global_row_idx = window.start + idx;
+            let row_is_current = find
+                .current_line_idx
+                .is_some_and(|li| li == find.first_data_line_idx.saturating_add(global_row_idx));
             let row_strs =
                 contents_row(obj, &section.column_keys, &column_widths, max_array_inline);
             Row::new(
                 row_strs
                     .into_iter()
-                    .map(|c| cell_for_str(&c, find_needle))
+                    .map(|c| cell_for_str(&c, find.needle, row_is_current, find.metadata_mode))
                     .collect::<Vec<_>>(),
             )
-            .style(style::table_row_style(row_offset + start + idx))
+            .style(style::table_row_style(
+                window.row_offset + window.start + idx,
+            ))
         })
         .collect();
     table_with_chrome(Table::new(data_rows, constraints).header(header))
@@ -374,20 +428,29 @@ pub fn contents_to_table_window(
 #[must_use]
 pub fn single_column_list_to_table(
     section: &SingleColumnListSection,
-    row_offset: usize,
-    start: usize,
-    end: usize,
-    find_needle: Option<&str>,
+    window: TableWindow,
+    find: TableFindRenderCtx<'_>,
 ) -> Table<'static> {
     let data_rows: Vec<Row> = section
         .values
         .iter()
-        .skip(start)
-        .take(end.saturating_sub(start))
+        .skip(window.start)
+        .take(window.end.saturating_sub(window.start))
         .enumerate()
         .map(|(idx, s)| {
-            Row::new(vec![cell_for_str(s.as_str(), find_needle)])
-                .style(style::table_row_style(row_offset + start + idx))
+            let global_row_idx = window.start + idx;
+            let row_is_current = find
+                .current_line_idx
+                .is_some_and(|li| li == find.first_data_line_idx.saturating_add(global_row_idx));
+            Row::new(vec![cell_for_str(
+                s.as_str(),
+                find.needle,
+                row_is_current,
+                find.metadata_mode,
+            )])
+            .style(style::table_row_style(
+                window.row_offset + window.start + idx,
+            ))
         })
         .collect();
     table_with_chrome(Table::new(data_rows, [Constraint::Min(0)]))

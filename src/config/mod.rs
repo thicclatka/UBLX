@@ -1,3 +1,6 @@
+//! TOML config, ublx paths, CLI/options validation, theme/toast/parallelism knobs, and streaming
+//! / profile wiring. Re-exports the stable config surface for the app.
+
 mod opts;
 mod parallel;
 mod paths;

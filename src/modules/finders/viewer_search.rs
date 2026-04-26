@@ -55,6 +55,31 @@ pub fn literal_match_ranges(haystack: &str, needle: &str) -> Vec<(usize, usize)>
         .collect()
 }
 
+/// ASCII case-insensitive non-overlapping ranges of `needle` in `haystack`.
+#[must_use]
+pub fn literal_match_ranges_ascii_insensitive(haystack: &str, needle: &str) -> Vec<(usize, usize)> {
+    let needle = needle.trim();
+    if needle.is_empty() {
+        return Vec::new();
+    }
+    let hb = haystack.as_bytes();
+    let nb = needle.as_bytes();
+    if hb.len() < nb.len() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + nb.len() <= hb.len() {
+        if hb[i..i + nb.len()].eq_ignore_ascii_case(nb) {
+            out.push((i, i + nb.len()));
+            i += nb.len();
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
 /// Line index (0-based) of the line containing `byte_off` (public for integration tests).
 #[must_use]
 pub fn line_byte_to_index(haystack: &str, byte_off: usize) -> u16 {
@@ -97,7 +122,12 @@ pub fn sync(state: &mut UblxState, rc: &RightPaneContent, content_width: u16, vi
         return;
     }
     state.viewer_find.last_sync_token = Some(token);
-    state.viewer_find.ranges = literal_match_ranges(&haystack, &state.viewer_find.query);
+    state.viewer_find.ranges =
+        if state.right_pane_mode == crate::layout::setup::RightPaneMode::Metadata {
+            literal_match_ranges_ascii_insensitive(&haystack, &state.viewer_find.query)
+        } else {
+            literal_match_ranges(&haystack, &state.viewer_find.query)
+        };
     if state.viewer_find.current >= state.viewer_find.ranges.len() {
         state.viewer_find.current = state.viewer_find.ranges.len().saturating_sub(1);
     }
@@ -132,33 +162,76 @@ pub fn highlight_table_cell_line(
     )
 }
 
+/// Highlight ranges in an arbitrary line using caller-provided base/match/current styles.
+#[must_use]
+pub fn highlight_line_with_find_styles(
+    text: &str,
+    global_start: usize,
+    ranges: &[(usize, usize)],
+    current_idx: usize,
+    base_style: ratatui::style::Style,
+    match_style: ratatui::style::Style,
+    current_style: ratatui::style::Style,
+) -> Line<'static> {
+    line_to_spans(
+        text,
+        global_start,
+        ranges,
+        current_idx,
+        base_style,
+        match_style,
+        current_style,
+    )
+}
+
 /// Highlight every literal occurrence of `needle` in `text` (trimmed). KV / sheet cells use
 /// bold + underline (see `viewer_find_match_table_cell`).
 #[must_use]
 pub fn highlight_cell_line(text: &str, needle: &str) -> Line<'static> {
+    highlight_cell_line_with_style(text, needle, style::viewer_find_match_table_cell(), false)
+}
+
+/// ASCII case-insensitive version of [`highlight_cell_line`].
+#[must_use]
+pub fn highlight_cell_line_ascii_insensitive(text: &str, needle: &str) -> Line<'static> {
+    highlight_cell_line_with_style(text, needle, style::viewer_find_match_table_cell(), true)
+}
+
+/// Highlight every literal occurrence of `needle` in `text` with a custom match style.
+/// When `ascii_insensitive` is true, uses ASCII case-insensitive matching.
+#[must_use]
+pub fn highlight_cell_line_with_style(
+    text: &str,
+    needle: &str,
+    match_style: ratatui::style::Style,
+    ascii_insensitive: bool,
+) -> Line<'static> {
     let needle = needle.trim();
     let base_style = style::text_style();
     if needle.is_empty() {
         return Line::from(Span::styled(text.to_string(), base_style));
     }
-    let hi = style::viewer_find_match_table_cell();
+    let ranges = if ascii_insensitive {
+        literal_match_ranges_ascii_insensitive(text, needle)
+    } else {
+        literal_match_ranges(text, needle)
+    };
+    if ranges.is_empty() {
+        return Line::from(Span::styled(text.to_string(), base_style));
+    }
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut pos = 0usize;
-    for (idx, m) in text.match_indices(needle) {
-        if idx > pos {
-            spans.push(Span::styled(text[pos..idx].to_string(), base_style));
+    for (a, b) in ranges {
+        if a > pos {
+            spans.push(Span::styled(text[pos..a].to_string(), base_style));
         }
-        spans.push(Span::styled(m.to_string(), hi));
-        pos = idx + m.len();
+        spans.push(Span::styled(text[a..b].to_string(), match_style));
+        pos = b;
     }
     if pos < text.len() {
         spans.push(Span::styled(text[pos..].to_string(), base_style));
     }
-    if spans.is_empty() {
-        Line::from(Span::styled(text.to_string(), base_style))
-    } else {
-        Line::from(spans)
-    }
+    Line::from(spans)
 }
 
 /// Build [`Text`] with find highlights when there are match ranges.

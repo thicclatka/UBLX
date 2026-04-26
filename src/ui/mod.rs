@@ -1,3 +1,6 @@
+//! Keymaps, input routing, quick menus, multiselect, toasts, and string/layout constants—everything
+//! that turns crossterm events into [`crate::app`] actions and drives chrome.
+
 mod consts;
 mod ctrl_chord;
 mod file_ops;

@@ -155,6 +155,9 @@ pub fn file_content_for_viewer(path: &Path, zahir_type: Option<ZahirFT>) -> Opti
     let Ok(meta) = fs::metadata(path) else {
         return Some("(file not found)".to_string());
     };
+    if meta.is_dir() && zahir_type == Some(ZahirFT::Zarr) {
+        return Some(String::new());
+    }
     if meta.is_file()
         && matches!(
             zahir_type,
