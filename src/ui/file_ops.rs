@@ -204,8 +204,7 @@ pub fn bulk_rename_via_editor(
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
+            .map_or(0, |d| d.as_millis())
     ));
 
     let content = paths.join("\n") + "\n";

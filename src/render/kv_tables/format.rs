@@ -3,8 +3,8 @@
 use ratatui::style::Style;
 
 use crate::themes::DEFAULT_COLORS;
-use crate::utils::Epsilon;
-use crate::utils::format_bytes;
+use crate::ui::UI_STRINGS;
+use crate::utils::{Epsilon, format_bytes};
 
 /// Words that are displayed in full caps (e.g. "svo" -> "SVO", "pdf" -> "PDF").
 const ALL_CAPS: &[&str] = &[
@@ -85,7 +85,7 @@ pub fn format_key(key: &str) -> String {
     words.join(" ")
 }
 
-/// Heuristic: how many primitive array items to show comma-separated before `"[n items]"`.
+/// Heuristic: how many primitive array items to show comma-separated before falling back to full JSON text.
 /// Wider value columns allow more; narrow panes stay near [`DEFAULT_MAX_ARRAY_INLINE`].
 #[must_use]
 pub fn max_array_inline_for_value_width(value_width: u16) -> usize {
@@ -125,7 +125,9 @@ pub fn value_to_string(v: &serde_json::Value, max_array_inline: usize) -> String
                     .collect::<Vec<_>>()
                     .join(", ")
             } else {
-                format!("[{} items]", arr.len())
+                // Full array as JSON (not `[n items]`) so size in the cell is easy to eyeball.
+                serde_json::to_string(v)
+                    .unwrap_or_else(|_| format!("[{} {}]", arr.len(), UI_STRINGS.misc.json_items))
             }
         }
         serde_json::Value::Object(_) => "{…}".to_string(),
@@ -143,7 +145,7 @@ fn json_f64_to_u64_for_bytes(f: f64) -> u64 {
     f as u64
 }
 
-/// Format value for display: byte format when key contains "size", "compressed", or "uncompressed" (and value is numeric); "%" when key contains "percent" (case-insensitive). `max_array_inline` controls array joining vs `[n items]`.
+/// Format value for display: byte format when key contains "size", "compressed", or "uncompressed" (and value is numeric); "%" when key contains "percent" (case-insensitive). `max_array_inline` controls primitive array joining vs full JSON text for other arrays.
 #[must_use]
 pub fn format_value(v: &serde_json::Value, key: &str, max_array_inline: usize) -> String {
     let key_lower = key.to_lowercase();

@@ -1,4 +1,4 @@
-//! Indexing engine: SQLite [`db_ops`], in-memory [`cache`], walk/orchestration ([`orchestrator`]), and
+//! Indexing engine: `SQLite` [`db_ops`], in-memory [`cache`], walk/orchestration ([`orchestrator`]), and
 //! off-thread viewer work ([`viewer_async`]).
 
 pub mod cache;

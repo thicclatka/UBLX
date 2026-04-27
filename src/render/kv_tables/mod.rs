@@ -33,6 +33,7 @@ pub mod format;
 pub mod ratatui_table;
 pub mod schema;
 pub mod sections;
+pub mod tabular;
 pub mod walk;
 pub mod xlsx;
 

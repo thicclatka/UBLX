@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/ublx.svg)](https://crates.io/crates/ublx)
 [![docs.rs](https://img.shields.io/docsrs/ublx)](https://docs.rs/ublx)
 ![Build](https://github.com/thicclatka/ublx/workflows/Build/badge.svg)
-![Rust](https://img.shields.io/badge/rust-1.93-orange.svg)
+![Rust](https://img.shields.io/badge/rust-1.95-orange.svg)
 
 [_Ublx ... Safe when taken as directed._](https://bookshop.org/p/books/ubik-philip-k-dick/1fc432e3ade32290)
 
@@ -18,12 +18,12 @@ UBLX is a **TUI that turns any directory into a flat, navigable catalog** — ca
 
 **Optional**:
 
-| Tool                   | Role                                           |
-| ---------------------- | ---------------------------------------------- |
-| `tree`                 | Directory preview in the Viewer when on `PATH` |
-| `pdftoppm` or `mutool` | PDF page raster preview                        |
-| `ffmpeg`               | Video frame preview                            |
-| `libnetcdf`            | NetCDF library                                 |
+| Tool                   | Role                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `tree`                 | Directory preview in the Viewer when on `PATH`                                          |
+| `pdftoppm` or `mutool` | PDF page raster preview                                                                 |
+| `ffmpeg`               | Video frame preview                                                                     |
+| `netcdf`/`libnetcdf`   | Default features link to NetCDF. To build without: `cargo build --no-default-features`. |
 
 ## Install
 
@@ -32,6 +32,9 @@ cargo install ublx
 
 # or compile from source
 cargo build --release
+
+# compile without netcdf
+cargo build --release --no-default-features
 ```
 
 ## What it does

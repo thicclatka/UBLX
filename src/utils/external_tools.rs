@@ -42,8 +42,7 @@ fn probe_ffmpeg() -> bool {
     Command::new("ffmpeg")
         .args(["-hide_banner", "-version"])
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
 }
 
 fn probe_pdftoppm() -> bool {

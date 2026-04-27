@@ -15,9 +15,7 @@ pub fn resolve_under_root(base: &Path, path: &str) -> PathBuf {
 /// Matches how snapshot rows get category `"Directory"` (see `db_ops` category fallback).
 #[must_use]
 pub fn rel_path_is_directory(root: &Path, path: &Path) -> bool {
-    fs::metadata(root.join(path))
-        .map(|m| m.is_dir())
-        .unwrap_or(false)
+    fs::metadata(root.join(path)).is_ok_and(|m| m.is_dir())
 }
 
 /// Path as a string with `/` separators (TOML paths, policy prefix checks, DB keys, cross-platform snapshot maps).

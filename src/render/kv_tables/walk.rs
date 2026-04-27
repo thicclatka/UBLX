@@ -1,28 +1,27 @@
-//! JSON map walk: root and nested object → sections (flat KV, schema, `sheet_stats`, `common_pivots`, `csv_metadata`, arrays of objects, `entries`).
+//! Walk JSON metadata maps into [`Section`]s (Metadata / Writing tabs).
 //!
-//! Nested object sections and values spilled from [`SectionKeys::ENTRIES`] rows use a compound display title: parent label `·` JSON key
-//! (e.g. a row `name` + `struct_subtree` → `BinnedLicks · Struct Subtree`). Empty `[]` in a row is not spilled; uniform object
-//! arrays in a row use the same per-record rules as top-level list arrays, with the row’s label as a title prefix.
+//! ## Root
+//! [`push_root_parts`] classifies each top-level key into [`RootBuckets`], then emits sections in a
+//! fixed order (flat KV, schema, sheet stats, …). [`WalkKeyVars::FILE_TYPE`] is stripped first
+//! ([`map_without_display_file_type`]) because the category column already shows the type.
 //!
-//! **Arrays of objects** (non-empty, every element is a JSON object), except [`SectionKeys::ENTRIES`],
-//! are split into one KV table per element via [`push_tables_sections`] (title from `name`, else `path`,
-//! else the array’s JSON key formatted plus `·` and the 0-based index, else `Table`).
-//! Examples: `tables`, `npy_entries`, `datasets`, `variables`, `global_attributes` — no per-key wiring required.
-//! This is driven by **JSON shape** in the stored `*_metadata` blob for any file type Zahir enriched, not by a fixed list of extensions.
+//! ## Nested maps and `entries` spill
+//! [`process_nested_map`] handles arbitrary nested objects. Rows under [`SectionKeys::ENTRIES`] can
+//! spill extra sections; child titles use `row_label · key` (see [`expand_object_children_with_prefix`]).
 //!
-//! Flattening `NetCDF` `attributes` `[{name,value},…]` runs when the blob includes Zahir’s root
-//! `file_type` (merged into each `*_metadata` object in [`crate::handlers::viewing::sectioned_preview_from_zahir`])
-//! for [`WalkCtx`] only; that key is removed before building tables so it does not appear as a row.
-//! Resolution uses [`crate::integrations::file_type_from_metadata_name`] → [`ZahirFT::NetCdf`].
+//! ## Arrays
+//! Uniform **object** arrays (every element is a JSON object, key ≠ `entries`) go to [`push_tables_sections`]
+//! unless the array matches a **tabular** layout—then it becomes one titled block or indexed rows.
+//! Tabular rules live in [`super::tabular`] (name/value objects, `[[str, v]]` pairs, string matrix rows).
 //!
-//! Compact **`columns`** stats (`name`, `t`, … per row) use [`column_metadata::push_column_metadata_sections`].
-//! Stale parallel `column_names` / `column_types` JSON shows [`column_metadata::push_legacy_column_metadata_notice`]
-//! instead of tables.
+//! ## Column metadata
+//! Compact per-column stats use [`column_metadata::push_column_metadata_sections`]. Parallel
+//! `column_names` / `column_types` without compact `columns` uses
+//! [`column_metadata::push_legacy_column_metadata_notice`].
 
 use serde_json::{Map, Value};
 use std::collections::HashSet;
 
-use crate::integrations::{ZahirFT, file_type_from_metadata_name};
 use crate::ui::UI_STRINGS;
 
 use super::column_metadata;
@@ -30,9 +29,12 @@ use super::consts::SectionKeys;
 use super::format;
 use super::schema;
 use super::sections::{ContentsSection, KvSection, Section, SingleColumnListSection};
+use super::tabular::{
+    kv_rows_for_map_field, map_to_kv_rows_merging_tabular_lists, merged_tabular_rows_for_array,
+};
 use super::xlsx;
 
-/// JSON keys and display fallbacks shared by the metadata walk (Zahir shapes: `NetCDF`, HDF5, `SQLite`, …).
+/// Well-known JSON field names in zahirscan metadata (and common display defaults).
 pub struct WalkKeyVars;
 
 impl WalkKeyVars {
@@ -42,13 +44,14 @@ impl WalkKeyVars {
     pub const PATH: &'static str = "path";
     pub const COLUMNS: &'static str = "columns";
     pub const METADATA: &'static str = "_metadata";
-    /// Root Zahir field merged into `*_metadata` for [`WalkCtx`] (stripped before KV display).
+    /// Root Zahir field (stripped in [`map_without_display_file_type`]; category already shows type).
     pub const FILE_TYPE: &'static str = "file_type";
     pub const DEFAULT_TABLE_TITLE: &'static str = "Table";
     pub const DEFAULT_COLUMN_LABEL: &'static str = "column";
 }
 
-/// Format a map as KV rows (key/value pairs). Optionally exclude one key (e.g. [`WalkKeyVars::COLUMNS`]).
+/// Flatten a map to key/value rows with [`format::format_key`] / [`format::format_value`].
+/// Does not apply tabular merging; use [`super::tabular::map_to_kv_rows_merging_tabular_lists`] for that.
 fn map_to_kv_rows(
     map_ref: &Map<String, Value>,
     exclude_key: Option<&str>,
@@ -66,103 +69,41 @@ fn map_to_kv_rows(
         .collect()
 }
 
-/// Carries root Zahir `file_type` and how many array primitives to show inline in key/value values.
+/// Per-walk limits for formatting JSON in table cells (see [`format::format_value`]).
 #[derive(Clone, Copy)]
 pub struct WalkCtx {
-    /// True when `file_type` is present and parses to [`ZahirFT::NetCdf`] via [`file_type_from_metadata_name`].
-    is_netcdf: bool,
-    /// Passed to [`crate::render::kv_tables::format::format_value`] for `shape`-style arrays.
+    /// Inline width for small primitive arrays before falling back to full JSON text.
     pub max_array_inline: usize,
 }
 
 impl Default for WalkCtx {
     fn default() -> Self {
         Self {
-            is_netcdf: false,
             max_array_inline: format::DEFAULT_MAX_ARRAY_INLINE,
         }
     }
 }
 
 impl WalkCtx {
+    /// Builds context; [`WalkCtx::max_array_inline`] is clamped to at least 1.
     #[must_use]
-    pub fn from_root_map(map_ref: &Map<String, Value>, max_array_inline: usize) -> Self {
-        let is_netcdf = map_ref
-            .get(WalkKeyVars::FILE_TYPE)
-            .and_then(|v| v.as_str())
-            .and_then(file_type_from_metadata_name)
-            .is_some_and(|ft| ft == ZahirFT::NetCdf);
+    pub fn new(max_array_inline: usize) -> Self {
         Self {
-            is_netcdf,
             max_array_inline: max_array_inline.max(1),
         }
     }
 }
 
-/// Drop [`WalkKeyVars::FILE_TYPE`] after [`WalkCtx::from_root_map`] so it is not rendered as metadata KV (category already shows type).
+/// Clones `map_ref` and removes [`WalkKeyVars::FILE_TYPE`] so it is not shown again in KV tables.
 fn map_without_display_file_type(map_ref: &Map<String, Value>) -> Map<String, Value> {
     let mut m = map_ref.clone();
     m.remove(WalkKeyVars::FILE_TYPE);
     m
 }
 
-fn flatten_name_value_attribute_rows(
-    arr_ref: &[Value],
-    max_array_inline: usize,
-) -> Option<Vec<(String, String)>> {
-    let mut out = Vec::with_capacity(arr_ref.len());
-    for v in arr_ref {
-        let obj = v.as_object()?;
-        let name = obj.get(WalkKeyVars::NAME)?.as_str()?;
-        let value = obj.get(WalkKeyVars::VALUE)?;
-        // Keep identifier as-is (e.g. `_FillValue`); do not title-case via [`format::format_key`].
-        out.push((
-            name.to_string(),
-            format::format_value(value, name, max_array_inline),
-        ));
-    }
-    Some(out)
-}
-
-/// Like [`map_to_kv_rows`], but expands `attributes` name/value lists into flat rows for the same section.
-fn map_to_kv_rows_flat_name_value_attributes(
-    map_ref: &Map<String, Value>,
-    exclude_key: Option<&str>,
-    max_array_inline: usize,
-) -> Vec<(String, String)> {
-    let mut rows = Vec::new();
-    for (k, val) in map_ref {
-        if exclude_key == Some(k.as_str()) {
-            continue;
-        }
-        if k == WalkKeyVars::ATTRIBUTES
-            && let Some(arr) = val.as_array()
-            && let Some(flat) = flatten_name_value_attribute_rows(arr, max_array_inline)
-        {
-            rows.extend(flat);
-            continue;
-        }
-        rows.push((
-            format::format_key(k),
-            format::format_value(val, k, max_array_inline),
-        ));
-    }
-    rows
-}
-
-fn rows_for_table_record_map(
-    map_ref: &Map<String, Value>,
-    ctx: WalkCtx,
-    exclude_key: Option<&str>,
-) -> Vec<(String, String)> {
-    if ctx.is_netcdf {
-        map_to_kv_rows_flat_name_value_attributes(map_ref, exclude_key, ctx.max_array_inline)
-    } else {
-        map_to_kv_rows(map_ref, exclude_key, ctx.max_array_inline)
-    }
-}
-
-/// From an array of JSON objects, get column keys (from all objects, first object's order then any extra keys), display column names, and entries. Returns None if empty or no objects.
+/// Builds a contents table from a uniform object array: merged column keys, display headers, and row values.
+///
+/// Returns [`None`] if there are no objects. Key order starts from the first object; later objects may add keys.
 fn object_array_to_contents_data(
     arr_ref: &[Value],
 ) -> Option<(Vec<String>, Vec<String>, Vec<Value>)> {
@@ -185,21 +126,22 @@ fn object_array_to_contents_data(
     Some((column_keys, columns, entries))
 }
 
-/// True when `arr` is non-empty and every item is a JSON object (uniform record list).
+/// Non-empty array whose elements are all JSON objects.
 fn is_uniform_object_array(arr_ref: &[Value]) -> bool {
     !arr_ref.is_empty() && arr_ref.iter().all(Value::is_object)
 }
 
-/// `entries` builds one multi-column Contents table; other uniform object arrays become separate KV tables per row.
+/// True for uniform object arrays that should be expanded as record lists (not the root `entries` key).
 #[inline]
 fn array_is_record_table_list(key_ref: &str, arr_ref: &[Value]) -> bool {
     key_ref != SectionKeys::ENTRIES && is_uniform_object_array(arr_ref)
 }
 
+/// Pushes a contents table when `arr_ref` is suitable, then [`spill_entry_row_detail_sections`].
 fn push_contents_from_entries(
     sections_mut_ref: &mut Vec<Section>,
     arr_ref: &[Value],
-    ctx: &WalkCtx,
+    ctx: WalkCtx,
 ) {
     if let Some((column_keys, columns, entries)) = object_array_to_contents_data(arr_ref) {
         sections_mut_ref.push(Section::Contents(ContentsSection {
@@ -213,7 +155,7 @@ fn push_contents_from_entries(
     spill_entry_row_detail_sections(sections_mut_ref, arr_ref, ctx);
 }
 
-/// Same as [`push_root_parts`] but returns a new vec. Used when parsing blobs in parallel.
+/// Parses `map_ref` into a new `Vec` of sections (convenience wrapper around [`push_root_parts`]).
 #[must_use]
 pub fn root_parts_sections(map_ref: &Map<String, Value>, max_array_inline: usize) -> Vec<Section> {
     let mut sections = Vec::new();
@@ -221,17 +163,18 @@ pub fn root_parts_sections(map_ref: &Map<String, Value>, max_array_inline: usize
     sections
 }
 
-/// Walk root map once; push sections in order (flat KV, schema, `sheet_stats`, `common_pivots`, `csv_metadata`, uniform object arrays, then each nested, then entries). Uses JSON key names (`SectionKeys`) in the match.
+/// Walks the root map once and appends sections in a fixed order (see module docs).
 pub fn push_root_parts(
     sections_mut_ref: &mut Vec<Section>,
     map_ref: &Map<String, Value>,
     max_array_inline: usize,
 ) {
-    let ctx = WalkCtx::from_root_map(map_ref, max_array_inline);
+    let ctx = WalkCtx::new(max_array_inline);
     let map_owned = map_without_display_file_type(map_ref);
     push_root_parts_inner(sections_mut_ref, &map_owned, ctx);
 }
 
+/// Drains [`RootBuckets`] in phase order: flat, schema, xlsx, pivots, CSV column meta, record arrays, nested, entries.
 fn push_root_parts_inner(
     sections_mut_ref: &mut Vec<Section>,
     map_ref: &Map<String, Value>,
@@ -261,17 +204,25 @@ fn push_root_parts_inner(
             values,
         }));
     }
-    if let Some((key, meta)) = buckets.column_metadata_compact {
-        column_metadata::push_column_metadata_sections(
-            sections_mut_ref,
-            &key,
-            &meta,
-            ctx.max_array_inline,
-            None,
-        );
-    }
-    if let Some(title) = buckets.column_metadata_legacy_title {
-        column_metadata::push_legacy_column_metadata_notice(sections_mut_ref, Some(title), false);
+    if let Some(csv) = buckets.column_metadata {
+        match csv {
+            RootCsvMetadata::Compact { section_key, map } => {
+                column_metadata::push_column_metadata_sections(
+                    sections_mut_ref,
+                    &section_key,
+                    &map,
+                    ctx.max_array_inline,
+                    None,
+                );
+            }
+            RootCsvMetadata::Legacy { display_title } => {
+                column_metadata::push_legacy_column_metadata_notice(
+                    sections_mut_ref,
+                    Some(display_title),
+                    false,
+                );
+            }
+        }
     }
     for (array_key, arr) in buckets.record_object_arrays {
         push_tables_sections(sections_mut_ref, arr, ctx, array_key, None);
@@ -280,10 +231,21 @@ fn push_root_parts_inner(
         process_nested_map(sections_mut_ref, &key, &m, &ctx, None);
     }
     if let Some(arr) = buckets.entries {
-        push_contents_from_entries(sections_mut_ref, &arr, &ctx);
+        push_contents_from_entries(sections_mut_ref, &arr, ctx);
     }
 }
 
+/// Classifier output for a single pass over the root zahir JSON object.
+///
+/// Each field is sorted into one bucket; [`push_root_parts_inner`] drains them in a fixed order.
+/// Fields that need different section types cannot share one vector—hence multiple buckets.
+///
+/// - `flat` — Scalars, tabular-expanded arrays, and anything else that becomes rows in the first KV block.
+/// - `schema`, `sheet_stats`, `common_pivots` — Handled by the schema / xlsx / list helpers.
+/// - `column_metadata` — At most one of [`RootCsvMetadata::Compact`] or [`RootCsvMetadata::Legacy`].
+/// - `record_object_arrays` — Borrows from the source map (uniform object lists for [`push_tables_sections`]).
+/// - `nested` — Non-empty objects passed to [`process_nested_map`].
+/// - `entries` — Optional `entries` array for contents + spill.
 #[derive(Default)]
 struct RootBuckets<'a> {
     flat: Vec<(String, String)>,
@@ -292,17 +254,26 @@ struct RootBuckets<'a> {
     schema_val: Option<Value>,
     sheet_stats: Option<(String, Map<String, Value>)>,
     common_pivots: Option<Vec<String>>,
-    column_metadata_compact: Option<(String, Map<String, Value>)>,
-    column_metadata_legacy_title: Option<String>,
+    /// Filled from the `csv_metadata` key: compact `columns` layout or legacy parallel-array notice.
+    column_metadata: Option<RootCsvMetadata>,
     record_object_arrays: Vec<(&'a str, &'a Vec<Value>)>,
+}
+
+/// Distinguishes current compact column metadata from old parallel-array-only blobs.
+enum RootCsvMetadata {
+    Compact {
+        section_key: String,
+        map: Map<String, Value>,
+    },
+    Legacy {
+        display_title: String,
+    },
 }
 
 impl<'a> RootBuckets<'a> {
     fn push_flat(&mut self, key: &str, val: &Value, max_array_inline: usize) {
-        self.flat.push((
-            format::format_key(key),
-            format::format_value(val, key, max_array_inline),
-        ));
+        self.flat
+            .extend(kv_rows_for_map_field(key, val, max_array_inline));
     }
 
     fn classify(&mut self, k: &'a str, v: &'a Value, max_array_inline: usize) {
@@ -343,9 +314,14 @@ impl<'a> RootBuckets<'a> {
     fn classify_csv_metadata(&mut self, k: &str, v: &Value, max_array_inline: usize) {
         if let Some(obj) = v.as_object() {
             if column_metadata::is_compact_column_metadata(obj) {
-                self.column_metadata_compact = Some((k.to_string(), obj.clone()));
+                self.column_metadata = Some(RootCsvMetadata::Compact {
+                    section_key: k.to_string(),
+                    map: obj.clone(),
+                });
             } else if column_metadata::is_legacy_parallel_column_metadata(obj) {
-                self.column_metadata_legacy_title = Some(format::format_key(k));
+                self.column_metadata = Some(RootCsvMetadata::Legacy {
+                    display_title: format::format_key(k),
+                });
             } else {
                 self.nested.push((k.to_string(), obj.clone()));
             }
@@ -365,6 +341,7 @@ impl<'a> RootBuckets<'a> {
     }
 }
 
+/// Prefer `name`, then `path`, else `default_ref`.
 #[inline]
 fn object_name_or(obj_ref: &Map<String, Value>, default_ref: &str) -> String {
     obj_ref
@@ -380,11 +357,7 @@ fn object_name_or(obj_ref: &Map<String, Value>, default_ref: &str) -> String {
         .unwrap_or_else(|| default_ref.to_string())
 }
 
-/// Display title for a nested object: `parent · formatted key` when `parent` is set.
-fn nested_object_section_title(parent_title: Option<&str>, section_key: &str) -> String {
-    join_with_parent_prefix(parent_title, format::format_key(section_key))
-}
-
+/// `parent · child` when `parent` is non-empty; otherwise `child_title` only.
 fn join_with_parent_prefix(parent_title: Option<&str>, child_title: String) -> String {
     match parent_title {
         Some(p) if !p.is_empty() => format::join_dot([p, child_title.as_str()]),
@@ -392,12 +365,17 @@ fn join_with_parent_prefix(parent_title: Option<&str>, child_title: String) -> S
     }
 }
 
+/// Recurses into nested objects and record-list arrays on `object_ref`.
+///
+/// When `parent_kv_includes_merged_tabular` is true, skips arrays that [`super::tabular::merged_tabular_rows_for_array`]
+/// would expand, because those rows are already in the parent KV table from [`super::tabular::map_to_kv_rows_merging_tabular_lists`].
 fn expand_object_children_with_prefix(
     sections_mut_ref: &mut Vec<Section>,
     object_ref: &Map<String, Value>,
-    ctx: &WalkCtx,
+    ctx: WalkCtx,
     parent_title: Option<&str>,
     exclude_key: Option<&str>,
+    parent_kv_includes_merged_tabular: bool,
 ) {
     for (k, val) in object_ref {
         if exclude_key == Some(k.as_str()) {
@@ -405,21 +383,26 @@ fn expand_object_children_with_prefix(
         }
         match val {
             Value::Object(m) if !m.is_empty() => {
-                process_nested_map(sections_mut_ref, k, m, ctx, parent_title);
+                process_nested_map(sections_mut_ref, k, m, &ctx, parent_title);
             }
             Value::Array(arr) if !arr.is_empty() && array_is_record_table_list(k.as_str(), arr) => {
-                push_tables_sections(sections_mut_ref, arr, *ctx, k.as_str(), parent_title);
+                let is_repeat_tabular = parent_kv_includes_merged_tabular
+                    && merged_tabular_rows_for_array(k, arr, ctx.max_array_inline)
+                        .is_some_and(|r| !r.is_empty());
+                if !is_repeat_tabular {
+                    push_tables_sections(sections_mut_ref, arr, ctx, k.as_str(), parent_title);
+                }
             }
             _ => {}
         }
     }
 }
 
-/// For each `entries` row, expand in-cell objects and uniform object arrays into sections with titles prefixed by the row label (`name` / `path` / `Entries · i`).
+/// For each object in an `entries` array, walks nested fields with a per-row title prefix.
 fn spill_entry_row_detail_sections(
     sections_mut_ref: &mut Vec<Section>,
     arr_ref: &[Value],
-    ctx: &WalkCtx,
+    ctx: WalkCtx,
 ) {
     for (i, v) in arr_ref.iter().enumerate() {
         let Some(obj) = v.as_object() else {
@@ -432,11 +415,12 @@ fn spill_entry_row_detail_sections(
             ctx,
             Some(row_label.as_str()),
             None,
+            false,
         );
     }
 }
 
-/// Key/paths first; otherwise a title from the JSON array key and row index; otherwise `Table` (no key).
+/// Title for one element of a record list: `name`, else `path`, else `Key · index`, else [`WalkKeyVars::DEFAULT_TABLE_TITLE`].
 fn table_title_for_record(
     obj_ref: &Map<String, Value>,
     array_key: Option<&str>,
@@ -454,6 +438,7 @@ fn table_title_for_record(
     WalkKeyVars::DEFAULT_TABLE_TITLE.to_string()
 }
 
+/// One sub-section per object in a uniform object array, or one merged table for tabular arrays.
 fn push_tables_sections(
     sections_mut_ref: &mut Vec<Section>,
     arr_ref: &[Value],
@@ -461,6 +446,17 @@ fn push_tables_sections(
     array_key: &str,
     title_row_prefix: Option<&str>,
 ) {
+    if let Some(flat) = merged_tabular_rows_for_array(array_key, arr_ref, walk_ctx.max_array_inline)
+        && !flat.is_empty()
+    {
+        let table_name = join_with_parent_prefix(title_row_prefix, format::format_key(array_key));
+        sections_mut_ref.push(Section::KeyValue(KvSection {
+            title: Some(table_name),
+            rows: flat,
+            sub_title: title_row_prefix.is_some_and(|p| !p.is_empty()),
+        }));
+        return;
+    }
     for (i, v) in arr_ref.iter().enumerate() {
         let Some(v) = v.as_object() else {
             continue;
@@ -490,7 +486,11 @@ fn push_tables_sections(
             );
             continue;
         }
-        let rows = rows_for_table_record_map(v, walk_ctx, Some(WalkKeyVars::COLUMNS));
+        let rows = map_to_kv_rows_merging_tabular_lists(
+            v,
+            Some(WalkKeyVars::COLUMNS),
+            walk_ctx.max_array_inline,
+        );
         if !rows.is_empty() {
             sections_mut_ref.push(Section::KeyValue(KvSection {
                 title: Some(table_name.clone()),
@@ -522,18 +522,19 @@ fn push_tables_sections(
                 );
             }
         }
-        // For table-record rows (datasets/variables/etc.), spill nested objects/record arrays
-        // by shape instead of key name. Keep `columns` in its existing dedicated branch above.
+        // Spill nested fields on each record; `columns` is handled in the block above.
         expand_object_children_with_prefix(
             sections_mut_ref,
             v,
-            &walk_ctx,
+            walk_ctx,
             Some(table_name.as_str()),
             Some(WalkKeyVars::COLUMNS),
+            true,
         );
     }
 }
 
+/// Per-column extra stats objects under a sheet-style `columns` list.
 fn push_column_stats_sections(
     sections_mut_ref: &mut Vec<Section>,
     table_name_ref: &str,
@@ -565,9 +566,10 @@ fn push_column_stats_sections(
     }
 }
 
-/// Walk nested map once (entries, schema, `common_pivots`, nested child objects, uniform object arrays, rest flat KV). Push sections in order.
-/// Child objects (e.g. a stats object under `tensor3d`) become their own key/value section instead of a single cell of stringified JSON.
-/// `parent_title` is the formatted title of the containing map, used to build `parent · child` section titles.
+/// Walks a nested JSON object: special keys first, then a flat KV block, then child maps and arrays.
+///
+/// `section_key_ref` and `parent_title` form the section title for this level (`parent ·` + formatted key when nested).
+/// Deep child objects (e.g. a stats map) get their own KV section instead of a `{…}` placeholder.
 pub fn process_nested_map(
     sections_mut_ref: &mut Vec<Section>,
     section_key_ref: &str,
@@ -575,7 +577,7 @@ pub fn process_nested_map(
     ctx_ref: &WalkCtx,
     parent_title: Option<&str>,
 ) {
-    let own_title = nested_object_section_title(parent_title, section_key_ref);
+    let own_title = join_with_parent_prefix(parent_title, format::format_key(section_key_ref));
     if column_metadata::is_compact_column_metadata(map_ref) {
         column_metadata::push_column_metadata_sections(
             sections_mut_ref,
@@ -615,10 +617,7 @@ pub fn process_nested_map(
                             .collect(),
                     );
                 } else {
-                    flat.push((
-                        format::format_key(k),
-                        format::format_value(v, k, ctx_ref.max_array_inline),
-                    ));
+                    flat.extend(kv_rows_for_map_field(k, v, ctx_ref.max_array_inline));
                 }
             }
             _ => match v {
@@ -628,10 +627,7 @@ pub fn process_nested_map(
                 Value::Array(arr) if array_is_record_table_list(k.as_str(), arr) => {
                     record_object_arrays.push((k.as_str(), arr));
                 }
-                _ => flat.push((
-                    format::format_key(k),
-                    format::format_value(v, k, ctx_ref.max_array_inline),
-                )),
+                _ => flat.extend(kv_rows_for_map_field(k, v, ctx_ref.max_array_inline)),
             },
         }
     }
@@ -662,7 +658,7 @@ pub fn process_nested_map(
         }));
     }
     if let Some(arr) = entries {
-        push_contents_from_entries(sections_mut_ref, &arr, ctx_ref);
+        push_contents_from_entries(sections_mut_ref, &arr, *ctx_ref);
     }
     for (ak, arr) in record_object_arrays {
         push_tables_sections(sections_mut_ref, arr, *ctx_ref, ak, None);

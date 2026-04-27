@@ -143,6 +143,10 @@ pub fn entry_cell(
 }
 
 /// Build key/value table for one section.
+///
+/// `table_width_chars` is the full table width in terminal columns (e.g. [`Rect::width`]); value cells
+/// are truncated with [`truncate_middle`] when there is no active find (needle / KV sync), so long
+/// strings match the visible value column.
 #[must_use]
 pub fn section_to_table(
     section: &KvSection,
@@ -150,6 +154,7 @@ pub fn section_to_table(
     find_needle: Option<&str>,
     find_kv: Option<&KvFindSync<'_>>,
     metadata_mode: bool,
+    table_width_chars: u16,
 ) -> Table<'static> {
     let header = Row::new(vec![
         UI_STRINGS.tables.header_key,
@@ -157,11 +162,28 @@ pub fn section_to_table(
     ])
     .style(style::table_header_style())
     .bottom_margin(0);
+    let key_w = section
+        .rows
+        .iter()
+        .map(|(k, _)| k.chars().count())
+        .max()
+        .unwrap_or(KEY_WIDTH_FALLBACK)
+        .min(KEY_WIDTH_MIN) as u16;
+    let value_max_chars = (table_width_chars as usize)
+        .saturating_sub(key_w as usize)
+        .saturating_sub(COLUMN_SPACING)
+        .max(8);
+    let truncate_value = find_kv.is_none() && !viewer_search::option_needle_nonempty(find_needle);
     let data_rows: Vec<Row> = section
         .rows
         .iter()
         .enumerate()
         .map(|(i, (k, v))| {
+            let v_display = if truncate_value && v.chars().count() > value_max_chars {
+                truncate_middle(v, value_max_chars)
+            } else {
+                v.clone()
+            };
             let (key_cell, value_cell) = if let Some(f) = find_kv {
                 let li = f.first_data_line_idx + f.row_skip + i;
                 let key_off = f.line_starts.get(li).copied().unwrap_or(0);
@@ -195,11 +217,11 @@ pub fn section_to_table(
             } else {
                 let key_cell = cell_for_str(k.as_str(), find_needle, false, false);
                 let value_cell = if viewer_search::option_needle_nonempty(find_needle) {
-                    cell_for_str(v.as_str(), find_needle, false, false)
+                    cell_for_str(v_display.as_str(), find_needle, false, false)
                 } else {
-                    match format::value_cell_style(v.as_str()) {
-                        Some(st) => Cell::from(Line::from(v.clone()).style(st)),
-                        None => Cell::from(Line::from(v.clone())),
+                    match format::value_cell_style(v_display.as_str()) {
+                        Some(st) => Cell::from(Line::from(v_display).style(st)),
+                        None => Cell::from(Line::from(v_display)),
                     }
                 };
                 (key_cell, value_cell)
@@ -207,13 +229,6 @@ pub fn section_to_table(
             Row::new(vec![key_cell, value_cell]).style(style::table_row_style(row_offset + i))
         })
         .collect();
-    let key_w = section
-        .rows
-        .iter()
-        .map(|(k, _)| k.chars().count())
-        .max()
-        .unwrap_or(KEY_WIDTH_FALLBACK)
-        .min(KEY_WIDTH_MIN) as u16;
     table_with_chrome(
         Table::new(
             data_rows,

@@ -6,9 +6,10 @@ use super::glyph::UI_GLYPHS;
 use super::tabs::UiStringsMainTabs;
 
 /// Generic and feature-specific loading lines.
-pub struct UiStringsLoading {
+pub struct UiStringsMisc {
     /// Short spinner / placeholder (e.g. delta pane while data loads).
-    pub general: &'static str,
+    pub loading: &'static str,
+    pub json_items: &'static str,
 }
 
 /// Delta mode: section titles and row labels.
@@ -268,7 +269,7 @@ pub struct UiStringsSpaceMenu {
 
 /// All symbols and string literals used by the renderer.
 pub struct UiStrings {
-    pub loading: UiStringsLoading,
+    pub misc: UiStringsMisc,
     pub delta: UiStringsDelta,
     pub pane: UiStringsPane,
     pub list: UiStringsList,
@@ -302,9 +303,10 @@ impl StringObjTraits for UiStrings {
 }
 
 impl UiStrings {
-    const fn loading() -> UiStringsLoading {
-        UiStringsLoading {
-            general: "Loading…",
+    const fn misc() -> UiStringsMisc {
+        UiStringsMisc {
+            loading: "Loading…",
+            json_items: "item(s)",
         }
     }
 
@@ -563,7 +565,7 @@ impl UiStrings {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            loading: Self::loading(),
+            misc: Self::misc(),
             delta: Self::delta(),
             pane: Self::pane(),
             list: Self::list(),

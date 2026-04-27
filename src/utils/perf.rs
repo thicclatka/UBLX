@@ -11,9 +11,7 @@ static PROFILE: OnceLock<bool> = OnceLock::new();
 #[must_use]
 pub fn profile_enabled() -> bool {
     *PROFILE.get_or_init(|| {
-        std::env::var("UBLX_PROFILE")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
+        std::env::var("UBLX_PROFILE").is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
     })
 }
 

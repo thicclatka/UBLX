@@ -2,7 +2,7 @@
 name = "ublx"
 version = "0.1.4"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.95"
 authors = ["AHurowitz <thicclatka@users.noreply.github.com>"]
 description = "TUI to index once, enrich with metadata, and browse a flat snapshot in a 3-pane layout with multiple modes."
 license = "MIT or Apache-2.0"
@@ -19,6 +19,14 @@ categories = [
   "visualization",
 ]
 
+# rustdoc: `zahirscan` with default features off (no `netcdf`).
+[package.metadata.docs.rs]
+default-features = false
+
+[features]
+default = ["zahir-netcdf"]
+zahir-netcdf = ["zahirscan/netcdf"]
+
 [dependencies]
 anyhow = "1.0.102"
 blake3 = "1.8.5"
@@ -33,7 +41,7 @@ fuzzy-matcher = "0.3.7"
 image = "0.25"
 lofty = "0.24.0"
 log = "0.4.29"
-nefaxer = "0.1.7"
+nefaxer = "0.1.8"
 notify = "8.2.0"
 pulldown-cmark = "0.13.3"
 ratatui = "0.30"
@@ -52,7 +60,7 @@ tokio = { version = "1.52.1", features = ["rt-multi-thread", "sync"] }
 toml = "1.1.2"
 tui-logger = { version = "0.18.2", features = ["crossterm"] }
 unicode-width = "0.2"
-zahirscan = "0.3.0"
+zahirscan = { version = "0.3.1", default-features = false }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [patch.crates-io]

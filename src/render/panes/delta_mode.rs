@@ -19,7 +19,7 @@ pub fn draw_delta_placeholder(f: &mut Frame, chunks: &[Rect]) {
         .borders(Borders::ALL)
         .title(UI_STRINGS.pad(UI_STRINGS.delta.left_block_title));
     f.render_widget(
-        Paragraph::new(UI_STRINGS.loading.general)
+        Paragraph::new(UI_STRINGS.misc.loading)
             .style(style::text_style())
             .block(block),
         left,

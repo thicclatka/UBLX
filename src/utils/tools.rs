@@ -323,8 +323,7 @@ pub fn format_bytes(n: u64) -> String {
 pub fn unique_stamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
+        .map_or(0, |d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
         ^ (u64::from(std::process::id()) << 32)
 }
 

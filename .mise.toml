@@ -1,6 +1,5 @@
 [tools]
-rust = "1.93"
-
+rust = "1.95"
 
 [tasks.tublx]
 description = "Run ublx headless (--snapshot-only, no TUI)"

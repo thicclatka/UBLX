@@ -242,6 +242,7 @@ impl TableDrawCtx<'_, '_> {
                 self.find_needle,
                 find_kv_data.as_ref(),
                 self.metadata_mode,
+                rect.width.max(1),
             ),
             rect,
         );

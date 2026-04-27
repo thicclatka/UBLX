@@ -415,7 +415,7 @@ fn raster_viewer_line_count(
     }
     if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
         return wrapped_line_count(
-            &viewers::images::raster_preview_label_body(right_content, UI_STRINGS.loading.general),
+            &viewers::images::raster_preview_label_body(right_content, UI_STRINGS.misc.loading),
             content_width,
         ) as usize;
     }
@@ -477,8 +477,7 @@ fn viewer_uses_preformatted_layout(
         return false;
     };
     viewers::csv_handler::parse_csv(raw, right_content.snap_meta.path.as_deref())
-        .map(|r| !r.is_empty())
-        .unwrap_or(false)
+        .is_ok_and(|r| !r.is_empty())
 }
 
 pub fn ratatui_wrap_right_paragraph(
@@ -606,7 +605,7 @@ fn viewer_display_text(
             if state.viewer_image.decode_rx.is_some() && state.viewer_image.err.is_none() {
                 return Text::from(viewers::images::raster_preview_label_body(
                     right_content,
-                    UI_STRINGS.loading.general,
+                    UI_STRINGS.misc.loading,
                 ));
             }
             if let Some(e) = state.viewer_image.err.as_deref() {

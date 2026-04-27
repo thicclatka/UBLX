@@ -404,7 +404,7 @@ impl UblxDbCategory {
 
     #[inline]
     fn is_directory_path(path_ref: &Path) -> bool {
-        fs::metadata(path_ref).map(|m| m.is_dir()).unwrap_or(false)
+        fs::metadata(path_ref).is_ok_and(|m| m.is_dir())
     }
 
     /// Last path segment is `*.zarr` (Zarr store folder on disk).
