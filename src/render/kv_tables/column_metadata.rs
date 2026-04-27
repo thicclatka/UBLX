@@ -645,11 +645,7 @@ pub fn sections_from_legacy_column_metadata_root(metadata: &Map<String, Value>) 
         .filter(|s| !s.trim().is_empty())
         .unwrap_or(ROOT_METADATA_FALLBACK_TITLE);
     let mut sections = Vec::new();
-    push_legacy_column_metadata_notice(
-        &mut sections,
-        Some(format::format_key(title)),
-        false,
-    );
+    push_legacy_column_metadata_notice(&mut sections, Some(format::format_key(title)), false);
     sections
 }
 
