@@ -84,10 +84,14 @@ fn parse_one_blob(blob: &str, max_array_inline: usize) -> Vec<Section> {
     let Some(map) = value.as_object() else {
         return vec![];
     };
+    let map = map
+        .get("_metadata")
+        .and_then(Value::as_object)
+        .unwrap_or(map);
     if column_metadata::is_compact_column_metadata(map) {
         column_metadata::sections_from_column_metadata_root(map, max_array_inline)
     } else if column_metadata::is_legacy_parallel_column_metadata(map) {
-        column_metadata::sections_from_legacy_column_metadata_root()
+        column_metadata::sections_from_legacy_column_metadata_root(map)
     } else {
         walk::root_parts_sections(map, max_array_inline)
     }

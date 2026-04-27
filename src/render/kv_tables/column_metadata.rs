@@ -7,7 +7,6 @@
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashSet};
 
-use super::consts::SectionKeys;
 use super::format;
 use super::sections::{ContentsSection, KvSection, Section};
 
@@ -38,6 +37,8 @@ const BOOLEAN_STATS_TRUE_PCT: &str = "true_percentage";
 /// Shown when stored JSON still uses parallel `column_names` / `column_types` (pre-compact Zahir).
 const LEGACY_COLUMN_METADATA_MSG: &str =
     "Column stats use an old Zahir JSON shape. Remove cached ublx data and restart ublx.";
+const ROOT_METADATA_HINT_KEY: &str = "_metadata";
+const ROOT_METADATA_FALLBACK_TITLE: &str = "metadata";
 
 /// Column type from parallel `column_types` (legacy) or compact `t`; drives which table we build.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -614,16 +615,21 @@ pub fn push_column_metadata_sections(
     push_column_metadata_flat_kv_and_tables(sections, Some(title), metadata, max_array_inline);
 }
 
-/// Root blob is entirely compact column metadata (flat KV for scalars + typed tables). Title uses the `csv_metadata` JSON key label.
+/// Root blob is entirely compact column metadata (flat KV for scalars + typed tables).
 #[must_use]
 pub fn sections_from_column_metadata_root(
     metadata: &Map<String, Value>,
     max_array_inline: usize,
 ) -> Vec<Section> {
+    let title = metadata
+        .get(ROOT_METADATA_HINT_KEY)
+        .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(ROOT_METADATA_FALLBACK_TITLE);
     let mut out = Vec::new();
     push_column_metadata_flat_kv_and_tables(
         &mut out,
-        Some(format::format_key(SectionKeys::CSV_METADATA)),
+        Some(format::format_key(title)),
         metadata,
         max_array_inline,
     );
@@ -632,11 +638,16 @@ pub fn sections_from_column_metadata_root(
 
 /// One KV section telling the user to drop stale DB / cache when parallel-array column JSON is still stored.
 #[must_use]
-pub fn sections_from_legacy_column_metadata_root() -> Vec<Section> {
+pub fn sections_from_legacy_column_metadata_root(metadata: &Map<String, Value>) -> Vec<Section> {
+    let title = metadata
+        .get(ROOT_METADATA_HINT_KEY)
+        .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(ROOT_METADATA_FALLBACK_TITLE);
     let mut sections = Vec::new();
     push_legacy_column_metadata_notice(
         &mut sections,
-        Some(format::format_key(SectionKeys::CSV_METADATA)),
+        Some(format::format_key(title)),
         false,
     );
     sections
