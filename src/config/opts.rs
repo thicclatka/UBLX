@@ -67,6 +67,7 @@ const HIDDEN_EXCLUDE_PATTERN: &str = ".*";
 
 /// Options for ublx. Extends [`NefaxOpts`] and [`RuntimeConfig`]; owns worker-pool sizing and streaming.
 #[derive(Clone, Debug)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct UblxOpts {
     /// Options passed to the nefaxer indexer (base; use [`Self::nefax_opts_with_workers`] for run).
     pub nefax_opts: NefaxOpts,

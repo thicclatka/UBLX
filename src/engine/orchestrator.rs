@@ -1,5 +1,5 @@
 use log::{debug, error};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -95,7 +95,9 @@ fn entry_should_batch_zahir(
     if !ctx.ublx_opts.batch_zahir_for_path(&rel_str) {
         return false;
     }
-    if utils::rel_path_is_directory(ctx.dir_to_ublx_abs, path) {
+    if utils::rel_path_is_directory(ctx.dir_to_ublx_abs, path)
+        && !integrations::is_zarr_store_root_rel_path(path)
+    {
         return false;
     }
     path_needs_zahir_extract(
@@ -190,6 +192,8 @@ pub fn run_sequential(
         prior_nefax,
         None,
     );
+    let nefax = integrations::nefax_collapse_zarr_inners(nefax);
+    let diff = integrations::nefax_diff_collapse_zarr_inners(diff);
 
     debug!(
         "indexed {} paths (added: {}, removed: {}, modified: {})",
@@ -263,12 +267,19 @@ pub fn run_stream(
         prior_nefax,
         prior_zahir_json: &prior_zahir_json,
     };
+    let zahir_stream_seen = std::sync::Mutex::new(HashSet::new());
     let on_entry = |e: &integrations::NefaxEntry| {
         if !entry_should_batch_zahir(&batch_zahir_ctx, &e.path, e.size, e.mtime_ns) {
             return;
         }
-        let abs = dir_to_ublx_abs.join(&e.path).to_string_lossy().into_owned();
-        let _ = path_tx.send(abs);
+        let full = dir_to_ublx_abs.join(&e.path);
+        let full = integrations::zarr_collapse_to_store_root_path_or_same(&full);
+        let s = full.to_string_lossy().into_owned();
+        if let Ok(mut g) = zahir_stream_seen.lock()
+            && g.insert(s.clone())
+        {
+            let _ = path_tx.send(s);
+        }
     };
     let (nefax, diff) =
         match integrations::run_nefaxer(dir_to_ublx, ublx_opts, prior_nefax, Some(on_entry)) {
@@ -279,6 +290,8 @@ pub fn run_stream(
                 on_nefax_error(dir_to_ublx, &e);
             }
         };
+    let nefax = integrations::nefax_collapse_zarr_inners(nefax);
+    let diff = integrations::nefax_diff_collapse_zarr_inners(diff);
 
     drop(path_tx);
     debug!("indexed {} paths (streaming)", nefax.len());

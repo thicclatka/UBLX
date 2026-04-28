@@ -1,7 +1,7 @@
 use colored::Colorize;
 use log::{Level, debug, error};
 use std::fs;
-use std::io::{Read, Seek, Write};
+use std::io::{BufRead, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -10,19 +10,37 @@ use crate::integrations::ZahirFT;
 use crate::utils::exit_error;
 
 /// Binary prefixes (1024-based), shared with [`format_bytes`].
-pub const KIB: u64 = 1024;
-pub const MIB: u64 = KIB * 1024;
-pub const GIB: u64 = MIB * 1024;
+pub struct ByteUnits;
+impl ByteUnits {
+    pub const KIB: u64 = 1024;
+    pub const MIB: u64 = Self::KIB * 1024;
+    pub const GIB: u64 = Self::MIB * 1024;
+}
 
-/// Half a megabyte (512 KiB): max single-file text load in the viewer and minimum file size for
-/// off-thread image decode — keep these policies in sync unless intentionally diverging.
-pub const HALF_MIB_BYTES: u64 = MIB / 2;
+/// Viewer read policy values used by [`file_content_for_viewer`].
+pub struct ViewerReadPolicy;
+impl ViewerReadPolicy {
+    /// Half a megabyte (512 KiB): max single-file text load in the viewer and minimum file size
+    /// for off-thread image decode — keep these policies in sync unless intentionally diverging.
+    pub const HALF_MIB_BYTES: u64 = ByteUnits::MIB / 2;
+    /// [`HALF_MIB_BYTES`] as [`usize`] for allocation caps (`HALF_MIB_BYTES` always fits in `usize`).
+    pub const HALF_MIB_BYTES_USIZE: usize = Self::HALF_MIB_BYTES as usize;
+    /// Per-chunk size for log preview head + tail: two chunks sum to [`HALF_MIB_BYTES`].
+    pub const LOG_HEAD_TAIL_CHUNK_BYTES: u64 = Self::HALF_MIB_BYTES / 2;
+    /// Delimited viewer preview keeps many rows while bounding disk read work.
+    pub const CSV_VIEWER_MAX_BYTES: u64 = 4 * ByteUnits::MIB;
+    /// Hard cap for preview rows loaded from large delimited files.
+    pub const CSV_VIEWER_MAX_LINES: usize = 2_000;
+    /// Synthetic trailer line for CSV preview metadata (parsed/stripped in `csv_handler`).
+    pub const CSV_TOTAL_ROWS_META_PREFIX: &'static str = "__UBLX_CSV_TOTAL_ROWS__=";
+    /// Bytes read by binary sniffing (`is_likely_binary`) to detect NUL / invalid UTF-8.
+    pub const BINARY_CHECK_CHUNK: usize = 8192;
+}
 
-/// [`HALF_MIB_BYTES`] as [`usize`] for allocation caps (`HALF_MIB_BYTES` always fits in `usize`).
-pub const HALF_MIB_BYTES_USIZE: usize = HALF_MIB_BYTES as usize;
-
-/// Per-chunk size for log preview head + tail ([`file_content_for_viewer`]): two chunks sum to [`HALF_MIB_BYTES`].
-const LOG_HEAD_TAIL_CHUNK_BYTES: u64 = HALF_MIB_BYTES / 2;
+// Back-compat aliases used across the file/module.
+pub const KIB: u64 = ByteUnits::KIB;
+pub const MIB: u64 = ByteUnits::MIB;
+pub const GIB: u64 = ByteUnits::GIB;
 
 /// [`std::fs::Metadata::len`] is `u64`; saturates at `usize::MAX` on 32-bit. Safe for `.min(small_cap)`:
 /// the cap (e.g. [`HALF_MIB_BYTES_USIZE`]) still bounds allocation.
@@ -32,16 +50,13 @@ pub fn u64_to_usize_saturating(len: u64) -> usize {
     usize::try_from(len).unwrap_or(usize::MAX)
 }
 
-/// Chunk size for [`is_likely_binary`] (first bytes read to detect NUL / invalid UTF-8).
-const BINARY_CHECK_CHUNK: usize = 8192;
-
 /// Quick binary heuristic: read the first chunk; binary if NUL present or invalid UTF-8.
 #[must_use]
 pub fn is_likely_binary(path: &Path) -> bool {
     let Ok(mut f) = fs::File::open(path) else {
         return false;
     };
-    let mut buf = [0u8; BINARY_CHECK_CHUNK];
+    let mut buf = [0u8; ViewerReadPolicy::BINARY_CHECK_CHUNK];
     let n = f.read(&mut buf).unwrap_or(0);
     let buf = &buf[..n];
     buf.contains(&0) || std::str::from_utf8(buf).is_err()
@@ -59,7 +74,7 @@ pub fn binary_file_label(path: &Path) -> String {
 /// Read first + last chunks for large log files; same total byte budget as [`HALF_MIB_BYTES`].
 fn read_log_head_tail(path: &Path, total: u64) -> Option<String> {
     let mut f = fs::File::open(path).ok()?;
-    let chunk = LOG_HEAD_TAIL_CHUNK_BYTES;
+    let chunk = ViewerReadPolicy::LOG_HEAD_TAIL_CHUNK_BYTES;
     let mut head = Vec::new();
     let n_head = Read::by_ref(&mut f)
         .take(chunk)
@@ -86,6 +101,52 @@ fn read_log_head_tail(path: &Path, total: u64) -> Option<String> {
     ))
 }
 
+/// Read an initial line window for delimited files without injecting truncation markers into data.
+///
+/// This preserves parseability for the CSV renderer while allowing many more visible rows than
+/// a pure byte cap on very wide rows.
+fn read_delimited_preview_lines(path: &Path) -> Option<String> {
+    let f = fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(f);
+    let mut out = String::new();
+    let mut line = String::new();
+    let mut total_bytes = 0u64;
+    let mut line_count = 0usize;
+    let mut reached_eof = false;
+
+    while line_count < ViewerReadPolicy::CSV_VIEWER_MAX_LINES
+        && total_bytes < ViewerReadPolicy::CSV_VIEWER_MAX_BYTES
+    {
+        line.clear();
+        let n = reader.read_line(&mut line).ok()?;
+        if n == 0 {
+            reached_eof = true;
+            break;
+        }
+        total_bytes = total_bytes.saturating_add(n as u64);
+        out.push_str(&line);
+        line_count += 1;
+    }
+    if !reached_eof {
+        let mut total_rows = line_count;
+        loop {
+            line.clear();
+            let n = reader.read_line(&mut line).ok()?;
+            if n == 0 {
+                break;
+            }
+            total_rows += 1;
+        }
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(ViewerReadPolicy::CSV_TOTAL_ROWS_META_PREFIX);
+        out.push_str(&total_rows.to_string());
+        out.push('\n');
+    }
+    Some(out)
+}
+
 /// Read text for a viewer pane: not found, empty for image/PDF (raster preview elsewhere), binary short label, or capped UTF-8 with truncation notice.
 ///
 /// Cap is [`HALF_MIB_BYTES_USIZE`]. For [`ZahirFT::Log`] files larger than that, reads **head + tail** (half cap each) instead of head only. When `zahir_type` is [`FileType::Image`], [`FileType::Pdf`], or [`FileType::Video`], returns empty string for a normal file so the render layer loads the preview.
@@ -94,6 +155,9 @@ pub fn file_content_for_viewer(path: &Path, zahir_type: Option<ZahirFT>) -> Opti
     let Ok(meta) = fs::metadata(path) else {
         return Some("(file not found)".to_string());
     };
+    if meta.is_dir() && zahir_type == Some(ZahirFT::Zarr) {
+        return Some(String::new());
+    }
     if meta.is_file()
         && matches!(
             zahir_type,
@@ -106,14 +170,20 @@ pub fn file_content_for_viewer(path: &Path, zahir_type: Option<ZahirFT>) -> Opti
         return Some(binary_file_label(path));
     }
     let len = meta.len();
-    if len > HALF_MIB_BYTES && zahir_type == Some(ZahirFT::Log) {
+    if len > ViewerReadPolicy::HALF_MIB_BYTES && zahir_type == Some(ZahirFT::Log) {
         return read_log_head_tail(path, len);
+    }
+    if zahir_type == Some(ZahirFT::Csv) {
+        return read_delimited_preview_lines(path);
     }
 
     let f = fs::File::open(path).ok()?;
-    let cap = HALF_MIB_BYTES_USIZE.min(u64_to_usize_saturating(len));
+    let cap = ViewerReadPolicy::HALF_MIB_BYTES_USIZE.min(u64_to_usize_saturating(len));
     let mut buf = Vec::with_capacity(cap);
-    let n = f.take(HALF_MIB_BYTES).read_to_end(&mut buf).ok()?;
+    let n = f
+        .take(ViewerReadPolicy::HALF_MIB_BYTES)
+        .read_to_end(&mut buf)
+        .ok()?;
     let s = String::from_utf8_lossy(&buf[..n]).into_owned();
     // `take(HALF_MIB_BYTES)` bounds `n` to at most [`HALF_MIB_BYTES`], which fits in `u64`.
     let n_u64 = n as u64;
@@ -253,8 +323,7 @@ pub fn format_bytes(n: u64) -> String {
 pub fn unique_stamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
+        .map_or(0, |d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
         ^ (u64::from(std::process::id()) << 32)
 }
 

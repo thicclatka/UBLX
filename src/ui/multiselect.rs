@@ -227,10 +227,8 @@ fn run_bulk_action(
                     .cloned();
                 state.open_lens_menu(paths, ex);
             }
-            1 => {
-                if !paths.is_empty() {
-                    file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
-                }
+            1 if !paths.is_empty() => {
+                file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
             }
             2 => {
                 let Some(lens_name) = view
@@ -265,20 +263,16 @@ fn run_bulk_action(
 
     match index {
         // Bulk menu order: Add to lens (a), Rename (r), Delete (d), Zahir (z).
-        0 => {
-            if !paths.is_empty() {
-                state.open_lens_menu(paths, None);
-            }
+        0 if !paths.is_empty() => {
+            state.open_lens_menu(paths, None);
         }
-        1 => {
-            if !paths.is_empty() {
-                file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
-            }
+        1 if !paths.is_empty() => {
+            file_ops::bulk_rename_via_editor(state, params, &paths, ublx_opts);
         }
-        2 => {
+        2 if !paths.is_empty() => {
             state.open_file_delete_confirm_bulk(paths);
         }
-        3 => {
+        3 if !paths.is_empty() => {
             run_bulk_enhance_zahir(state, view, all_rows, params, ublx_opts, &paths);
         }
         _ => {}
@@ -376,10 +370,8 @@ fn handle_bulk_menu(
             let i = state.multiselect.bulk_menu_selected;
             run_bulk_action(state, view, all_rows, params, ublx_opts, i);
         }
-        UblxAction::BulkMenuHotkeySelect(i) => {
-            if i <= max_i {
-                run_bulk_action(state, view, all_rows, params, ublx_opts, i);
-            }
+        UblxAction::BulkMenuHotkeySelect(i) if i <= max_i => {
+            run_bulk_action(state, view, all_rows, params, ublx_opts, i);
         }
         _ => {}
     }

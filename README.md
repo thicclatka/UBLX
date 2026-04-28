@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/ublx.svg)](https://crates.io/crates/ublx)
 [![docs.rs](https://img.shields.io/docsrs/ublx)](https://docs.rs/ublx)
 ![Build](https://github.com/thicclatka/ublx/workflows/Build/badge.svg)
-![Rust](https://img.shields.io/badge/rust-1.93-orange.svg)
+![Rust](https://img.shields.io/badge/rust-1.95-orange.svg)
 
 [_Ublx ... Safe when taken as directed._](https://bookshop.org/p/books/ubik-philip-k-dick/1fc432e3ade32290)
 
@@ -18,11 +18,12 @@ UBLX is a **TUI that turns any directory into a flat, navigable catalog** — ca
 
 **Optional**:
 
-| Tool                                     | Role                                           |
-| ---------------------------------------- | ---------------------------------------------- |
-| `tree`                                   | Directory preview in the Viewer when on `PATH` |
-| Poppler (`pdftoppm`) or MuPDF (`mutool`) | PDF page raster preview                        |
-| `ffmpeg`                                 | Video frame preview                            |
+| Tool                   | Role                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `tree`                 | Directory preview in the Viewer when on `PATH`                                          |
+| `pdftoppm` or `mutool` | PDF page raster preview                                                                 |
+| `ffmpeg`               | Video frame preview                                                                     |
+| `netcdf`/`libnetcdf`   | Default features link to NetCDF. To build without: `cargo build --no-default-features`. |
 
 ## Install
 
@@ -31,6 +32,9 @@ cargo install ublx
 
 # or compile from source
 cargo build --release
+
+# compile without netcdf
+cargo build --release --no-default-features
 ```
 
 ## What it does
@@ -71,18 +75,19 @@ The right pane shows Viewer, Templates, Metadata, or Writing for the selected it
 - **Viewer search** — **Shift+S** opens literal in-pane search in the preview (see in-app help for n/N and Esc).
 - **Catalog search** — **/** fuzzy-filters the category and content lists (left and middle) by path/category. Press **Esc** to clear filter.
 
-| Tab           | Content                                                                                                                                                                                                                                                                                                                       |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Viewer**    | Previews for the selected file — details in [Viewer](#viewer). Footer: size and last-modified when available.                                                                                                                                                                                                                 |
-| **Templates** | Extracted template/structure snippet (e.g. document outline) when zahirscan provides it.                                                                                                                                                                                                                                      |
-| **Metadata**  | Enrichment metadata as **tables**: key/value pairs, and for supported types things like CSV column metadata, XLSX sheet stats (rows/columns per sheet), SQLite schema/table info, zip/archive “Contents” tables, and schema trees. Sections are parsed from the stored zahirscan result and rendered with headers and scroll. |
-| **Writing**   | **Writing stats** (writing footprint): word count, character counts, and similar stats when zahirscan has computed them. Shown in the same table layout as Metadata.                                                                                                                                                          |
+| Tab           | Content                                                                                                                                                                                                                                                                                       |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Viewer**    | Previews for the selected file — details in [Viewer Previews](#viewer-previews). Footer: size and last-modified when available.                                                                                                                                                               |
+| **Templates** | Extracted template/structure snippet (e.g. document outline) when zahirscan provides it.                                                                                                                                                                                                      |
+| **Metadata**  | Enrichment metadata as **tables**: key/value pairs, and for supported types from [ZahirScan metadata extraction by format](https://github.com/thicclatka/zahirscan#metadata-extraction-by-format). Sections are parsed from the stored zahirscan result and rendered with headers and scroll. |
+| **Writing**   | **Writing stats** (writing footprint): word count, character counts, and similar stats when zahirscan has computed them. Shown in the same table layout as Metadata.                                                                                                                          |
 
-### Viewer
+### Viewer Previews
 
 - **Markdown** — formatted preview (headings, lists, code blocks, tables inside the doc).
-- **CSV-style files** — pretty table layout for `.csv`, `.tsv`, `.tab`, `.psv` when the index says so or the path matches (so previews still work if a row’s category label is off).
+- **CSV-style files** — for `.csv`, `.tsv`, `.tab`, `.psv`, render a pretty table when parsed width is 30 columns or fewer; for wider files, render a structured delimited fallback that shows only viewport-fitting leading columns with row/column truncation counts (still keyed off index type or path match when category labels are off).
 - **Images** — terminal preview via [ratatui-image](https://github.com/ratatui-org/ratatui-image) (downscaled for the pane; larger files may decode off the UI thread; recent previews cached for quick navigation).
+- **Zarr directory (`.zarr`)** — show a directory tree of the store
 - **Code and structured text** — [syntect](https://github.com/trishume/syntect) highlighting via [`sublime_syntaxes`](https://crates.io/crates/sublime_syntaxes); grammar from path/extension; colors match theme light/dark. Large buffers are cached for smooth scrolling.
 - **Other text** — raw text (length-capped).
 - **Binaries** — short label instead of dumping bytes.

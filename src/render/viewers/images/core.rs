@@ -12,13 +12,13 @@ use crate::integrations::ZahirFT;
 use crate::layout::setup::{RightPaneContent, RightPaneMode, UblxState, ViewerImageState};
 use crate::render::viewers::{pdf_preview, video_preview};
 use crate::ui::{UI_GLYPHS, UI_STRINGS};
-use crate::utils::HALF_MIB_BYTES;
+use crate::utils::ViewerReadPolicy;
 
 use super::raster_policy;
 
 /// Decode + downscale off the UI thread when the file is at least this large (keeps dev/`opt-level=1` snappy too).
 /// Same value as [`crate::utils::HALF_MIB_BYTES`] (viewer read cap).
-pub const ASYNC_DECODE_MIN_BYTES: u64 = HALF_MIB_BYTES;
+pub const ASYNC_DECODE_MIN_BYTES: u64 = ViewerReadPolicy::HALF_MIB_BYTES;
 
 #[inline]
 #[must_use]
@@ -220,7 +220,7 @@ fn maybe_spawn_pdf_prefetch(
     }
     state.viewer_image.pdf.prefetch_earliest = None;
 
-    let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
+    let file_size = std::fs::metadata(abs).map_or(0, |m| m.len());
     let max_dim = pdf_raster_max_dim(file_size, viewport_cells);
     let cancel = Arc::clone(&state.viewer_image.pdf.prefetch_cancel);
     let token = cancel.load(Ordering::SeqCst);
@@ -297,7 +297,7 @@ fn spawn_or_decode_raster_preview(
     is_pdf: bool,
     viewport_cells: Option<(u16, u16)>,
 ) {
-    let file_size = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
+    let file_size = std::fs::metadata(abs).map_or(0, |m| m.len());
     let max_dim = raster_max_dimension_for_file_size(file_size, is_pdf, viewport_cells);
     let is_video = right_content.zahir_file_type() == Some(ZahirFT::Video);
 

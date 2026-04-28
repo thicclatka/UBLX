@@ -1,3 +1,6 @@
+//! Shared utilities: path/clipboard/terminal helpers, byte formatting, notifications, and small I/O
+//! affordances (not the TUI or engine proper).
+
 mod clipboard;
 mod embedded_cover;
 mod error_writer;

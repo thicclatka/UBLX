@@ -3,7 +3,7 @@
 //! Sections: **path / file-type hints** (extension + linguist without full extract), **`extract_zahir`** entry
 //! points, **result indexing**, **JSON for DB**.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
@@ -12,6 +12,7 @@ use serde_json::Value;
 use zahirscan;
 
 use crate::config::UblxOpts;
+use crate::utils::path_to_slash_string;
 
 use super::nefax_ops;
 
@@ -31,6 +32,13 @@ pub use zahirscan::utils::ffprobe_handler::run_ffprobe_safe;
 #[must_use]
 pub fn file_type_from_metadata_name(s: &str) -> Option<zahirscan::FileType> {
     zahirscan::FileType::from_metadata_name(s)
+}
+
+/// `true` when `s` is the zahir display name for Zarr (e.g. snapshot `category` for a Zarr store).
+#[inline]
+#[must_use]
+pub fn is_zarr_category_str(s: &str) -> bool {
+    file_type_from_metadata_name(s) == Some(ZahirFT::Zarr)
 }
 
 /// Sniff delimiter from the first lines of `content` (comma, semicolon, tab, pipe, colon).
@@ -241,4 +249,123 @@ pub fn zahir_output_to_json_for_path(
     };
     inject_path_detected_file_type(&mut v, full_path, path_str);
     serde_json::to_string(&v).unwrap_or_default()
+}
+
+/// Keep only Zarr **store root** paths (drop `…/store.zarr/…` inners). Delegates to zahirscan
+/// [`filter_zarr_input_paths`](zahirscan::utils::zarr_paths::filter_zarr_input_paths).
+#[must_use]
+pub fn zahir_zarr_path_filter(paths: &[impl AsRef<Path>]) -> Vec<String> {
+    let path_strings: Vec<String> = paths
+        .iter()
+        .map(|p| p.as_ref().to_string_lossy().into_owned())
+        .collect();
+    zahirscan::utils::zarr_paths::filter_zarr_input_paths(path_strings)
+}
+
+/// Filesystem path collapsed to the Zarr store root (directory whose name ends with `.zarr`), if any
+/// prefix of `path` is such a store; otherwise `None`.
+#[must_use]
+pub fn zarr_collapse_to_store_root_path(path: &Path) -> Option<PathBuf> {
+    let ext = zahirscan::utils::zarr_paths::ZARR_EXTENSION;
+    let mut acc = PathBuf::new();
+    for c in path.components() {
+        acc.push(c);
+        if c.as_os_str().to_str().is_some_and(|s| s.ends_with(ext)) {
+            return Some(acc);
+        }
+    }
+    None
+}
+
+/// [`zarr_collapse_to_store_root_path`] or `path` unchanged when not under a `.zarr` store.
+#[must_use]
+pub fn zarr_collapse_to_store_root_path_or_same(path: &Path) -> PathBuf {
+    zarr_collapse_to_store_root_path(path).unwrap_or_else(|| path.to_path_buf())
+}
+
+/// Relative path (slash-normalized) of the Zarr **store root** for this path, if it lies inside or on a
+/// `*.zarr` store; `None` if the path does not reference `.zarr`.
+#[must_use]
+fn zarr_store_root_path_str(s: &str) -> Option<String> {
+    let t = s.trim().trim_end_matches(['/', '\\']);
+    if !t.contains(zahirscan::utils::zarr_paths::ZARR_EXTENSION) {
+        return None;
+    }
+    if zahirscan::utils::zarr_paths::is_zarr_store_root_path(t) {
+        return Some(t.replace('\\', "/"));
+    }
+    let parts: Vec<&str> = t.split(['/', '\\']).filter(|p| !p.is_empty()).collect();
+    for i in 0..parts.len() {
+        if parts[i].ends_with(zahirscan::utils::zarr_paths::ZARR_EXTENSION) {
+            return Some(parts[..=i].join("/"));
+        }
+    }
+    None
+}
+
+fn merge_nefax_path_meta(into: &mut nefax_ops::NefaxPathMeta, add: &nefax_ops::NefaxPathMeta) {
+    into.mtime_ns = into.mtime_ns.max(add.mtime_ns);
+    into.size = into.size.saturating_add(add.size);
+    into.hash = None;
+}
+
+/// True if this **relative** path (as nefaxer keys it) is a Zarr store root (`…/name.zarr` with no
+/// path after the store segment). Used to still run batch zahir on a directory-backed `.zarr` store.
+#[must_use]
+pub fn is_zarr_store_root_rel_path(path: &Path) -> bool {
+    let s = path_to_slash_string(path);
+    zahirscan::utils::zarr_paths::is_zarr_store_root_path(s.trim().trim_end_matches(['/', '\\']))
+}
+
+/// Collapse Nefax entries so only one row per Zarr store root is kept (inners under `name.zarr/` are
+/// merged into the root’s [`NefaxPathMeta`]: max `mtime_ns`, sum `size`, `hash` cleared if merged).
+#[must_use]
+pub fn nefax_collapse_zarr_inners(nefax: nefax_ops::NefaxResult) -> nefax_ops::NefaxResult {
+    let mut out: nefax_ops::NefaxResult = HashMap::new();
+    for (path, meta) in nefax {
+        let s = path_to_slash_string(&path);
+        let key = if let Some(root) = zarr_store_root_path_str(&s) {
+            PathBuf::from(root)
+        } else {
+            path
+        };
+        match out.entry(key) {
+            Entry::Vacant(e) => {
+                e.insert(meta);
+            }
+            Entry::Occupied(mut e) => {
+                merge_nefax_path_meta(e.get_mut(), &meta);
+            }
+        }
+    }
+    out
+}
+
+/// Map added/modified/removed paths the same way as [`nefax_collapse_zarr_inners`], deduplicating
+/// so `delta_log` row counts match the collapsed snapshot.
+#[must_use]
+pub fn nefax_diff_collapse_zarr_inners(diff: nefax_ops::NefaxDiff) -> nefax_ops::NefaxDiff {
+    nefax_ops::NefaxDiff {
+        added: dedupe_collapse_path_list(diff.added),
+        removed: dedupe_collapse_path_list(diff.removed),
+        modified: dedupe_collapse_path_list(diff.modified),
+    }
+}
+
+fn dedupe_collapse_path_list(list: Vec<PathBuf>) -> Vec<PathBuf> {
+    use std::collections::HashSet;
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut out = Vec::new();
+    for p in list {
+        let s = path_to_slash_string(&p);
+        let p = if let Some(root) = zarr_store_root_path_str(&s) {
+            PathBuf::from(root)
+        } else {
+            p
+        };
+        if seen.insert(p.clone()) {
+            out.push(p);
+        }
+    }
+    out
 }

@@ -472,13 +472,11 @@ pub fn handle_qa_menu(
                 qa_menu_apply_submit(state, view, params, ublx_opts, k, idx);
             }
         }
-        UblxAction::SpaceMenuHotkeySelect(idx) => {
-            if idx < item_count {
-                let kind = state.qa_menu.kind.clone();
-                state.close_qa_menu();
-                if let Some(k) = kind {
-                    qa_menu_apply_submit(state, view, params, ublx_opts, k, idx);
-                }
+        UblxAction::SpaceMenuHotkeySelect(idx) if idx < item_count => {
+            let kind = state.qa_menu.kind.clone();
+            state.close_qa_menu();
+            if let Some(k) = kind {
+                qa_menu_apply_submit(state, view, params, ublx_opts, k, idx);
             }
         }
         _ => {}
