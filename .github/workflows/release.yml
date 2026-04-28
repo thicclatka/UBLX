@@ -21,7 +21,7 @@ jobs:
       # Tag pushes only: workflow_dispatch from a branch has no tag to release.
       - name: Create draft release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Release ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
@@ -29,3 +29,26 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-homebrew-formula:
+    name: Bump Homebrew formula
+    runs-on: ubuntu-latest
+    # workflow_dispatch has no tag — tarball URL would be wrong.
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update Formula/ublx.rb (url + sha256)
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: python3 .github/scripts/bump-homebrew-formula.py
+
+      - name: Commit and push
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/commit-and-push-formula.sh

@@ -5,13 +5,15 @@
   },
   "files.exclude": {
     "**/target": true,
-    "**/.DS_Store": true
+    "**/.DS_Store": true,
+    "**/__pycache__": true
   },
 
   "search.exclude": {
     "**/target": true,
     "**/.git": true,
-    "**/Cargo.lock": true
+    "**/Cargo.lock": true,
+    "**/__pycache__": true
   },
 
   "files.watcherExclude": {
