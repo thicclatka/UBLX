@@ -46,7 +46,7 @@ jobs:
       - name: Conda NetCDF + env (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash -el {0}
-        run: bash .github/scripts/ci-deps-windows-conda.sh
+        run: source .github/scripts/ci-deps-windows-conda.sh
 
       - name: Install OpenSSL (Windows)
         if: runner.os == 'Windows'
@@ -146,7 +146,7 @@ jobs:
       - name: Conda NetCDF + env (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash -el {0}
-        run: bash .github/scripts/ci-deps-windows-conda.sh
+        run: source .github/scripts/ci-deps-windows-conda.sh
 
       - name: Install OpenSSL (Windows)
         if: runner.os == 'Windows'
