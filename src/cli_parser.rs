@@ -9,6 +9,7 @@ use crate::utils;
 #[derive(Parser)]
 #[command(
     name = "ublx",
+    version,
     about = "UBLX is a TUI to index once, enrich with metadata, and browse a flat snapshot in a 3-pane layout with multiple modes."
 )]
 pub struct Args {

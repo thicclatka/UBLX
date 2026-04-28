@@ -27,6 +27,15 @@ UBLX is a **TUI that turns any directory into a flat, navigable catalog** — ca
 
 ## Install
 
+### Homebrew
+
+```bash
+brew tap thicclatka/ublx https://github.com/thicclatka/ublx
+brew install thicclatka/ublx/ublx
+```
+
+### Cargo
+
 ```bash
 cargo install ublx
 
@@ -174,6 +183,7 @@ Options:
   -x, --export         Headless: write each Zahir JSON to `ublx-export/` as flat `{path}.json` files. Recommended to run with `--full-snapshot` to get most complete & recent results. Adjust enhance policy in config to fine-tune which paths get ZahirScan
       --dev            Dev mode: tui-logger drain + `move_events` + trace-level default filter
       --themes         Print available themes grouped by appearance
+  -V, --version        Print version
   -h, --help           Print help
 ```
 
