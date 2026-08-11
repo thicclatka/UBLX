@@ -133,7 +133,7 @@ pub fn bool_row_label(
 
 #[must_use]
 pub fn overlay_bool(overlay: &UblxOverlay, scope: SettingsConfigScope, idx: usize) -> bool {
-    bool_key(scope, idx).map_or(false, |key| {
+    bool_key(scope, idx).is_some_and(|key| {
         key.overlay_opt(overlay)
             .unwrap_or(key.default_when_missing())
     })
