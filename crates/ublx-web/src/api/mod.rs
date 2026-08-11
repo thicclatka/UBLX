@@ -36,5 +36,5 @@ pub(crate) use roots::{
 };
 pub(crate) use settings::{
     SettingsLayoutPatch, SettingsPatch, SettingsScope, SettingsView, ThemeCssBody, ThemePickerRow,
-    fetch_settings, patch_settings,
+    fetch_settings, patch_settings, patch_settings_bool,
 };
