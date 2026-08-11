@@ -38,7 +38,7 @@ pub(crate) fn Shell(flags: RwSignal<CatalogFlags>) -> impl IntoView {
     let help = HelpOverlay::provide();
     let multiselect = MultiselectCtx::provide();
     let catalog_refresh = CatalogRefresh::provide();
-    let catalog = CatalogData::provide(catalog_refresh);
+    let catalog = CatalogData::provide(catalog_refresh, flags);
     let _entries_window = EntriesWindow::provide(catalog_refresh, flags);
     let toasts = ToastCtx::provide();
     let space_menu = SpaceMenuCtx::provide(catalog_refresh, multiselect, toasts);
@@ -86,6 +86,8 @@ pub(crate) fn Shell(flags: RwSignal<CatalogFlags>) -> impl IntoView {
     let has_lenses: Signal<bool> = has_lenses.into();
     let has_delta: Signal<bool> = has_delta.into();
     let has_duplicates: Signal<bool> = has_duplicates.into();
+    // Remount mode body only when root *path* changes (not chrome flag refreshes).
+    let mode_root = Memo::new(move |_| flags.with(|f| f.root.clone()));
 
     // Cold-start / in-flight snapshot: toast + refresh when indexing finishes.
     Effect::new(move |_| {
@@ -307,8 +309,7 @@ pub(crate) fn Shell(flags: RwSignal<CatalogFlags>) -> impl IntoView {
 
         <main class="mode-body">
             {move || {
-                // Remount mode body when root changes so selection / pane state cannot linger.
-                let _ = flags.get().root.clone();
+                let _ = mode_root.get();
                 match mode.get() {
                     MainMode::Snapshot => view! { <SnapshotMode/> }.into_any(),
                     MainMode::Lenses => view! { <LensesMode/> }.into_any(),
