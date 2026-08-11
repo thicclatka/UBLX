@@ -141,6 +141,8 @@ pub(crate) struct SettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub follow_links: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_enhance_all: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ask_enhance_on_new_root: Option<bool>,

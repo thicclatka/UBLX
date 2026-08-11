@@ -90,7 +90,7 @@ pub struct CommandModeOverlay {
 /// **Global-only keys** (see [`strip_global_only_keys_from_local_overlay`]): [`Self::opacity_format`],
 /// [`Self::ask_enhance_on_new_root`], [`Self::command_mode`]. Project-local files must not override these; they are stripped before merge and when saving local TOML.
 ///
-/// [theme], [layout], [hash], [`show_hidden_files`], [`Self::typed_column_tables`], [`Self::run_snapshot_on_startup`], [`Self::command_mode`], and [`UblxOverlay::bg_opacity`] are hot-reloadable; [exclude] is applied only at startup.
+/// [theme], [layout], [hash], [`follow_links`], [`show_hidden_files`], [`Self::typed_column_tables`], [`Self::run_snapshot_on_startup`], [`Self::command_mode`], and [`UblxOverlay::bg_opacity`] are hot-reloadable; [exclude] is applied only at startup.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct UblxOverlay {
@@ -102,6 +102,9 @@ pub struct UblxOverlay {
     pub show_hidden_files: Option<bool>,
     /// When true, nefaxer computes blake3 hash for files (slower, more accurate change detection). Hot-reloadable.
     pub hash: Option<bool>,
+    /// When true, nefaxer follows symbolic links while walking (`NefaxOpts::follow_links`). Default off.
+    /// Takes effect on the **next** snapshot. Hot-reloadable into opts; root path is still canonicalized on open either way.
+    pub follow_links: Option<bool>,
     /// Theme selection (e.g. "default"). Hot-reloadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
@@ -161,6 +164,9 @@ impl UblxOverlay {
         if other.hash.is_some() {
             self.hash = other.hash;
         }
+        if other.follow_links.is_some() {
+            self.follow_links = other.follow_links;
+        }
         if other.theme.is_some() {
             self.theme.clone_from(&other.theme);
         }
@@ -206,6 +212,7 @@ impl UblxOverlay {
         changed |= backfill_option(&mut self.exclude, template.exclude.clone());
         changed |= backfill_option(&mut self.show_hidden_files, template.show_hidden_files);
         changed |= backfill_option(&mut self.hash, template.hash);
+        changed |= backfill_option(&mut self.follow_links, template.follow_links);
         changed |= backfill_option(&mut self.theme, template.theme.clone());
         changed |= backfill_option(&mut self.layout, template.layout.clone());
         changed |= backfill_option(&mut self.editor_path, template.editor_path.clone());

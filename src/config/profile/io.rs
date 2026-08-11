@@ -36,6 +36,7 @@ pub fn default_overlay_for_new_file(default_theme_display_name: &str) -> UblxOve
     UblxOverlay {
         show_hidden_files: Some(false),
         hash: Some(false),
+        follow_links: Some(false),
         theme: Some(default_theme_display_name.to_string()),
         layout: Some(LayoutOverlay::default()),
         enable_enhance_all: Some(false),

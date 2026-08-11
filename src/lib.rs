@@ -12,5 +12,5 @@ pub mod themes;
 pub mod ui;
 pub mod utils;
 
-/// Workspace catalog crate (paths / db_ops / headless open-read). Re-exported for THI-155 Phase 2.
+/// Workspace catalog crate (paths / `db_ops` / headless open-read). Re-exported for THI-155 Phase 2.
 pub use ublx_catalog as catalog;

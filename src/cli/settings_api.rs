@@ -76,6 +76,7 @@ pub struct SettingsView {
 pub struct SettingsPatch {
     pub show_hidden_files: Option<bool>,
     pub hash: Option<bool>,
+    pub follow_links: Option<bool>,
     pub enable_enhance_all: Option<bool>,
     pub ask_enhance_on_new_root: Option<bool>,
     pub run_snapshot_on_startup: Option<bool>,
@@ -182,22 +183,15 @@ fn bool_description(key: &str) -> &'static str {
     match key {
         "show_hidden_files" => "Include hidden (dot) files in the catalog / index.",
         "hash" => "Compute blake3 content hashes (slower; better change detection / duplicates).",
+        "follow_links" => {
+            "Follow symbolic links while indexing (nefaxer walk). Off by default; applies on next snapshot. Root path is still canonicalized on open."
+        }
         "enable_enhance_all" => "Run ZahirScan enrichment during snapshot for paths that need it.",
         "ask_enhance_on_new_root" => {
             "On a new root, ask before enhancing all files (global config only)."
         }
         "run_snapshot_on_startup" => "Take a snapshot when UBLX starts on this root.",
         _ => "Settings option.",
-    }
-}
-
-fn bool_key_name(key: SettingsBoolKey) -> &'static str {
-    match key {
-        SettingsBoolKey::ShowHiddenFiles => "show_hidden_files",
-        SettingsBoolKey::Hash => "hash",
-        SettingsBoolKey::EnableEnhanceAll => "enable_enhance_all",
-        SettingsBoolKey::AskEnhanceOnNewRoot => "ask_enhance_on_new_root",
-        SettingsBoolKey::RunSnapshotOnStartup => "run_snapshot_on_startup",
     }
 }
 
@@ -209,7 +203,7 @@ fn write_bool_by_name(
 ) -> Result<(), String> {
     for idx in 0..bool_row_count(scope) {
         if let Some(key) = bool_key(scope, idx)
-            && bool_key_name(key) == key_name
+            && key.toml_key() == key_name
         {
             write_bool(overlay, scope, idx, v);
             return Ok(());
@@ -227,7 +221,7 @@ fn controls_from_overlay(
         let Some(key) = bool_key(scope, idx) else {
             continue;
         };
-        let key_str = bool_key_name(key).to_string();
+        let key_str = key.toml_key().to_string();
         bools.push(SettingsBoolControl {
             key: key_str.clone(),
             label: bool_row_label(scope, idx, true).into_owned(),
@@ -343,20 +337,23 @@ fn apply_patch(
     scope: SettingsConfigScope,
     patch: &SettingsPatch,
 ) -> Result<(), String> {
-    if let Some(v) = patch.show_hidden_files {
-        write_bool_by_name(overlay, scope, "show_hidden_files", v)?;
-    }
-    if let Some(v) = patch.hash {
-        write_bool_by_name(overlay, scope, "hash", v)?;
-    }
-    if let Some(v) = patch.enable_enhance_all {
-        write_bool_by_name(overlay, scope, "enable_enhance_all", v)?;
-    }
-    if let Some(v) = patch.ask_enhance_on_new_root {
-        write_bool_by_name(overlay, scope, "ask_enhance_on_new_root", v)?;
-    }
-    if let Some(v) = patch.run_snapshot_on_startup {
-        write_bool_by_name(overlay, scope, "run_snapshot_on_startup", v)?;
+    for (opt, key) in [
+        (patch.show_hidden_files, SettingsBoolKey::ShowHiddenFiles),
+        (patch.hash, SettingsBoolKey::Hash),
+        (patch.follow_links, SettingsBoolKey::FollowLinks),
+        (patch.enable_enhance_all, SettingsBoolKey::EnableEnhanceAll),
+        (
+            patch.ask_enhance_on_new_root,
+            SettingsBoolKey::AskEnhanceOnNewRoot,
+        ),
+        (
+            patch.run_snapshot_on_startup,
+            SettingsBoolKey::RunSnapshotOnStartup,
+        ),
+    ] {
+        if let Some(v) = opt {
+            write_bool_by_name(overlay, scope, key.toml_key(), v)?;
+        }
     }
     if let Some(ref theme) = patch.theme {
         let allowed = theme_names();

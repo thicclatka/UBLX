@@ -53,6 +53,7 @@ fn bool_patch(key: &str, value: bool) -> SettingsPatch {
     match key {
         "show_hidden_files" => p.show_hidden_files = Some(value),
         "hash" => p.hash = Some(value),
+        "follow_links" => p.follow_links = Some(value),
         "enable_enhance_all" => p.enable_enhance_all = Some(value),
         "ask_enhance_on_new_root" => p.ask_enhance_on_new_root = Some(value),
         "run_snapshot_on_startup" => p.run_snapshot_on_startup = Some(value),

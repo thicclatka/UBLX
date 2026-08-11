@@ -9,6 +9,7 @@ use super::names::{UBLX_NAMES, path_to_hex};
 /// - **Unix (macOS, Linux):** `~/.config/ublx`
 /// - **Windows:** `%APPDATA%\ublx`
 ///   Returns `None` if the underlying env (e.g. `HOME`, `APPDATA`) is not set.
+#[must_use]
 pub fn config_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -28,6 +29,7 @@ pub fn config_dir() -> Option<PathBuf> {
 /// - **Unix (macOS, Linux):** `~/.local/share/ublx`
 /// - **Windows:** `%LOCALAPPDATA%\ublx`
 ///   Returns `None` if the underlying env (e.g. `HOME`, `LOCALAPPDATA`) is not set.
+#[must_use]
 pub fn cache_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {

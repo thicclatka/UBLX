@@ -23,7 +23,7 @@ fn metadata_name_from_detect_key(key: &str) -> Option<String> {
     (ft != ZahirFT::Unknown).then(|| ft.as_metadata_name().to_string())
 }
 
-/// Metadata name string for [`ZahirFT`] from path/extension only (ZahirScan's `detect_file_type`), without a full extract.
+/// Metadata name string for [`ZahirFT`] from path/extension only (`ZahirScan`'s `detect_file_type`), without a full extract.
 ///
 /// **Caveat:** zahirscan's linguist fallback uses `Path::new(path_str).exists()`, which is relative to **process cwd**.
 /// For indexed trees when cwd ≠ project root (e.g. `ublx /path/to/repo`), use [`zahir_metadata_name_from_indexed_file`].
