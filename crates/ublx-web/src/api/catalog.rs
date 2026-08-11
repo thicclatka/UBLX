@@ -1,5 +1,6 @@
 //! Shell catalog flags, lenses list, and duplicates.
 
+use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::delta::DeltaRow;
@@ -19,6 +20,11 @@ pub(crate) struct CatalogFlags {
     pub root: Option<String>,
     /// Latest `delta_log.created_ns` (same source as TUI status “Last Snapshot”).
     pub last_snapshot_ns: Option<i64>,
+}
+
+/// Root path only — chrome flag refreshes (`has_lenses`, etc.) must not invalidate dependents.
+pub(crate) fn catalog_root_memo(flags: RwSignal<CatalogFlags>) -> Memo<Option<String>> {
+    Memo::new(move |_| flags.with(|f| f.root.clone()))
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

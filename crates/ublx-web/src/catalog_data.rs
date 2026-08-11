@@ -31,13 +31,9 @@ pub(crate) struct CatalogData {
 }
 
 impl CatalogData {
-    pub(crate) fn provide(
-        refresh: CatalogRefresh,
-        flags: RwSignal<crate::api::CatalogFlags>,
-    ) -> Self {
+    pub(crate) fn provide(refresh: CatalogRefresh, root: Memo<Option<String>>) -> Self {
         // Root switch deliberately skips ENTRIES bump (EntriesWindow wipe is enough); categories
-        // still must refetch for the new root — track root string, not every flags chrome field.
-        let root = Memo::new(move |_| flags.with(|f| f.root.clone()));
+        // still must refetch for the new root.
         let categories = LocalResource::new(move || {
             let _ = refresh.tick(CatalogScope::ENTRIES);
             let _ = root.get();

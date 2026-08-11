@@ -78,6 +78,8 @@ pub(crate) fn SnapshotMode() -> impl IntoView {
             return;
         }
         let _ = entries.list_generation().get();
+        // Windowed pages arrive after bootstrap — re-resolve when the sparse cache grows.
+        let _ = entries.cache_revision().get();
         let Some(path) = selected_path.get_untracked() else {
             return;
         };
@@ -103,10 +105,18 @@ pub(crate) fn SnapshotMode() -> impl IntoView {
         entries.ensure_range(start, end);
         if let Some(i) = selected_idx.get() {
             entries.ensure_range(i.saturating_sub(32), i.saturating_add(33));
-            if let Some(p) = entries.path_at(i)
-                && selected_path.get_untracked().as_deref() != Some(p.as_str())
-            {
-                set_selected_path.set(Some(p));
+            if let Some(p) = entries.path_at(i) {
+                let cur = selected_path.get_untracked();
+                // Don't clobber a preserved path while its row is still missing from the cache.
+                if let Some(sel) = cur.as_deref()
+                    && sel != p.as_str()
+                    && entries.index_of_path(sel).is_none()
+                {
+                    return;
+                }
+                if cur.as_deref() != Some(p.as_str()) {
+                    set_selected_path.set(Some(p));
+                }
             }
         }
     });
