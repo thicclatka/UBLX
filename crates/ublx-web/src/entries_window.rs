@@ -67,10 +67,7 @@ pub(crate) struct EntriesWindow {
 }
 
 impl EntriesWindow {
-    pub(crate) fn provide(
-        refresh: CatalogRefresh,
-        flags: RwSignal<crate::api::CatalogFlags>,
-    ) -> Self {
+    pub(crate) fn provide(refresh: CatalogRefresh, root: Memo<Option<String>>) -> Self {
         let store = Self {
             epoch: RwSignal::new(0),
             filter: RwSignal::new(FilterKey::default()),
@@ -83,12 +80,17 @@ impl EntriesWindow {
         };
         provide_context(store);
 
-        // Only the root *string* (Memo) — not every `flags.set` chrome refresh.
-        let root = Memo::new(move |_| flags.with(|f| f.root.clone()));
+        // Root switch resets category/contains; ENTRIES-only refresh (snapshot) keeps them (THI-388).
+        let last_root = StoredValue::new(Option::<Option<String>>::None);
         Effect::new(move |_| {
+            let root_now = root.get();
             let _ = refresh.tick(CatalogScope::ENTRIES);
-            let _ = root.get();
-            store.invalidate_and_bootstrap(true);
+            let reset_filter = match last_root.get_value() {
+                None => true,
+                Some(prev) => prev != root_now,
+            };
+            last_root.set_value(Some(root_now));
+            store.invalidate_and_bootstrap(reset_filter);
         });
 
         store

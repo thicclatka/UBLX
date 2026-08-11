@@ -31,9 +31,12 @@ pub(crate) struct CatalogData {
 }
 
 impl CatalogData {
-    pub(crate) fn provide(refresh: CatalogRefresh) -> Self {
+    pub(crate) fn provide(refresh: CatalogRefresh, root: Memo<Option<String>>) -> Self {
+        // Root switch deliberately skips ENTRIES bump (EntriesWindow wipe is enough); categories
+        // still must refetch for the new root.
         let categories = LocalResource::new(move || {
             let _ = refresh.tick(CatalogScope::ENTRIES);
+            let _ = root.get();
             async move {
                 get_json::<Vec<String>>("/categories")
                     .await

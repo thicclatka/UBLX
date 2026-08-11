@@ -38,8 +38,9 @@ pub(crate) fn Shell(flags: RwSignal<CatalogFlags>) -> impl IntoView {
     let help = HelpOverlay::provide();
     let multiselect = MultiselectCtx::provide();
     let catalog_refresh = CatalogRefresh::provide();
-    let catalog = CatalogData::provide(catalog_refresh);
-    let _entries_window = EntriesWindow::provide(catalog_refresh, flags);
+    let catalog_root = crate::api::catalog_root_memo(flags);
+    let catalog = CatalogData::provide(catalog_refresh, catalog_root);
+    let _entries_window = EntriesWindow::provide(catalog_refresh, catalog_root);
     let toasts = ToastCtx::provide();
     let space_menu = SpaceMenuCtx::provide(catalog_refresh, multiselect, toasts);
     space_menu
@@ -307,8 +308,7 @@ pub(crate) fn Shell(flags: RwSignal<CatalogFlags>) -> impl IntoView {
 
         <main class="mode-body">
             {move || {
-                // Remount mode body when root changes so selection / pane state cannot linger.
-                let _ = flags.get().root.clone();
+                let _ = catalog_root.get();
                 match mode.get() {
                     MainMode::Snapshot => view! { <SnapshotMode/> }.into_any(),
                     MainMode::Lenses => view! { <LensesMode/> }.into_any(),
