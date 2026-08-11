@@ -5,7 +5,6 @@ use leptos::task::spawn_local;
 
 use crate::api::fetch_entry_detail_opt;
 use crate::catalog_data::CatalogData;
-use crate::catalog_refresh::{CatalogRefresh, CatalogScope};
 use crate::entries_window::{ENTRIES_PAGE_SIZE, EntriesWindow};
 use crate::focus::{UiNav, index_list_nav, install_list_nav, string_list_nav};
 use crate::nav::MainMode;
@@ -18,7 +17,6 @@ use crate::util::sleep_ms;
 pub(crate) fn SnapshotMode() -> impl IntoView {
     let search = CatalogSearch::expect();
     let catalog = CatalogData::expect();
-    let refresh = CatalogRefresh::expect();
     let entries = EntriesWindow::expect();
     let categories = catalog.categories;
     let (selected_cat, set_selected_cat) = signal::<Option<String>>(None);
@@ -32,13 +30,7 @@ pub(crate) fn SnapshotMode() -> impl IntoView {
         set_selected_idx.set(None);
     };
 
-    // Root / catalog refresh: drop UI selection (EntriesWindow already cleared its filter).
-    Effect::new(move |_| {
-        let _ = refresh.tick(CatalogScope::ENTRIES);
-        set_selected_cat.set(None);
-        clear_path_sel();
-        set_visible_range.set((0, 0));
-    });
+    // Root switch remounts this component from Shell — do not clear on ENTRIES refresh (THI-388).
 
     let detail = LocalResource::new(move || {
         let path = selected_path.get();
@@ -76,6 +68,27 @@ pub(crate) fn SnapshotMode() -> impl IntoView {
             && i >= total
         {
             clear_path_sel();
+        }
+    });
+
+    // After catalog reload: keep path when it still exists; else drop path (dense) or stale index
+    // (windowed — so ensure_range cannot overwrite selected_path from a wrong cursor).
+    Effect::new(move |_| {
+        if !contents_ready.get() {
+            return;
+        }
+        let _ = entries.list_generation().get();
+        let Some(path) = selected_path.get_untracked() else {
+            return;
+        };
+        if let Some(i) = entries.index_of_path(&path) {
+            if selected_idx.get_untracked() != Some(i) {
+                set_selected_idx.set(Some(i));
+            }
+        } else if entries.is_dense().get_untracked() {
+            clear_path_sel();
+        } else {
+            set_selected_idx.set(None);
         }
     });
 
@@ -150,11 +163,19 @@ pub(crate) fn SnapshotMode() -> impl IntoView {
         filter_labels(&cats, &q)
     });
 
+    // Drop category when it vanishes (post-snapshot) or is filtered out of search results.
     Effect::new(move |_| {
         let q = search.trimmed.get();
-        let cats = visible_cats.get();
+        let cats = if q.is_empty() {
+            // Pending refetch must not look like an empty catalog (would bounce to All).
+            let Some(cats) = categories.get() else {
+                return;
+            };
+            cats
+        } else {
+            visible_cats.get()
+        };
         if let Some(sel) = selected_cat.get_untracked()
-            && !q.is_empty()
             && !cats.iter().any(|c| c == &sel)
         {
             set_selected_cat.set(None);

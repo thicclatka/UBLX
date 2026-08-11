@@ -84,11 +84,18 @@ impl EntriesWindow {
         provide_context(store);
 
         // Only the root *string* (Memo) — not every `flags.set` chrome refresh.
+        // Root switch resets category/contains; ENTRIES-only refresh (snapshot) keeps them (THI-388).
         let root = Memo::new(move |_| flags.with(|f| f.root.clone()));
+        let last_root = StoredValue::new(Option::<Option<String>>::None);
         Effect::new(move |_| {
+            let root_now = root.get();
             let _ = refresh.tick(CatalogScope::ENTRIES);
-            let _ = root.get();
-            store.invalidate_and_bootstrap(true);
+            let reset_filter = match last_root.get_value() {
+                None => true,
+                Some(prev) => prev != root_now,
+            };
+            last_root.set_value(Some(root_now));
+            store.invalidate_and_bootstrap(reset_filter);
         });
 
         store
