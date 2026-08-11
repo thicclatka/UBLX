@@ -4,7 +4,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::api::{
-    SettingsLayoutPatch, SettingsPatch, SettingsScope, SettingsView, fetch_settings, patch_settings,
+    SettingsLayoutPatch, SettingsPatch, SettingsScope, SettingsView, fetch_settings,
+    patch_settings, patch_settings_bool,
 };
 use crate::command_mode::CommandModeCtx;
 use crate::focus::{ListNav, UiNav, install_list_nav};
@@ -46,19 +47,6 @@ fn cycle_typed_column_tables(current: &str) -> &'static str {
         "abbrev" => "full",
         _ => "none",
     }
-}
-
-fn bool_patch(key: &str, value: bool) -> SettingsPatch {
-    let mut p = SettingsPatch::default();
-    match key {
-        "show_hidden_files" => p.show_hidden_files = Some(value),
-        "hash" => p.hash = Some(value),
-        "enable_enhance_all" => p.enable_enhance_all = Some(value),
-        "ask_enhance_on_new_root" => p.ask_enhance_on_new_root = Some(value),
-        "run_snapshot_on_startup" => p.run_snapshot_on_startup = Some(value),
-        _ => {}
-    }
-    p
 }
 
 fn bump_layout(view: &SettingsView, which: FocusedOption, delta: i16) -> Option<SettingsPatch> {
@@ -126,6 +114,26 @@ pub(crate) fn SettingsMode() -> impl IntoView {
         set_err.set(None);
         spawn_local(async move {
             match patch_settings(s, &patch).await {
+                Ok(v) => {
+                    command_mode.apply_theme_from_settings(&v);
+                    set_live.set(Some(v));
+                    set_err.set(None);
+                }
+                Err(e) => set_err.set(Some(e)),
+            }
+            set_busy.set(false);
+        });
+    });
+
+    let apply_bool = Callback::new(move |(key, value): (String, bool)| {
+        if busy.get_untracked() {
+            return;
+        }
+        let s = scope.get_untracked();
+        set_busy.set(true);
+        set_err.set(None);
+        spawn_local(async move {
+            match patch_settings_bool(s, &key, value).await {
                 Ok(v) => {
                     command_mode.apply_theme_from_settings(&v);
                     set_live.set(Some(v));
@@ -233,7 +241,7 @@ pub(crate) fn SettingsMode() -> impl IntoView {
                                                             set_focus.set(Some(
                                                                 FocusedOption::Bool(key2.clone()),
                                                             ));
-                                                            apply.run(bool_patch(&key3, next));
+                                                            apply_bool.run((key3.clone(), next));
                                                         })
                                                     />
                                                 }

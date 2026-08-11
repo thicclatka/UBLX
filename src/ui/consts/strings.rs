@@ -183,14 +183,9 @@ pub struct UiStringsFile {
     pub delete_confirm_title: &'static str,
 }
 
-/// Settings tab: bool row labels (TOML key names).
+/// Settings tab: bool row labels (TOML key names). Unknown rows fall back to [`Self::unknown_row`];
+/// known keys use [`crate::modules::settings::SettingsBoolKey::toml_key`].
 pub struct UiStringsSettingsBool {
-    pub show_hidden_files: &'static str,
-    pub hash: &'static str,
-    pub enable_enhance_all: &'static str,
-    pub ask_enhance_on_new_root: &'static str,
-    /// Global / local: spawn background index when opening the TUI (next session if changed here).
-    pub run_snapshot_on_startup: &'static str,
     pub unknown_row: &'static str,
 }
 
@@ -514,14 +509,7 @@ impl UiStrings {
     }
 
     const fn settings_bool() -> UiStringsSettingsBool {
-        UiStringsSettingsBool {
-            show_hidden_files: "show_hidden_files",
-            hash: "hash",
-            enable_enhance_all: "enable_enhance_all",
-            ask_enhance_on_new_root: "ask_enhance_on_new_root",
-            run_snapshot_on_startup: "run_snapshot_on_startup",
-            unknown_row: "?",
-        }
+        UiStringsSettingsBool { unknown_row: "?" }
     }
 
     const fn settings_pane() -> UiStringsSettingsPane {

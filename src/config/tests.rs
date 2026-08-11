@@ -99,6 +99,22 @@ fn ublx_overlay_merge_layout() {
     assert_eq!(layout.right_pct, 45);
 }
 
+#[test]
+fn follow_links_hot_reload_sets_nefax_opts() {
+    let mut opts = opts_with(false, vec![]);
+    assert!(!opts.nefax_opts.follow_links);
+    opts.apply_hot_reload_overlay(&UblxOverlay {
+        follow_links: Some(true),
+        ..Default::default()
+    });
+    assert!(opts.nefax_opts.follow_links);
+    opts.apply_hot_reload_overlay(&UblxOverlay {
+        follow_links: Some(false),
+        ..Default::default()
+    });
+    assert!(!opts.nefax_opts.follow_links);
+}
+
 fn opts_with(enable_enhance_all: bool, entries: Vec<EnhancePolicyEntry>) -> UblxOpts {
     UblxOpts {
         nefax_opts: NefaxOpts::default(),
@@ -292,12 +308,12 @@ fn settings_typed_column_tables_row_layout_indices() {
 
     assert_eq!(
         typed_column_tables_row_index(SettingsConfigScope::Global),
-        5
+        6
     );
-    assert_eq!(typed_column_tables_row_index(SettingsConfigScope::Local), 4);
+    assert_eq!(typed_column_tables_row_index(SettingsConfigScope::Local), 5);
     assert_eq!(
         command_mode_leader_row_index(SettingsConfigScope::Global),
-        Some(6)
+        Some(7)
     );
     assert_eq!(
         command_mode_leader_row_index(SettingsConfigScope::Local),
@@ -305,13 +321,13 @@ fn settings_typed_column_tables_row_layout_indices() {
     );
     assert_eq!(
         opacity_format_row_index(SettingsConfigScope::Global),
-        Some(7)
+        Some(8)
     );
     assert_eq!(opacity_format_row_index(SettingsConfigScope::Local), None);
-    assert_eq!(layout_button_index(SettingsConfigScope::Global), 8);
-    assert_eq!(layout_button_index(SettingsConfigScope::Local), 5);
-    assert_eq!(bool_row_count(SettingsConfigScope::Global), 5);
-    assert_eq!(bool_row_count(SettingsConfigScope::Local), 4);
+    assert_eq!(layout_button_index(SettingsConfigScope::Global), 9);
+    assert_eq!(layout_button_index(SettingsConfigScope::Local), 6);
+    assert_eq!(bool_row_count(SettingsConfigScope::Global), 6);
+    assert_eq!(bool_row_count(SettingsConfigScope::Local), 5);
 }
 
 #[test]

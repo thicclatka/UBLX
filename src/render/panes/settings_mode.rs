@@ -27,7 +27,7 @@ fn row_prefix(active: bool) -> &'static str {
     }
 }
 
-/// `*` before the key when the row is inactive (`show_hidden_files`, `hash`, `enable_enhance_all`); focused rows use [`row_prefix`] only (matches “* — settings applied on next snapshot”).
+/// `*` before the key when the row is inactive for snapshot-affecting bools; focused rows use [`row_prefix`] only (matches “* — settings applied on next snapshot”).
 fn settings_snapshot_star_if_inactive(
     row_active: bool,
     scope: SettingsConfigScope,
@@ -37,11 +37,7 @@ fn settings_snapshot_star_if_inactive(
         return "";
     }
     match settings::bool_key(scope, idx) {
-        Some(
-            settings::SettingsBoolKey::ShowHiddenFiles
-            | settings::SettingsBoolKey::Hash
-            | settings::SettingsBoolKey::EnableEnhanceAll,
-        ) => UI_GLYPHS.settings_note_asterisk,
+        Some(key) if key.affects_next_snapshot() => UI_GLYPHS.settings_note_asterisk,
         _ => "",
     }
 }

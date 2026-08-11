@@ -1,4 +1,4 @@
-//! Catalog paths, SQLite schema/ops, and headless open/read (THI-155 Phase 2).
+//! Catalog paths, `SQLite` schema/ops, and headless open/read (THI-155 Phase 2).
 //!
 //! Layers, bottom up:
 //! - [`paths`]: names, user dirs, and [`UblxPaths`] for an indexed root.

@@ -149,7 +149,7 @@ impl UblxOpts {
         self.apply_hot_reload_overlay(overlay);
     }
 
-    /// Apply only hot-reloadable fields: theme, layout, hash, `show_hidden_files`. Used when reloading config without restart.
+    /// Apply only hot-reloadable fields: theme, layout, hash, `follow_links`, `show_hidden_files`. Used when reloading config without restart.
     /// On invalid config from disk, caller should fall back to [`Self::load_overlay_from_cache`] and pass that overlay here.
     pub fn apply_hot_reload_overlay(&mut self, overlay: &profile::UblxOverlay) {
         let show_hidden = overlay.show_hidden_files.unwrap_or(false);
@@ -173,6 +173,9 @@ impl UblxOpts {
         }
         if let Some(hash) = overlay.hash {
             self.nefax_opts.with_hash = hash;
+        }
+        if let Some(follow_links) = overlay.follow_links {
+            self.nefax_opts.follow_links = follow_links;
         }
         if overlay.theme.is_some() {
             self.theme.clone_from(&overlay.theme);

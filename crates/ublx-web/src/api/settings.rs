@@ -141,6 +141,8 @@ pub(crate) struct SettingsPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub follow_links: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_enhance_all: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ask_enhance_on_new_root: Option<bool>,
@@ -172,4 +174,21 @@ pub(crate) async fn patch_settings(
     patch: &SettingsPatch,
 ) -> Result<SettingsView, String> {
     patch_json(&format!("/settings/{}", scope.as_str()), patch).await
+}
+
+/// Toggle a bool control by API key name (whatever `GET /settings` listed in `bools`).
+///
+/// Sends `{"<key>": <value>}` so new server-side knobs work without a WASM match-arm update.
+pub(crate) async fn patch_settings_bool(
+    scope: SettingsScope,
+    key: &str,
+    value: bool,
+) -> Result<SettingsView, String> {
+    let mut body = serde_json::Map::new();
+    body.insert(key.to_string(), serde_json::Value::Bool(value));
+    patch_json(
+        &format!("/settings/{}", scope.as_str()),
+        &serde_json::Value::Object(body),
+    )
+    .await
 }
